@@ -184,7 +184,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         color: _ctraderService.isConnected ? AppTheme.primaryGreen : AppTheme.errorRed,
-                      ],
+                      ),
                     ),
                     const SizedBox(width: 6),
                     Text(
