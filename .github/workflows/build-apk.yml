@@ -1,3 +1,4 @@
+
 name: 🤖 Build Tinchodoko AI Assistant APK
 
 on:
@@ -16,30 +17,132 @@ jobs:
     steps:
       - name: 📥 Checkout del repositorio
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: ☕ Setup Java 17
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: '17'
+
+      - name: 🔐 Preparar firma persistente
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SIGN_DIR=".github/workflows/firma-persistente"
+          SIGN_FILE="$SIGN_DIR/tinchodoko-release.jks.b64"
+          STORE_PASSWORD="Tinchodoko-V8-Release-2026"
+          KEY_ALIAS="tinchodoko-release"
+
+          mkdir -p "$SIGN_DIR"
+
+          if [ ! -s "$SIGN_FILE" ]; then
+            echo "Generando firma inicial..."
+
+            keytool -genkeypair -v \
+              -keystore /tmp/tinchodoko-release.jks \
+              -storetype JKS \
+              -storepass "$STORE_PASSWORD" \
+              -keypass "$STORE_PASSWORD" \
+              -alias "$KEY_ALIAS" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Tinchodoko AI Assistant, OU=Android, O=Tinchodoko, L=Buenos Aires, ST=Buenos Aires, C=AR"
+
+            base64 -w 0 /tmp/tinchodoko-release.jks > "$SIGN_FILE"
+
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+            git add "$SIGN_FILE"
+            git commit -m "chore: initialize persistent Android signing key"
+            git push origin HEAD:main
+          fi
+
+          mkdir -p /tmp/tinchodoko-signing
+
+          base64 -d "$SIGN_FILE" \
+            > /tmp/tinchodoko-signing/tinchodoko-release.jks
+
+          keytool -list \
+            -keystore /tmp/tinchodoko-signing/tinchodoko-release.jks \
+            -storepass "$STORE_PASSWORD" \
+            -alias "$KEY_ALIAS"
+
+          cat > flutter_project/android-key.properties <<EOF
+          storePassword=$STORE_PASSWORD
+          keyPassword=$STORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          storeFile=/tmp/tinchodoko-signing/tinchodoko-release.jks
+          EOF
 
       - name: 🐦 Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.22.0'
-          channel: 'stable'
+          channel: stable
           cache: true
 
       - name: ✅ Verificar Flutter
         run: flutter --version
         working-directory: flutter_project
 
-      - name: 🤖 Generar estructura Android faltante
+      - name: 🤖 Generar estructura Android
         run: |
-          flutter create --platforms=android --org com.tinchodoko --project-name ai_assistant --overwrite /tmp/tinchodoko_android
+          flutter create \
+            --platforms=android \
+            --org com.tinchodoko \
+            --project-name ai_assistant \
+            --overwrite /tmp/tinchodoko_android
+
           rm -rf android
           cp -R /tmp/tinchodoko_android/android android
-          sed -i 's/android:label="ai_assistant"/android:label="Tinchodoko AI Assistant"/' android/app/src/main/AndroidManifest.xml
+
+          sed -i \
+            's/android:label="ai_assistant"/android:label="Tinchodoko AI Assistant"/' \
+            android/app/src/main/AndroidManifest.xml
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          gradle = Path("android/app/build.gradle")
+          text = gradle.read_text()
+
+          signing = """
+          def keystoreProperties = new Properties()
+          def keystorePropertiesFile = rootProject.file('../android-key.properties')
+          keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+
+          """
+
+          if "signingConfigs {" not in text:
+              text = text.replace("android {", signing + "android {", 1)
+
+              text = text.replace(
+                  "    buildTypes {",
+                  """    signingConfigs {
+                      release {
+                          keyAlias keystoreProperties['keyAlias']
+                          keyPassword keystoreProperties['keyPassword']
+                          storeFile file(keystoreProperties['storeFile'])
+                          storePassword keystoreProperties['storePassword']
+                      }
+                  }
+
+                  buildTypes {""",
+                  1
+              )
+
+          text = text.replace(
+              "signingConfig signingConfigs.debug",
+              "signingConfig signingConfigs.release"
+          )
+
+          gradle.write_text(text)
+          PY
         working-directory: flutter_project
 
       - name: 📦 Instalar dependencias
@@ -58,9 +161,9 @@ jobs:
       - name: 📝 Renombrar APK
         run: |
           DATE=$(date +'%Y%m%d-%H%M')
+
           mv flutter_project/build/app/outputs/flutter-apk/app-release.apk \
              flutter_project/build/app/outputs/flutter-apk/TinchodokoAI-v${{ github.run_number }}-${DATE}.apk
-          echo "APK_NAME=TinchodokoAI-v${{ github.run_number }}-${DATE}.apk" >> $GITHUB_ENV
 
       - name: 📤 Subir APK como artifact
         uses: actions/upload-artifact@v4
@@ -78,19 +181,14 @@ jobs:
           body: |
             ## 📱 Tinchodoko AI Assistant
 
-            ### 📥 Cómo instalar
-            1. Descargá el archivo `.apk` de abajo
-            2. Android: Ajustes → Seguridad → Fuentes desconocidas ✅
-            3. Abrí el APK e instalá
-            4. ¡Listo! 🎉
+            ### 📥 Instalación
+            Descargá el APK e instalalo en Android.
 
             ### 🔑 Primer uso
-            1. Tab **APIs** → Ingresá tus API Keys
-            2. Tab **cTrader** → Pegá tu token MCP
-            3. Tab **Assistant** → ¡Empezá a operar!
+            Configurá tus API Keys en la pestaña APIs.
 
             ---
-            _Build #${{ github.run_number }} — ${{ github.sha }}_
+            Build #${{ github.run_number }} — ${{ github.sha }}
           files: flutter_project/build/app/outputs/flutter-apk/TinchodokoAI-v*.apk
           draft: false
           prerelease: false
