@@ -1,0 +1,6 @@
+{
+  "name": "Tinchodoko AI Assistant",
+  "description": "Tinchodoko AI Assistant para Android: gestión de llaves API multi-proveedor, análisis de trading con confirmación, conexión cTrader Remote MCP e historial de operaciones en Material Design 3.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
