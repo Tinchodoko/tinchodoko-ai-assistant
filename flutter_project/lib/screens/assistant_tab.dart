@@ -145,7 +145,7 @@ class _AssistantTabState extends State<AssistantTab> {
       date: DateTime.now(),
       pair: pair,
       direction: direction,
-      result: '+$134.50 (Ganancia)',
+      result: '+\$134.50 (Ganancia)',
       isConfirmed: true,
       pnl: 134.50,
       modelUsed: '${_selectedProvider.name} - $_selectedModel',
