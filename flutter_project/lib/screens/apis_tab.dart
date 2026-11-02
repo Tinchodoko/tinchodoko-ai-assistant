@@ -175,7 +175,7 @@ class _ApisTabState extends State<ApisTab> {
                                 decoration: BoxDecoration(
                                   color: (isConfigured ? AppTheme.primaryGreen : AppTheme.errorRed).withOpacity(0.15),
                                   borderRadius: BorderRadius.circular(20),
-                                  border: Border.Border.all(
+                                  border: Border.all(
                                     color: (isConfigured ? AppTheme.primaryGreen : AppTheme.errorRed).withOpacity(0.3),
                                   ),
                                 ),
