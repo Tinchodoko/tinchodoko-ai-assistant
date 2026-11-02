@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/ctrader_service.dart';
 import '../theme/app_theme.dart';
-import '../models/ctrader_account.dart';
 
 class CTraderTab extends StatefulWidget {
   final CTraderService ctraderService;
