@@ -1,4 +1,3 @@
-
 name: 🤖 Build Tinchodoko AI Assistant APK
 
 on:
@@ -26,59 +25,6 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: 🔐 Preparar firma persistente
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          SIGN_DIR=".github/workflows/firma-persistente"
-          SIGN_FILE="$SIGN_DIR/tinchodoko-release.jks.b64"
-          STORE_PASSWORD="Tinchodoko-V8-Release-2026"
-          KEY_ALIAS="tinchodoko-release"
-
-          mkdir -p "$SIGN_DIR"
-
-          if [ ! -s "$SIGN_FILE" ]; then
-            echo "Generando firma inicial..."
-
-            keytool -genkeypair -v \
-              -keystore /tmp/tinchodoko-release.jks \
-              -storetype JKS \
-              -storepass "$STORE_PASSWORD" \
-              -keypass "$STORE_PASSWORD" \
-              -alias "$KEY_ALIAS" \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000 \
-              -dname "CN=Tinchodoko AI Assistant, OU=Android, O=Tinchodoko, L=Buenos Aires, ST=Buenos Aires, C=AR"
-
-            base64 -w 0 /tmp/tinchodoko-release.jks > "$SIGN_FILE"
-
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-            git add "$SIGN_FILE"
-            git commit -m "chore: initialize persistent Android signing key"
-            git push origin HEAD:main
-          fi
-
-          mkdir -p /tmp/tinchodoko-signing
-
-          base64 -d "$SIGN_FILE" \
-            > /tmp/tinchodoko-signing/tinchodoko-release.jks
-
-          keytool -list \
-            -keystore /tmp/tinchodoko-signing/tinchodoko-release.jks \
-            -storepass "$STORE_PASSWORD" \
-            -alias "$KEY_ALIAS"
-
-          cat > flutter_project/android-key.properties <<EOF
-          storePassword=$STORE_PASSWORD
-          keyPassword=$STORE_PASSWORD
-          keyAlias=$KEY_ALIAS
-          storeFile=/tmp/tinchodoko-signing/tinchodoko-release.jks
-          EOF
-
       - name: 🐦 Setup Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -104,45 +50,125 @@ jobs:
           sed -i \
             's/android:label="ai_assistant"/android:label="Tinchodoko AI Assistant"/' \
             android/app/src/main/AndroidManifest.xml
+        working-directory: flutter_project
+
+      - name: 🔐 Crear o recuperar firma persistente
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SIGN_DIR=".github/workflows/firma-persistente"
+          SIGN_FILE="$SIGN_DIR/tinchodoko-release.jks.b64"
+          STORE_PASSWORD="Tinchodoko-V8-Release-2026"
+          KEY_ALIAS="tinchodoko-release"
+
+          mkdir -p "$SIGN_DIR"
+
+          if [ ! -s "$SIGN_FILE" ]; then
+            echo "No se encontró una firma guardada. Generando la firma inicial..."
+
+            keytool -genkeypair -v \
+              -keystore /tmp/tinchodoko-release.jks \
+              -storetype JKS \
+              -storepass "$STORE_PASSWORD" \
+              -keypass "$STORE_PASSWORD" \
+              -alias "$KEY_ALIAS" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Tinchodoko AI Assistant, OU=Android, O=Tinchodoko, L=Buenos Aires, ST=Buenos Aires, C=AR"
+
+            base64 -w 0 /tmp/tinchodoko-release.jks > "$SIGN_FILE"
+
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add "$SIGN_FILE"
+            git commit -m "chore: initialize persistent Android signing key"
+
+            # Rebase por si main recibió otro commit mientras se ejecutaba el build.
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
+
+          mkdir -p /tmp/tinchodoko-signing
+          base64 --decode "$SIGN_FILE" > /tmp/tinchodoko-signing/tinchodoko-release.jks
+
+          keytool -list -v \
+            -keystore /tmp/tinchodoko-signing/tinchodoko-release.jks \
+            -storepass "$STORE_PASSWORD" \
+            -alias "$KEY_ALIAS"
+
+          cat > android-key.properties <<EOF
+          storePassword=$STORE_PASSWORD
+          keyPassword=$STORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          storeFile=/tmp/tinchodoko-signing/tinchodoko-release.jks
+          EOF
+        working-directory: flutter_project
+
+      - name: 🛠️ Configurar firma Release en Gradle
+        shell: bash
+        run: |
+          set -euo pipefail
 
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           gradle = Path("android/app/build.gradle")
           text = gradle.read_text()
 
-          signing = """
-          def keystoreProperties = new Properties()
+          if "signingConfigs {" not in text:
+              text = re.sub(
+                  r"android\\s*\\{",
+                  """def keystoreProperties = new Properties()
           def keystorePropertiesFile = rootProject.file('../android-key.properties')
+          if (!keystorePropertiesFile.exists()) {
+              throw new GradleException("No se encontró android-key.properties")
+          }
           keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
 
-          """
-
-          if "signingConfigs {" not in text:
-              text = text.replace("android {", signing + "android {", 1)
-
-              text = text.replace(
-                  "    buildTypes {",
-                  """    signingConfigs {
-                      release {
-                          keyAlias keystoreProperties['keyAlias']
-                          keyPassword keystoreProperties['keyPassword']
-                          storeFile file(keystoreProperties['storeFile'])
-                          storePassword keystoreProperties['storePassword']
-                      }
-                  }
-
-                  buildTypes {""",
-                  1
+          android {""",
+                  text,
+                  count=1
               )
 
-          text = text.replace(
-              "signingConfig signingConfigs.debug",
-              "signingConfig signingConfigs.release"
+              if "def keystoreProperties" not in text:
+                  raise SystemExit("No se pudo insertar la configuración de propiedades")
+
+              text, count = re.subn(
+                  r"(?m)^\\s*buildTypes\\s*\\{",
+                  """    signingConfigs {
+                  release {
+                      keyAlias keystoreProperties['keyAlias']
+                      keyPassword keystoreProperties['keyPassword']
+                      storeFile file(keystoreProperties['storeFile'])
+                      storePassword keystoreProperties['storePassword']
+                  }
+              }
+
+              buildTypes {""",
+                  text,
+                  count=1
+              )
+              if count != 1:
+                  raise SystemExit("No se encontró buildTypes en android/app/build.gradle")
+
+          text, count = re.subn(
+              r"signingConfig\\s+signingConfigs\\.debug",
+              "signingConfig signingConfigs.release",
+              text
           )
 
+          if "signingConfig signingConfigs.release" not in text:
+              raise SystemExit("No se pudo asignar la firma Release")
+
           gradle.write_text(text)
+          print("Configuración de firma Release aplicada correctamente.")
           PY
+
+          test -s android-key.properties
+          grep -q "signingConfig signingConfigs.release" android/app/build.gradle
         working-directory: flutter_project
 
       - name: 📦 Instalar dependencias
@@ -154,14 +180,22 @@ jobs:
         working-directory: flutter_project
         continue-on-error: true
 
-      - name: 🔨 Build APK Release
+      - name: 🔨 Build APK Release firmado
         run: flutter build apk --release --no-tree-shake-icons
         working-directory: flutter_project
+
+      - name: 🔎 Verificar firma del APK
+        run: |
+          set -euo pipefail
+          APK="flutter_project/build/app/outputs/flutter-apk/app-release.apk"
+          test -s "$APK"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)"
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
 
       - name: 📝 Renombrar APK
         run: |
           DATE=$(date +'%Y%m%d-%H%M')
-
           mv flutter_project/build/app/outputs/flutter-apk/app-release.apk \
              flutter_project/build/app/outputs/flutter-apk/TinchodokoAI-v${{ github.run_number }}-${DATE}.apk
 
