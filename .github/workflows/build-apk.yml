@@ -31,6 +31,14 @@ jobs:
         run: flutter --version
         working-directory: flutter_project
 
+      - name: 🤖 Generar estructura Android faltante
+        run: |
+          flutter create --platforms=android --org com.tinchodoko --project-name ai_assistant --overwrite /tmp/tinchodoko_android
+          rm -rf android
+          cp -R /tmp/tinchodoko_android/android android
+          sed -i 's/android:label="ai_assistant"/android:label="Tinchodoko AI Assistant"/' android/app/src/main/AndroidManifest.xml
+        working-directory: flutter_project
+
       - name: 📦 Instalar dependencias
         run: flutter pub get
         working-directory: flutter_project
