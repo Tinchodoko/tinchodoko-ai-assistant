@@ -1,184 +1,360 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import '../models/ctrader_account.dart';
+
+// ─────────────────────────────────────────────
+//  cTrader Remote MCP — Endpoint oficial
+//  https://mcp.ctrader.com/trading/mcp
+// ─────────────────────────────────────────────
+const String _kMcpEndpoint = 'https://mcp.ctrader.com/trading/mcp';
 
 class CTraderService extends ChangeNotifier {
   CTraderAccount _account = CTraderAccount.disconnected();
   bool _isLoading = false;
-  Timer? _liveTickerTimer;
+  String _lastError = '';
+  Timer? _pollingTimer;
 
   CTraderAccount get account => _account;
   bool get isLoading => _isLoading;
   bool get isConnected => _account.isConnected;
+  String get lastError => _lastError;
 
-  Future<bool> connect(String mcpToken) async {
-    if (mcpToken.trim().isEmpty) return false;
+  // ─────────────────────────────────────────
+  //  LLAMADA AL MCP — método genérico
+  // ─────────────────────────────────────────
+  Future<Map<String, dynamic>?> _callMcp({
+    required String token,
+    required String toolName,
+    Map<String, dynamic>? arguments,
+  }) async {
+    try {
+      final body = jsonEncode({
+        'jsonrpc': '2.0',
+        'id': DateTime.now().millisecondsSinceEpoch,
+        'method': 'tools/call',
+        'params': {
+          'name': toolName,
+          if (arguments != null) 'arguments': arguments,
+        },
+      });
+
+      final response = await http.post(
+        Uri.parse(_kMcpEndpoint),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: body,
+      ).timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        if (data.containsKey('result')) {
+          final result = data['result'];
+          // El MCP devuelve el contenido como texto JSON dentro de content[0].text
+          if (result is Map && result.containsKey('content')) {
+            final contentList = result['content'] as List;
+            if (contentList.isNotEmpty) {
+              final textContent = contentList[0]['text'] as String;
+              return jsonDecode(textContent) as Map<String, dynamic>;
+            }
+          }
+          return result as Map<String, dynamic>?;
+        } else if (data.containsKey('error')) {
+          _lastError = data['error']['message']?.toString() ?? 'Error MCP desconocido';
+          debugPrint('❌ MCP error: $_lastError');
+          return null;
+        }
+      } else {
+        _lastError = 'HTTP ${response.statusCode}: ${response.body}';
+        debugPrint('❌ HTTP error: $_lastError');
+        return null;
+      }
+    } on TimeoutException {
+      _lastError = 'Timeout: el servidor MCP no respondió en 15s';
+      debugPrint('❌ $_lastError');
+    } catch (e) {
+      _lastError = e.toString();
+      debugPrint('❌ Excepción MCP: $e');
+    }
+    return null;
+  }
+
+  // ─────────────────────────────────────────
+  //  CONECTAR — obtiene cuenta y posiciones
+  // ─────────────────────────────────────────
+  Future<bool> connect(String token) async {
+    if (token.trim().isEmpty) return false;
+
     _isLoading = true;
+    _lastError = '';
     notifyListeners();
 
-    // Handshake simulation with cTrader Remote MCP endpoint
-    await Future.delayed(const Duration(milliseconds: 1200));
+    try {
+      // 1️⃣ Obtener datos de la cuenta
+      final accountData = await _callMcp(
+        token: token,
+        toolName: 'get_account_info',
+      );
 
-    final mockPositions = [
-      CTraderPosition(
-        id: 'POS-9021',
-        pair: 'EURUSD',
-        direction: 'BUY',
-        lots: 0.50,
-        entryPrice: 1.08420,
-        currentPrice: 1.08645,
-        pnl: 112.50,
-        stopLoss: 1.08100,
-        takeProfit: 1.09200,
-        openTime: '10:15:20',
-      ),
-      CTraderPosition(
-        id: 'POS-9022',
-        pair: 'XAUUSD',
-        direction: 'SELL',
-        lots: 0.20,
-        entryPrice: 2742.80,
-        currentPrice: 2738.20,
-        pnl: 92.00,
-        stopLoss: 2755.00,
-        takeProfit: 2715.00,
-        openTime: '11:42:05',
-      ),
-      CTraderPosition(
-        id: 'POS-9023',
-        pair: 'BTCUSD',
-        direction: 'BUY',
-        lots: 0.10,
-        entryPrice: 68450.0,
-        currentPrice: 69120.0,
-        pnl: 67.00,
-        stopLoss: 67200.0,
-        takeProfit: 71000.0,
-        openTime: '12:05:18',
-      ),
-    ];
+      if (accountData == null) {
+        _isLoading = false;
+        notifyListeners();
+        return false;
+      }
 
-    double balance = 12450.00;
-    double openPnl = mockPositions.fold(0.0, (acc, p) => acc + p.pnl);
-    double equity = balance + openPnl;
+      // 2️⃣ Obtener posiciones abiertas
+      final positionsData = await _callMcp(
+        token: token,
+        toolName: 'get_open_positions',
+      );
 
-    _account = CTraderAccount(
-      isConnected: true,
-      mcpToken: mcpToken,
-      balance: balance,
-      equity: equity,
-      margin: 450.00,
-      freeMargin: equity - 450.00,
-      positions: mockPositions,
-    );
+      final positions = _parsePositions(positionsData);
 
-    _isLoading = false;
-    _startLiveTicker();
-    notifyListeners();
-    return true;
+      // 3️⃣ Construir el estado de cuenta real
+      final balance = _toDouble(accountData['balance'] ?? accountData['Balance'] ?? 0);
+      final equity  = _toDouble(accountData['equity']  ?? accountData['Equity']  ?? balance);
+      final margin  = _toDouble(accountData['margin']  ?? accountData['Margin']  ?? 0);
+
+      _account = CTraderAccount(
+        isConnected: true,
+        mcpToken: token,
+        balance: balance,
+        equity: equity,
+        margin: margin,
+        freeMargin: equity - margin,
+        positions: positions,
+      );
+
+      // 4️⃣ Inicia polling cada 5 segundos para actualizar precios
+      _startPolling(token);
+
+      _isLoading = false;
+      notifyListeners();
+      return true;
+
+    } catch (e) {
+      _lastError = e.toString();
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    }
   }
 
+  // ─────────────────────────────────────────
+  //  DESCONECTAR
+  // ─────────────────────────────────────────
   void disconnect() {
-    _liveTickerTimer?.cancel();
+    _pollingTimer?.cancel();
     _account = CTraderAccount.disconnected();
+    _lastError = '';
     notifyListeners();
   }
 
-  void closePosition(String positionId) {
-    final updatedPositions = _account.positions.where((p) => p.id != positionId).toList();
-    double openPnl = updatedPositions.fold(0.0, (acc, p) => acc + p.pnl);
-    double equity = _account.balance + openPnl;
+  // ─────────────────────────────────────────
+  //  CERRAR POSICIÓN
+  // ─────────────────────────────────────────
+  Future<bool> closePosition(String positionId) async {
+    if (!isConnected) return false;
 
-    _account = CTraderAccount(
-      isConnected: true,
-      mcpToken: _account.mcpToken,
-      balance: _account.balance,
-      equity: equity,
-      margin: updatedPositions.length * 150.0,
-      freeMargin: equity - (updatedPositions.length * 150.0),
-      positions: updatedPositions,
+    final result = await _callMcp(
+      token: _account.mcpToken,
+      toolName: 'close_position',
+      arguments: {'positionId': positionId},
     );
-    notifyListeners();
+
+    if (result != null) {
+      // Actualiza la lista localmente removiendo la posición cerrada
+      final updatedPositions = _account.positions
+          .where((p) => p.id != positionId)
+          .toList();
+      _updateAccountPositions(updatedPositions);
+      return true;
+    }
+    return false;
   }
 
-  void executeOrder({
+  // ─────────────────────────────────────────
+  //  EJECUTAR ORDEN
+  // ─────────────────────────────────────────
+  Future<bool> executeOrder({
     required String pair,
     required String direction,
     required double lots,
     required double entryPrice,
     required double stopLoss,
     required double takeProfit,
-  }) {
-    final newPos = CTraderPosition(
-      id: 'POS-${DateTime.now().millisecondsSinceEpoch % 10000}',
-      pair: pair,
-      direction: direction,
-      lots: lots,
-      entryPrice: entryPrice,
-      currentPrice: entryPrice,
-      pnl: 0.0,
-      stopLoss: stopLoss,
-      takeProfit: takeProfit,
-      openTime: DateTime.now().toLocal().toString().substring(11, 19),
+  }) async {
+    if (!isConnected) return false;
+
+    final result = await _callMcp(
+      token: _account.mcpToken,
+      toolName: 'place_market_order',
+      arguments: {
+        'symbol': pair,
+        'tradeSide': direction == 'BUY' ? 'Buy' : 'Sell',
+        'volume': (lots * 100000).toInt(), // cTrader usa volumen en unidades
+        'stopLossPrice': stopLoss,
+        'takeProfitPrice': takeProfit,
+      },
     );
 
-    final updated = List<CTraderPosition>.from(_account.positions)..insert(0, newPos);
-    _account = CTraderAccount(
-      isConnected: _account.isConnected,
-      mcpToken: _account.mcpToken,
-      balance: _account.balance,
-      equity: _account.equity,
-      margin: _account.margin + 150.0,
-      freeMargin: _account.freeMargin - 150.0,
-      positions: updated,
-    );
-    notifyListeners();
+    if (result != null) {
+      // Recarga las posiciones tras ejecutar
+      await _refreshPositions();
+      return true;
+    }
+    return false;
   }
 
-  void _startLiveTicker() {
-    _liveTickerTimer?.cancel();
-    _liveTickerTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
-      if (!_account.isConnected) {
-        timer.cancel();
-        return;
-      }
-      // Small live price jitter simulation
-      final updatedPositions = _account.positions.map((pos) {
-        final delta = (DateTime.now().millisecond % 5 - 2) * 0.15;
-        final newPnl = pos.pnl + delta;
-        return CTraderPosition(
-          id: pos.id,
-          pair: pos.pair,
-          direction: pos.direction,
-          lots: pos.lots,
-          entryPrice: pos.entryPrice,
-          currentPrice: pos.currentPrice + (pos.direction == 'BUY' ? delta * 0.001 : -delta * 0.001),
-          pnl: double.parse(newPnl.toStringAsFixed(2)),
-          stopLoss: pos.stopLoss,
-          takeProfit: pos.takeProfit,
-          openTime: pos.openTime,
-        );
-      }).toList();
+  // ─────────────────────────────────────────
+  //  MODIFICAR SL/TP
+  // ─────────────────────────────────────────
+  Future<bool> modifyPosition({
+    required String positionId,
+    required double stopLoss,
+    required double takeProfit,
+  }) async {
+    if (!isConnected) return false;
 
-      double openPnl = updatedPositions.fold(0.0, (acc, p) => acc + p.pnl);
-      double equity = _account.balance + openPnl;
+    final result = await _callMcp(
+      token: _account.mcpToken,
+      toolName: 'modify_position',
+      arguments: {
+        'positionId': positionId,
+        'stopLossPrice': stopLoss,
+        'takeProfitPrice': takeProfit,
+      },
+    );
+    return result != null;
+  }
+
+  // ─────────────────────────────────────────
+  //  POLLING — refresca posiciones cada 5s
+  // ─────────────────────────────────────────
+  void _startPolling(String token) {
+    _pollingTimer?.cancel();
+    _pollingTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
+      if (!_account.isConnected) return;
+      await _refreshPositions();
+    });
+  }
+
+  Future<void> _refreshPositions() async {
+    final positionsData = await _callMcp(
+      token: _account.mcpToken,
+      toolName: 'get_open_positions',
+    );
+
+    // También refresca la info de cuenta para balance/equity actualizado
+    final accountData = await _callMcp(
+      token: _account.mcpToken,
+      toolName: 'get_account_info',
+    );
+
+    if (positionsData != null || accountData != null) {
+      final positions = _parsePositions(positionsData);
+      final balance = accountData != null
+          ? _toDouble(accountData['balance'] ?? accountData['Balance'] ?? _account.balance)
+          : _account.balance;
+      final equity = accountData != null
+          ? _toDouble(accountData['equity'] ?? accountData['Equity'] ?? _account.equity)
+          : _account.equity;
+      final margin = accountData != null
+          ? _toDouble(accountData['margin'] ?? accountData['Margin'] ?? _account.margin)
+          : _account.margin;
 
       _account = CTraderAccount(
         isConnected: true,
         mcpToken: _account.mcpToken,
-        balance: _account.balance,
-        equity: double.parse(equity.toStringAsFixed(2)),
-        margin: _account.margin,
-        freeMargin: double.parse((equity - _account.margin).toStringAsFixed(2)),
-        positions: updatedPositions,
+        balance: balance,
+        equity: equity,
+        margin: margin,
+        freeMargin: equity - margin,
+        positions: positions,
       );
       notifyListeners();
-    });
+    }
+  }
+
+  // ─────────────────────────────────────────
+  //  HELPERS — parseo y utilidades
+  // ─────────────────────────────────────────
+  List<CTraderPosition> _parsePositions(Map<String, dynamic>? data) {
+    if (data == null) return [];
+
+    try {
+      // El MCP puede devolver las posiciones en distintos campos
+      final rawList = data['positions']
+          ?? data['openPositions']
+          ?? data['data']
+          ?? [];
+
+      if (rawList is! List) return [];
+
+      return rawList.map<CTraderPosition>((p) {
+        return CTraderPosition(
+          id: p['positionId']?.toString()
+              ?? p['id']?.toString()
+              ?? p['PositionId']?.toString()
+              ?? 'N/A',
+          pair: p['symbol']?.toString()
+              ?? p['Symbol']?.toString()
+              ?? p['pair']?.toString()
+              ?? 'UNKNOWN',
+          direction: _parseDirection(
+            p['tradeSide'] ?? p['TradeSide'] ?? p['direction'] ?? 'BUY',
+          ),
+          lots: _toDouble(p['volume'] ?? p['lots'] ?? 0) / 100000,
+          entryPrice: _toDouble(p['entryPrice'] ?? p['EntryPrice'] ?? p['openPrice'] ?? 0),
+          currentPrice: _toDouble(p['currentPrice'] ?? p['CurrentPrice'] ?? p['price'] ?? 0),
+          pnl: _toDouble(p['grossProfit'] ?? p['netProfit'] ?? p['pnl'] ?? p['Pnl'] ?? 0),
+          stopLoss: _toDouble(p['stopLoss'] ?? p['StopLoss'] ?? p['sl'] ?? 0),
+          takeProfit: _toDouble(p['takeProfit'] ?? p['TakeProfit'] ?? p['tp'] ?? 0),
+          openTime: p['openTime']?.toString()
+              ?? p['createTime']?.toString()
+              ?? DateTime.now().toLocal().toString().substring(11, 19),
+        );
+      }).toList();
+    } catch (e) {
+      debugPrint('❌ Error parseando posiciones: $e');
+      return [];
+    }
+  }
+
+  void _updateAccountPositions(List<CTraderPosition> positions) {
+    final openPnl = positions.fold(0.0, (acc, p) => acc + p.pnl);
+    _account = CTraderAccount(
+      isConnected: _account.isConnected,
+      mcpToken: _account.mcpToken,
+      balance: _account.balance,
+      equity: _account.balance + openPnl,
+      margin: positions.length * 150.0,
+      freeMargin: _account.balance + openPnl - (positions.length * 150.0),
+      positions: positions,
+    );
+    notifyListeners();
+  }
+
+  String _parseDirection(dynamic value) {
+    final str = value.toString().toLowerCase();
+    if (str.contains('buy') || str.contains('long') || str == '1') return 'BUY';
+    return 'SELL';
+  }
+
+  double _toDouble(dynamic value) {
+    if (value == null) return 0.0;
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    return double.tryParse(value.toString()) ?? 0.0;
   }
 
   @override
   void dispose() {
-    _liveTickerTimer?.cancel();
+    _pollingTimer?.cancel();
     super.dispose();
   }
 }
