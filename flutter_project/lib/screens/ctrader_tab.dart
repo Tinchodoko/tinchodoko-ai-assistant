@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/ctrader_service.dart';
+import '../services/secure_storage_service.dart';
 import '../theme/app_theme.dart';
 
 class CTraderTab extends StatefulWidget {
@@ -21,9 +22,21 @@ class _CTraderTabState extends State<CTraderTab> {
   @override
   void initState() {
     super.initState();
-    _tokenController.text = widget.ctraderService.account.mcpToken.isNotEmpty
-        ? widget.ctraderService.account.mcpToken
-        : "mcp-ctrader-live-token-849204918237";
+    _loadSavedToken();
+  }
+
+  Future<void> _loadSavedToken() async {
+    final savedToken = await SecureStorageService.getMcpToken();
+    if (mounted && savedToken != null && savedToken.isNotEmpty) {
+      _tokenController.text = savedToken;
+      setState(() {});
+    }
+  }
+
+  @override
+  void dispose() {
+    _tokenController.dispose();
+    super.dispose();
   }
 
   void _handleConnect() async {
@@ -40,6 +53,7 @@ class _CTraderTabState extends State<CTraderTab> {
     } else {
       final success = await widget.ctraderService.connect(token);
       if (success && mounted) {
+        await SecureStorageService.saveMcpToken(token);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Row(
@@ -206,208 +220,83 @@ class _CTraderTabState extends State<CTraderTab> {
 
               const SizedBox(height: 16),
 
-              // Account Details (Visible when connected)
-              if (isConnected) ...[
-                // Metrics row: Balance & Equity
-                Row(
-                  children: [
-                    Expanded(
-                      child: Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(14),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('Balance', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-                              const SizedBox(height: 4),
-                              Text(
-                                '\$${account.balance.toStringAsFixed(2)}',
-                                style: const TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppTheme.textPrimary,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              const Text('Moneda: USD', style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(14),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('Equity', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-                              const SizedBox(height: 4),
-                              Text(
-                                '\$${account.equity.toStringAsFixed(2)}',
-                                style: const TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppTheme.primaryGreen,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Margen Libre: \$${account.freeMargin.toStringAsFixed(2)}',
-                                style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 16),
-
-                // Posiciones Abiertas
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.candlestick_chart, color: AppTheme.primaryGreen, size: 20),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Posiciones Abiertas (${account.positions.length})',
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.textPrimary,
-                          ),
-                        ),
-                      ],
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: AppTheme.primaryGreen.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Text(
-                        'En Tiempo Real',
-                        style: TextStyle(fontSize: 11, color: AppTheme.primaryGreen, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 10),
-
-                if (account.positions.isEmpty)
-                  Container(
-                    padding: const EdgeInsets.all(32),
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: AppTheme.surfaceHighlight,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Column(
-                      children: [
-                        Icon(Icons.inbox_outlined, size: 40, color: AppTheme.textSecondary),
-                        SizedBox(height: 8),
-                        Text('No hay posiciones abiertas en cTrader.', style: TextStyle(color: AppTheme.textSecondary)),
-                      ],
-                    ),
-                  )
-                else
-                  ListView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: account.positions.length,
-                    itemBuilder: (context, index) {
-                      final pos = account.positions[index];
-                      final isPositive = pos.pnl >= 0;
-
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 10),
-                        child: Padding(
-                          padding: const EdgeInsets.all(14),
-                          child: Column(
-                            children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                        decoration: BoxDecoration(
-                                          color: pos.direction == 'BUY'
-                                              ? AppTheme.primaryGreen.withOpacity(0.15)
-                                              : AppTheme.errorRed.withOpacity(0.15),
-                                          borderRadius: BorderRadius.circular(6),
-                                        ),
-                                        child: Text(
-                                          pos.direction,
-                                          style: TextStyle(
-                                            color: pos.direction == 'BUY' ? AppTheme.primaryGreen : AppTheme.errorRed,
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        pos.pair,
-                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        '${pos.lots} Lotes',
-                                        style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
-                                      ),
-                                    ],
-                                  ),
-                                  // PnL Badge
-                                  Text(
-                                    '${isPositive ? '+' : ''}\$${pos.pnl.toStringAsFixed(2)}',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 16,
-                                      color: isPositive ? AppTheme.primaryGreen : AppTheme.errorRed,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 10),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    'Entrada: ${pos.entryPrice}  |  Actual: ${pos.currentPrice.toStringAsFixed(pos.pair.contains('BTC') ? 1 : 4)}',
-                                    style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
-                                  ),
-                                  InkWell(
-                                    onTap: () => widget.ctraderService.closePosition(pos.id),
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                      decoration: BoxDecoration(
-                                        color: AppTheme.errorRed.withOpacity(0.12),
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                      child: const Text(
-                                        'Cerrar',
-                                        style: TextStyle(fontSize: 11, color: AppTheme.errorRed, fontWeight: FontWeight.bold),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
+              if (widget.ctraderService.lastError.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.errorRed.withOpacity(0.10),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppTheme.errorRed.withOpacity(0.35)),
                   ),
+                  child: Text(
+                    widget.ctraderService.lastError,
+                    style: const TextStyle(color: AppTheme.errorRed, fontSize: 12),
+                  ),
+                ),
+              ],
+              if (isConnected) ...[
+                const SizedBox(height: 16),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.verified, color: AppTheme.primaryGreen),
+                            const SizedBox(width: 8),
+                            const Expanded(
+                              child: Text(
+                                'Protocolo MCP conectado',
+                                style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                              ),
+                            ),
+                            Text(
+                              widget.ctraderService.protocolVersion,
+                              style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          widget.ctraderService.availableTools.length.toString() + ' herramientas descubiertas en cTrader.',
+                          style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                        ),
+                        const SizedBox(height: 12),
+                        ...widget.ctraderService.availableTools.map((tool) {
+                          final name = tool['name']?.toString() ?? 'Herramienta sin nombre';
+                          final description = tool['description']?.toString() ?? '';
+                          return Container(
+                            width: double.infinity,
+                            margin: const EdgeInsets.only(bottom: 8),
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: AppTheme.surfaceHighlight,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.textPrimary)),
+                                if (description.isNotEmpty) ...[
+                                  const SizedBox(height: 4),
+                                  Text(description, style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                                ],
+                              ],
+                            ),
+                          );
+                        }),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'La conexión y el descubrimiento están verificados. La lectura de cuenta y las operaciones se habilitarán al validar los nombres y parámetros reales de estas herramientas.',
+                          style: TextStyle(fontSize: 11, color: AppTheme.textSecondary, height: 1.4),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ] else ...[
                 // Estado desconectado: Banner explicativo
                 Container(
