@@ -198,14 +198,14 @@ class CTraderService extends ChangeNotifier {
           'method': 'tools/list',
           'params': {
             if (cursor != null) 'cursor': cursor,
-          },
-          if (_protocolVersion == '2026-07-28') '_meta': {
-            'io.modelcontextprotocol/protocolVersion': '2026-07-28',
-            'io.modelcontextprotocol/clientInfo': {
-              'name': 'Tinchodoko AI Assistant',
-              'version': '1.0.0',
+            if (_protocolVersion == '2026-07-28') '_meta': {
+              'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+              'io.modelcontextprotocol/clientInfo': {
+                'name': 'Tinchodoko AI Assistant',
+                'version': '1.0.0',
+              },
+              'io.modelcontextprotocol/clientCapabilities': <String, dynamic>{},
             },
-            'io.modelcontextprotocol/clientCapabilities': <String, dynamic>{},
           },
         },
       );
