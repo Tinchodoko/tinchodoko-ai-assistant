@@ -4,6 +4,7 @@ class AIProvider {
   final List<String> models;
   final String defaultModel;
   final String hint;
+  final bool isDataProvider; // true = proveedor de datos, no IA
   String apiKey;
 
   AIProvider({
@@ -12,6 +13,7 @@ class AIProvider {
     required this.models,
     required this.defaultModel,
     required this.hint,
+    this.isDataProvider = false,
     this.apiKey = '',
   });
 
@@ -24,6 +26,7 @@ class AIProvider {
 }
 
 final List<AIProvider> initialProviders = [
+  // ── Proveedores de IA ─────────────────────────
   AIProvider(
     id: 'groq',
     name: 'Groq',
@@ -52,11 +55,12 @@ final List<AIProvider> initialProviders = [
     id: 'claude',
     name: 'Claude',
     models: [
+      'claude-sonnet-4-6',
       'claude-3-5-sonnet-20241022',
       'claude-3-5-haiku-20241022',
       'claude-3-opus-20240229',
     ],
-    defaultModel: 'claude-3-5-sonnet-20241022',
+    defaultModel: 'claude-sonnet-4-6',
     hint: 'sk-ant-...',
   ),
   AIProvider(
@@ -79,6 +83,7 @@ final List<AIProvider> initialProviders = [
       'deepseek/deepseek-r1',
       'meta-llama/llama-3.3-70b-instruct',
       'google/gemini-2.5-flash',
+      'qwen/qwen-2.5-72b-instruct',
     ],
     defaultModel: 'anthropic/claude-3.5-sonnet',
     hint: 'sk-or-...',
@@ -93,5 +98,14 @@ final List<AIProvider> initialProviders = [
     ],
     defaultModel: 'mistral-large-latest',
     hint: 'Mistral API Key',
+  ),
+  // ── Proveedores de datos de mercado ──────────
+  AIProvider(
+    id: 'twelvedata',
+    name: 'Twelve Data',
+    models: ['market-data'],
+    defaultModel: 'market-data',
+    hint: 'Tu API Key de twelvedata.com',
+    isDataProvider: true,
   ),
 ];
