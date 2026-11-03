@@ -180,6 +180,11 @@ class CTraderService extends ChangeNotifier {
         if (!isVersionMismatch) rethrow;
       }
     }
+    if (lastError is _McpRequestException && lastError.statusCode == 400) {
+      // Último intento con el transporte MCP sin handshake/sesión.
+      _protocolVersion = '2026-07-28';
+      return;
+    }
     throw lastError ?? Exception('No se pudo negociar una versión MCP compatible.');
   }
 
