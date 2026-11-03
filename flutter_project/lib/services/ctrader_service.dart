@@ -79,7 +79,16 @@ class CTraderService extends ChangeNotifier {
       body: jsonEncode(payload),
     ).timeout(const Duration(seconds: 30));
 
-    final decoded = _decodeJsonRpcResponse(response);
+    final sessionHeader = response.headers['mcp-session-id'];
+    if (sessionHeader != null && sessionHeader.isNotEmpty) {
+      _sessionId = sessionHeader;
+    }
+    Map<String, dynamic>? decoded;
+    try {
+      decoded = _decodeJsonRpcResponse(response);
+    } catch (error) {
+      if (response.statusCode == 200 || response.statusCode == 202) rethrow;
+    }
     if (response.statusCode != 200 && response.statusCode != 202) {
       final rpcError = decoded?['error'];
       final message = rpcError is Map
@@ -139,6 +148,15 @@ class CTraderService extends ChangeNotifier {
           throw const FormatException('La respuesta initialize no contiene result.');
         }
         _protocolVersion = result['protocolVersion']?.toString() ?? version;
+        await _postRpc(
+          token: token,
+          protocolVersion: _protocolVersion,
+          sessionId: _sessionId,
+          payload: {
+            'jsonrpc': '2.0',
+            'method': 'notifications/initialized',
+          },
+        );
         return;
       } on _McpRequestException catch (error) {
         lastError = error;
