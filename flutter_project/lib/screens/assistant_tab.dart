@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/ai_provider.dart';
+import '../models/market_data.dart';
 import '../models/trade_operation.dart';
 import '../services/ai_service.dart';
 import '../theme/app_theme.dart';
@@ -7,6 +8,7 @@ import '../theme/app_theme.dart';
 class AssistantTab extends StatefulWidget {
   final List<AIProvider> providers;
   final Function(TradeOperation) onTradeRecorded;
+  final MarketSnapshot? marketSnapshot;
   final Function({
     required String pair,
     required String direction,
@@ -20,6 +22,7 @@ class AssistantTab extends StatefulWidget {
     super.key,
     required this.providers,
     required this.onTradeRecorded,
+    this.marketSnapshot,
     this.onExecuteTraderOrder,
   });
 
@@ -37,34 +40,61 @@ class _AssistantTabState extends State<AssistantTab> {
   String? _analysisResponse;
   String? _lastAnalyzedPair;
   String? _lastAnalyzedDirection;
-  double _lastEntry = 1.0850;
-  double _lastSl = 1.0810;
-  double _lastTp = 1.0930;
+  double _lastEntry = 0.0;
+  double _lastSl = 0.0;
+  double _lastTp = 0.0;
 
   @override
   void initState() {
     super.initState();
-    _selectedProvider = widget.providers.first;
+    _selectedProvider = widget.providers
+        .firstWhere((p) => !p.isDataProvider, orElse: () => widget.providers.first);
     _selectedModel = _selectedProvider.defaultModel;
-    _promptController.text = "Analizar el par EUR/USD en temporalidad de 15 minutos buscando oportunidades de Scalping institucional y zonas de liquidez.";
+    _promptController.text =
+        '¿Cuál es la mejor oportunidad de entrada basada en los indicadores actuales?';
   }
 
-  void _onProviderChanged(AIProvider? newProvider) {
-    if (newProvider == null) return;
+  @override
+  void didUpdateWidget(AssistantTab old) {
+    super.didUpdateWidget(old);
+    // Cuando llega un snapshot nuevo, actualiza el prompt automáticamente
+    if (widget.marketSnapshot != null &&
+        widget.marketSnapshot != old.marketSnapshot) {
+      final s = widget.marketSnapshot!;
+      _promptController.text =
+          '¿Cuál es la mejor oportunidad de entrada para ${s.symbol} '
+          'en ${s.interval}? Indicá dirección, precio de entrada, SL y TP.';
+    }
+  }
+
+  List<AIProvider> get _aiProviders =>
+      widget.providers.where((p) => !p.isDataProvider).toList();
+
+  void _onProviderChanged(AIProvider? p) {
+    if (p == null) return;
     setState(() {
-      _selectedProvider = newProvider;
-      _selectedModel = newProvider.defaultModel;
+      _selectedProvider = p;
+      _selectedModel = p.defaultModel;
     });
   }
 
+  // ── Construye el prompt enriquecido con datos de mercado ──
+  String _buildEnrichedPrompt() {
+    final base = _promptController.text.trim();
+    if (widget.marketSnapshot == null) return base;
+
+    final context = widget.marketSnapshot!.toPromptContext(
+      activeIndicators: const [
+        'rsi', 'atr', 'ema', 'macd', 'bollinger',
+        'stochastic', 'adx', 'cci', 'zscore',
+      ],
+    );
+    return '$context\n\nPREGUNTA DEL TRADER:\n$base';
+  }
+
   Future<void> _analyze() async {
-    final instructions = _promptController.text.trim();
-    if (instructions.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Por favor escribe las instrucciones para analizar.')),
-      );
-      return;
-    }
+    final enrichedPrompt = _buildEnrichedPrompt();
+    if (enrichedPrompt.isEmpty) return;
 
     setState(() {
       _isAnalyzing = true;
@@ -72,51 +102,46 @@ class _AssistantTabState extends State<AssistantTab> {
     });
 
     final apiKey = _selectedProvider.apiKey.trim();
-    String responseText = "";
+    String responseText;
 
     if (apiKey.isEmpty) {
-      // Offline fallback / demo intelligent analysis mode
-      await Future.delayed(const Duration(milliseconds: 1400));
-      final isBuy = instructions.toUpperCase().contains('COMPRA') || !instructions.toUpperCase().contains('VENTA');
-      final pair = instructions.toUpperCase().contains('XAU') ? 'XAUUSD' : (instructions.toUpperCase().contains('BTC') ? 'BTCUSD' : 'EURUSD');
-      final entry = pair == 'XAUUSD' ? 2741.50 : (pair == 'BTCUSD' ? 68900.0 : 1.0855);
-      final sl = isBuy ? entry * 0.996 : entry * 1.004;
-      final tp = isBuy ? entry * 1.008 : entry * 0.992;
-
-      _lastAnalyzedPair = pair;
-      _lastAnalyzedDirection = isBuy ? 'BUY' : 'SELL';
-      _lastEntry = double.parse(entry.toStringAsFixed(pair == 'BTCUSD' ? 1 : 4));
-      _lastSl = double.parse(sl.toStringAsFixed(pair == 'BTCUSD' ? 1 : 4));
-      _lastTp = double.parse(tp.toStringAsFixed(pair == 'BTCUSD' ? 1 : 4));
-
-      responseText = """
-📊 **REPORTE CUANTITATIVO DE TRADING [${_selectedProvider.name} - $_selectedModel]**
-
-🔹 **Activo:** $_lastAnalyzedPair
-🔹 **Tendencia Principal:** Alcista moderada (H1) / Acumulación en M15
-🔹 **Señal Sugerida:** ${_lastAnalyzedDirection == 'BUY' ? '🟢 COMPRA (BUY)' : '🔴 VENTA (SELL)'}
-🔹 **Precio de Entrada:** $_lastEntry
-🔹 **Stop Loss (SL):** $_lastSl (Riesgo controlado: 1.5%)
-🔹 **Take Profit (TP):** $_lastTp (Ratio R:R = 1:2.4)
-
-📋 **Tesis Técnica & Smart Money Concepts:**
-1. Barrido de liquidez en mínimos asiáticos previo a la apertura de Londres.
-2. Inbalance (FVG) mitigado con confirmación en RSI (divergencia oculta en 42).
-3. Conexión activa con cTrader Remote MCP lista para transmisión de ticket.
-
-⚡ *Presiona "Confirmar" para remitir la orden al motor de cTrader o "Rechazar" para descartar.*
-""";
+      await Future.delayed(const Duration(milliseconds: 1200));
+      responseText = '⚠️ API Key de ${_selectedProvider.name} no configurada.\n'
+          'Ingresala en el Tab APIs y volvé a intentar.';
     } else {
       responseText = await AIService.analyzeMarket(
         providerId: _selectedProvider.id,
         model: _selectedModel,
         apiKey: apiKey,
-        instructions: instructions,
+        instructions: enrichedPrompt,
       );
+    }
 
-      final isBuy = responseText.toUpperCase().contains('COMPRA') || responseText.toUpperCase().contains('BUY');
-      _lastAnalyzedPair = responseText.toUpperCase().contains('XAU') ? 'XAUUSD' : (responseText.toUpperCase().contains('BTC') ? 'BTCUSD' : 'EURUSD');
-      _lastAnalyzedDirection = isBuy ? 'BUY' : 'SELL';
+    // Intenta parsear dirección y par de la respuesta
+    final upper = responseText.toUpperCase();
+    _lastAnalyzedDirection = upper.contains('BUY') || upper.contains('COMPRA')
+        ? 'BUY'
+        : upper.contains('SELL') || upper.contains('VENTA')
+            ? 'SELL'
+            : 'WAIT';
+
+    _lastAnalyzedPair = widget.marketSnapshot?.symbol.replaceAll('/', '') ??
+        (upper.contains('XAU')
+            ? 'XAUUSD'
+            : upper.contains('BTC')
+                ? 'BTCUSD'
+                : 'EURUSD');
+
+    // Si hay snapshot usa el precio de cierre como referencia de entrada
+    if (widget.marketSnapshot?.latest != null) {
+      _lastEntry = widget.marketSnapshot!.latest!.close;
+      final atr = widget.marketSnapshot!.indicators.atr ?? 0.001;
+      _lastSl = _lastAnalyzedDirection == 'BUY'
+          ? _lastEntry - (atr * 1.5)
+          : _lastEntry + (atr * 1.5);
+      _lastTp = _lastAnalyzedDirection == 'BUY'
+          ? _lastEntry + (atr * 3)
+          : _lastEntry - (atr * 3);
     }
 
     setState(() {
@@ -124,7 +149,6 @@ class _AssistantTabState extends State<AssistantTab> {
       _analysisResponse = responseText;
     });
 
-    // Auto scroll down to response
     Future.delayed(const Duration(milliseconds: 200), () {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
@@ -140,51 +164,40 @@ class _AssistantTabState extends State<AssistantTab> {
     final pair = _lastAnalyzedPair ?? 'EURUSD';
     final direction = _lastAnalyzedDirection ?? 'BUY';
 
-    final operation = TradeOperation(
+    widget.onTradeRecorded(TradeOperation(
       id: 'TRD-${DateTime.now().millisecondsSinceEpoch % 100000}',
       date: DateTime.now(),
       pair: pair,
       direction: direction,
-      result: '+\$134.50 (Ganancia)',
+      result: 'Confirmada — en espera de resultado',
       isConfirmed: true,
-      pnl: 134.50,
+      pnl: 0.0,
       modelUsed: '${_selectedProvider.name} - $_selectedModel',
-      notes: 'Ejecutada en cTrader con SL: $_lastSl y TP: $_lastTp',
-    );
+      notes: 'Entrada: $_lastEntry | SL: ${_lastSl.toStringAsFixed(5)} | TP: ${_lastTp.toStringAsFixed(5)}',
+    ));
 
-    widget.onTradeRecorded(operation);
     widget.onExecuteTraderOrder?.call(
       pair: pair,
       direction: direction,
-      lots: 0.20,
+      lots: 0.10,
       entryPrice: _lastEntry,
       stopLoss: _lastSl,
       takeProfit: _lastTp,
     );
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.check_circle, color: AppTheme.primaryGreen),
-            const SizedBox(width: 8),
-            Text('✅ Operación $pair ($direction) confirmada y registrada'),
-          ],
-        ),
-        backgroundColor: AppTheme.surfaceHighlight,
-      ),
-    );
-
-    setState(() {
-      _analysisResponse = null;
-    });
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      backgroundColor: AppTheme.primaryGreen,
+      content: Text('✅ $pair $direction confirmada',
+          style: const TextStyle(color: Colors.black)),
+    ));
+    setState(() => _analysisResponse = null);
   }
 
   void _rejectTrade() {
     final pair = _lastAnalyzedPair ?? 'EURUSD';
-    final direction = _lastAnalyzedDirection ?? 'SELL';
+    final direction = _lastAnalyzedDirection ?? 'BUY';
 
-    final operation = TradeOperation(
+    widget.onTradeRecorded(TradeOperation(
       id: 'TRD-${DateTime.now().millisecondsSinceEpoch % 100000}',
       date: DateTime.now(),
       pair: pair,
@@ -193,31 +206,19 @@ class _AssistantTabState extends State<AssistantTab> {
       isConfirmed: false,
       pnl: 0.0,
       modelUsed: '${_selectedProvider.name} - $_selectedModel',
-      notes: 'Señal descartada manualmente en panel de control.',
-    );
+      notes: 'Señal descartada manualmente.',
+    ));
 
-    widget.onTradeRecorded(operation);
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Row(
-          children: [
-            Icon(Icons.cancel, color: AppTheme.errorRed),
-            SizedBox(width: 8),
-            Text('❌ Operación rechazada y anotada en historial'),
-          ],
-        ),
-        backgroundColor: AppTheme.surfaceHighlight,
-      ),
-    );
-
-    setState(() {
-      _analysisResponse = null;
-    });
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('❌ Señal rechazada y registrada en historial'),
+    ));
+    setState(() => _analysisResponse = null);
   }
 
   @override
   Widget build(BuildContext context) {
+    final snapshot = widget.marketSnapshot;
+
     return Scaffold(
       body: SafeArea(
         child: SingleChildScrollView(
@@ -226,178 +227,201 @@ class _AssistantTabState extends State<AssistantTab> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Selector Dropdowns Row
-              Row(
-                children: [
-                  // Active API Dropdown
-                  Expanded(
-                    flex: 5,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'API Activa',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.textSecondary,
-                          ),
+              // Banner de datos activos
+              if (snapshot != null)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 14),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                        color: Colors.blue.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.show_chart,
+                          color: Colors.blue, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment:
+                              CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '📊 Datos activos: ${snapshot.symbol} · ${snapshot.interval.toUpperCase()}',
+                              style: const TextStyle(
+                                  color: Colors.blue,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13),
+                            ),
+                            Text(
+                              'Precio: ${snapshot.latest?.close.toStringAsFixed(5) ?? "-"} · '
+                              'Actualizado: ${snapshot.fetchedAt.hour}:${snapshot.fetchedAt.minute.toString().padLeft(2, "0")}',
+                              style: TextStyle(
+                                  color: Colors.blue.withOpacity(0.7),
+                                  fontSize: 11),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          decoration: BoxDecoration(
-                            color: AppTheme.surfaceHighlight,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: AppTheme.surfaceBorder),
-                          ),
-                          child: DropdownButtonHideUnderline(
-                            child: DropdownButton<AIProvider>(
-                              isExpanded: true,
-                              value: _selectedProvider,
-                              dropdownColor: AppTheme.surfaceColor,
-                              icon: const Icon(Icons.arrow_drop_down, color: AppTheme.primaryGreen),
-                              items: widget.providers.map((p) {
-                                return DropdownMenuItem<AIProvider>(
-                                  value: p,
-                                  child: Row(
-                                    children: [
-                                      Container(
-                                        width: 8,
-                                        height: 8,
-                                        decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          color: p.isConfigured ? AppTheme.primaryGreen : AppTheme.errorRed,
+                      ),
+                    ],
+                  ),
+                ),
+
+              // Selectores API + Modelo
+              Row(children: [
+                Expanded(
+                  flex: 5,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('API Activa',
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: AppTheme.textSecondary)),
+                      const SizedBox(height: 6),
+                      _dropdownContainer(
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<AIProvider>(
+                            isExpanded: true,
+                            value: _selectedProvider,
+                            dropdownColor: AppTheme.surfaceCard,
+                            icon: const Icon(Icons.arrow_drop_down,
+                                color: AppTheme.primaryGreen),
+                            items: _aiProviders
+                                .map((p) => DropdownMenuItem(
+                                      value: p,
+                                      child: Row(children: [
+                                        Container(
+                                          width: 8,
+                                          height: 8,
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            color: p.isConfigured
+                                                ? AppTheme.primaryGreen
+                                                : AppTheme.errorRed,
+                                          ),
                                         ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(p.name, style: const TextStyle(fontWeight: FontWeight.w600)),
-                                    ],
-                                  ),
-                                );
-                              }).toList(),
-                              onChanged: _onProviderChanged,
-                            ),
+                                        const SizedBox(width: 8),
+                                        Text(p.name,
+                                            style: const TextStyle(
+                                                fontWeight:
+                                                    FontWeight.w600)),
+                                      ]),
+                                    ))
+                                .toList(),
+                            onChanged: _onProviderChanged,
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-
-                  const SizedBox(width: 12),
-
-                  // Model Dropdown corresponding to selected API
-                  Expanded(
-                    flex: 6,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Modelo',
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 6,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Modelo',
                           style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.textSecondary,
+                              fontSize: 12,
+                              color: AppTheme.textSecondary)),
+                      const SizedBox(height: 6),
+                      _dropdownContainer(
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            isExpanded: true,
+                            value: _selectedProvider.models
+                                    .contains(_selectedModel)
+                                ? _selectedModel
+                                : _selectedProvider.models.first,
+                            dropdownColor: AppTheme.surfaceCard,
+                            icon: const Icon(Icons.psychology,
+                                color: AppTheme.primaryGreen,
+                                size: 20),
+                            items: _selectedProvider.models
+                                .map((m) => DropdownMenuItem(
+                                      value: m,
+                                      child: Text(m,
+                                          overflow:
+                                              TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                              fontSize: 13)),
+                                    ))
+                                .toList(),
+                            onChanged: (v) =>
+                                setState(() => _selectedModel = v!),
                           ),
                         ),
-                        const SizedBox(height: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          decoration: BoxDecoration(
-                            color: AppTheme.surfaceHighlight,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: AppTheme.surfaceBorder),
-                          ),
-                          child: DropdownButtonHideUnderline(
-                            child: DropdownButton<String>(
-                              isExpanded: true,
-                              value: _selectedProvider.models.contains(_selectedModel)
-                                  ? _selectedModel
-                                  : _selectedProvider.models.first,
-                              dropdownColor: AppTheme.surfaceColor,
-                              icon: const Icon(Icons.psychology, color: AppTheme.primaryGreen, size: 20),
-                              items: _selectedProvider.models.map((modelName) {
-                                return DropdownMenuItem<String>(
-                                  value: modelName,
-                                  child: Text(
-                                    modelName,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(fontSize: 13),
-                                  ),
-                                );
-                              }).toList(),
-                              onChanged: (String? val) {
-                                if (val != null) {
-                                  setState(() => _selectedModel = val);
-                                }
-                              },
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ]),
 
               const SizedBox(height: 16),
 
-              // Large Instruction Text Area
-              const Text(
-                'Instrucciones del Asistente',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.textSecondary,
-                ),
-              ),
+              // Campo de instrucciones
+              Text('Instrucciones para el Asistente',
+                  style: TextStyle(
+                      fontSize: 13, color: AppTheme.textSecondary)),
               const SizedBox(height: 6),
               TextField(
                 controller: _promptController,
-                maxLines: 5,
+                maxLines: 4,
                 style: const TextStyle(fontSize: 14, height: 1.4),
                 decoration: InputDecoration(
-                  hintText: 'Ej: Analiza EUR/USD para scalping tras los datos de NFP, define entrada, SL y TP...',
-                  alignLabelWithHint: true,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                  hintText:
+                      'Ej: ¿Qué oportunidad hay en este gráfico?',
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12)),
                 ),
               ),
 
               const SizedBox(height: 14),
 
-              // Analizar Button
+              // Botón Analizar
               ElevatedButton.icon(
                 onPressed: _isAnalyzing ? null : _analyze,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryGreen,
+                  foregroundColor: Colors.black,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
                 icon: _isAnalyzing
                     ? const SizedBox(
                         width: 18,
                         height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
-                      )
-                    : const Icon(Icons.auto_graph, color: Color(0xFF003915)),
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.black))
+                    : const Icon(Icons.auto_graph),
                 label: Text(
-                  _isAnalyzing ? 'Analizando mercado...' : 'Analizar',
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  _isAnalyzing
+                      ? 'Analizando con ${_selectedProvider.name}...'
+                      : 'Analizar mercado',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 15),
                 ),
               ),
 
-              // Scrollable Response Card
+              // Respuesta
               if (_analysisResponse != null) ...[
                 const SizedBox(height: 20),
-                const Row(
-                  children: [
-                    Icon(Icons.terminal, color: AppTheme.primaryGreen, size: 18),
-                    SizedBox(width: 6),
-                    Text(
-                      'Respuesta del Asistente',
+                Row(children: const [
+                  Icon(Icons.terminal,
+                      color: AppTheme.primaryGreen, size: 18),
+                  SizedBox(width: 6),
+                  Text('Respuesta del Asistente',
                       style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.primaryGreen,
-                      ),
-                    ),
-                  ],
-                ),
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.primaryGreen)),
+                ]),
                 const SizedBox(height: 8),
                 Container(
                   constraints: const BoxConstraints(maxHeight: 280),
@@ -405,61 +429,62 @@ class _AssistantTabState extends State<AssistantTab> {
                   decoration: BoxDecoration(
                     color: AppTheme.surfaceHighlight,
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.4)),
+                    border: Border.all(
+                        color:
+                            AppTheme.primaryGreen.withOpacity(0.4)),
                   ),
                   child: SingleChildScrollView(
                     child: SelectableText(
                       _analysisResponse!,
                       style: const TextStyle(
-                        fontFamily: 'monospace',
-                        fontSize: 13,
-                        color: AppTheme.textPrimary,
-                        height: 1.45,
-                      ),
+                          fontFamily: 'monospace',
+                          fontSize: 13,
+                          height: 1.45),
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 14),
-
-                // Botones: ✅ Confirmar y ❌ Rechazar (solo visibles cuando hay respuesta)
-                Row(
-                  children: [
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.primaryGreen,
-                          foregroundColor: const Color(0xFF003915),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                        onPressed: _confirmTrade,
-                        icon: const Icon(Icons.check_circle, size: 20),
-                        label: const Text(
-                          '✅ Confirmar',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                        ),
+                Row(children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: _confirmTrade,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.primaryGreen,
+                        foregroundColor: Colors.black,
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
                       ),
+                      icon: const Icon(Icons.check_circle),
+                      label: const Text('✅ Confirmar',
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15)),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppTheme.errorRed,
-                          side: const BorderSide(color: AppTheme.errorRed, width: 1.5),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                        onPressed: _rejectTrade,
-                        icon: const Icon(Icons.cancel, size: 20, color: AppTheme.errorRed),
-                        label: const Text(
-                          '❌ Rechazar',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                        ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _rejectTrade,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppTheme.errorRed,
+                        side: const BorderSide(
+                            color: AppTheme.errorRed, width: 1.5),
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
                       ),
+                      icon: const Icon(Icons.cancel,
+                          color: AppTheme.errorRed),
+                      label: const Text('❌ Rechazar',
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15)),
                     ),
-                  ],
-                ),
+                  ),
+                ]),
               ],
             ],
           ),
@@ -467,4 +492,14 @@ class _AssistantTabState extends State<AssistantTab> {
       ),
     );
   }
+
+  Widget _dropdownContainer({required Widget child}) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: AppTheme.surfaceHighlight,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppTheme.surfaceBorder),
+        ),
+        child: child,
+      );
 }
