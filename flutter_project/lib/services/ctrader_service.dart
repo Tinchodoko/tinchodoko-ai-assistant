@@ -68,6 +68,13 @@ class CTraderService extends ChangeNotifier {
     };
     if (protocolVersion != null && protocolVersion.isNotEmpty) {
       headers['MCP-Protocol-Version'] = protocolVersion;
+      if (protocolVersion == '2026-07-28') {
+        headers['Mcp-Method'] = payload['method']?.toString() ?? '';
+        final params = payload['params'];
+        if (params is Map && params['name'] != null) {
+          headers['Mcp-Name'] = params['name'].toString();
+        }
+      }
     }
     if (sessionId != null && sessionId.isNotEmpty) {
       headers['Mcp-Session-Id'] = sessionId;
@@ -160,8 +167,14 @@ class CTraderService extends ChangeNotifier {
         return;
       } on _McpRequestException catch (error) {
         lastError = error;
+        if (error.rpcCode == -32601 ||
+            error.message.contains('2026-07-28')) {
+          // MCP 2026-07-28 elimina initialize y sesiones: la primera
+          // solicitud real debe llevar metadatos en cada POST.
+          _protocolVersion = '2026-07-28';
+          return;
+        }
         final isVersionMismatch = error.statusCode == 400 ||
-            error.rpcCode == -32601 ||
             error.message.toLowerCase().contains('protocol version') ||
             error.message.toLowerCase().contains('unsupported');
         if (!isVersionMismatch) rethrow;
@@ -185,6 +198,14 @@ class CTraderService extends ChangeNotifier {
           'method': 'tools/list',
           'params': {
             if (cursor != null) 'cursor': cursor,
+          },
+          if (_protocolVersion == '2026-07-28') '_meta': {
+            'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+            'io.modelcontextprotocol/clientInfo': {
+              'name': 'Tinchodoko AI Assistant',
+              'version': '1.0.0',
+            },
+            'io.modelcontextprotocol/clientCapabilities': <String, dynamic>{},
           },
         },
       );
