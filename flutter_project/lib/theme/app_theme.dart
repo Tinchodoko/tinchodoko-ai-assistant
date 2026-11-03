@@ -6,6 +6,7 @@ class AppTheme {
   static const Color accentGreen = Color(0xFF10B981);  // Emerald Green
   static const Color darkBackground = Color(0xFF0D1117); // Deep OLED Black
   static const Color surfaceColor = Color(0xFF161B22);  // Card / Surface Black
+  static const Color surfaceCard = surfaceColor; // Alias para tarjetas
   static const Color surfaceBorder = Color(0xFF30363D); // Border line
   static const Color surfaceHighlight = Color(0xFF21262D);
   static const Color errorRed = Color(0xFFFF5252);     // Red indicator / Reject
