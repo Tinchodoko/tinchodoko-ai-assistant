@@ -230,10 +230,12 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 label: 'APIs',
               ),
               NavigationDestination(
-                icon: const Icon(Icons.show_chart_outlined),
+                icon: Badge(
+                  isLabelVisible: _latestSnapshot != null,
+                  child: const Icon(Icons.show_chart_outlined),
+                ),
                 selectedIcon: const Icon(Icons.show_chart),
                 label: 'Mercado',
-                badge: _latestSnapshot != null ? const Badge() : null,
               ),
               const NavigationDestination(
                 icon: Icon(Icons.groups_outlined),
