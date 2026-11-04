@@ -97,7 +97,6 @@ class ExnessService extends ChangeNotifier {
         cleanPrivateKey.isEmpty ||
         cleanGatewayUrl.isEmpty ||
         !RegExp(r'^[1-9][0-9]{0,19}
-      _lastError = 'Enter a valid API key, private key and trading account ID.';
       notifyListeners();
       return false;
     }
@@ -396,7 +395,8 @@ class ExnessService extends ChangeNotifier {
           normalized.contains('could not resolve') ||
           normalized.contains('https dns fallback');
       if (isDnsFailure) {
-        return 'DNS lookup failed for ${error.address?.host ?? Uri.parse(_gatewayUrl.isEmpty ? 'https://gateway.not-configured.invalid' : _gatewayUrl).host}: $detail';
+        final gatewayHost = _gatewayUrl.isEmpty ? 'configured Exness Gateway' : Uri.parse(_gatewayUrl).host;
+      return 'DNS lookup failed for ${error.address?.host ?? gatewayHost}: $detail';
       }
       final osDetail = error.osError == null
           ? ''
@@ -434,7 +434,7 @@ class ExnessApiException implements Exception {
   final String message;
 }
 ).hasMatch(cleanAccountId)) {
-      _lastError = 'Enter a valid API key, private key and trading account ID.';
+      _lastError = 'Enter the API key, private signing key, account ID and DNS Gateway URL.';
       notifyListeners();
       return false;
     }
