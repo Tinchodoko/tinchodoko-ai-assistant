@@ -70,7 +70,8 @@ class ExnessMarketDataService {
     }
     if (active.contains('stochastic')) {
       final kValues = <double>[];
-      for (var i = math.max(13, closes.length - 3); i < closes.length; i++) {
+      final start = closes.length > 3 ? closes.length - 3 : 13;
+      for (var i = start; i < closes.length; i++) {
         final high = highs.sublist(i - 13, i + 1).reduce((a, b) => a > b ? a : b);
         final low = lows.sublist(i - 13, i + 1).reduce((a, b) => a < b ? a : b);
         kValues.add(high == low ? 50 : ((closes[i] - low) / (high - low)) * 100);
@@ -144,7 +145,7 @@ class ExnessMarketDataService {
       ranges.add(math.max(
         candles[i].high - candles[i].low,
         math.max((candles[i].high - previousClose).abs(), (candles[i].low - previousClose).abs()),
-      ));
+      ).toDouble());
     }
     return _mean(ranges);
   }
