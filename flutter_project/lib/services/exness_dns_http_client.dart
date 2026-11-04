@@ -130,15 +130,23 @@ class ExnessDnsHttpClient extends http.BaseClient {
       _DohProvider provider, String hostname) async {
     final pinnedAddr = InternetAddress.tryParse(provider.ip)!;
     final dohHttp = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 6)
-      ..findProxy = (uri) => 'DIRECT'
-      ..connectionFactory = (uri, proxyHost, proxyPort) {
-        if (proxyHost != null) {
-          if (proxyPort == null) throw const SocketException('Proxy port missing.');
-          return Socket.startConnect(proxyHost, proxyPort);
+      ..connectionTimeout = const Duration(seconds: 6);
+
+    // Keep the proxy assignment separate from the cascade above.
+    // A cascade such as `..findProxy = (...) => 'DIRECT'`
+    // makes the following cascade target the assigned String result
+    // instead of the HttpClient, causing `connectionFactory` to be
+    // resolved against String during Dart analysis.
+    dohHttp.findProxy = (uri) => 'DIRECT';
+    dohHttp.connectionFactory = (uri, proxyHost, proxyPort) {
+      if (proxyHost != null) {
+        if (proxyPort == null) {
+          throw const SocketException('Proxy port missing.');
         }
-        return _connectToAddress(uri, pinnedAddr);
-      };
+        return Socket.startConnect(proxyHost, proxyPort);
+      }
+      return _connectToAddress(uri, pinnedAddr);
+    };
     try {
       final uri = Uri.https(provider.host, provider.path,
           {provider.queryName: hostname, 'type': 'A'});
