@@ -73,7 +73,7 @@ class _PanelTabState extends State<PanelTab> {
   }
 
   List<AIProvider> get _aiProviders =>
-      widget.providers.where((p) => !p.isDataProvider).toList();
+      widget.providers;
 
   List<AIProvider> get _selectedProviders => _aiProviders
       .where((p) => _selectedAnalysts[p.id] == true)
