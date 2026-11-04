@@ -209,8 +209,8 @@ class ExnessService extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
       return true;
-    } on TimeoutException {
-      _lastError = 'The Exness API request timed out. Please try again.';
+    } on TimeoutException catch (error) {
+      _lastError = _safeError(error);
     } catch (error) {
       _lastError = _safeError(error);
     }
@@ -366,7 +366,14 @@ class ExnessService extends ChangeNotifier {
   }
 
   bool _isValidAccountId(String value) {
-    if (!RegExp(r'^[1-9][0-9]*
+    if (!RegExp(r'^[1-9][0-9]*$').hasMatch(value)) return false;
+    final id = BigInt.tryParse(value);
+    return id != null &&
+        id > BigInt.zero &&
+        id <= BigInt.parse('18446744073709551615');
+  }
+
+  String _validateBaseUrl(String value) {
     final uri = Uri.tryParse(value);
     if (uri == null ||
         uri.scheme != 'https' ||
