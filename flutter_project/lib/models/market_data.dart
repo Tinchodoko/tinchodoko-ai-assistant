@@ -20,7 +20,7 @@ class Candle {
   });
 
   factory Candle.fromJson(Map<String, dynamic> j) => Candle(
-        datetime: j['datetime']?.toString() ?? '',
+        datetime: j['datetime']?.toString() ?? j['time']?.toString() ?? '',
         open: _d(j['open']),
         high: _d(j['high']),
         low: _d(j['low']),
@@ -87,7 +87,7 @@ class MarketSnapshot {
     required this.fetchedAt,
   });
 
-  Candle? get latest => candles.isNotEmpty ? candles.first : null;
+  Candle? get latest => candles.isNotEmpty ? candles.last : null;
 
   /// Genera un resumen de texto para enviar a las IAs
   String toPromptContext({required List<String> activeIndicators}) {
@@ -156,7 +156,7 @@ class MarketSnapshot {
     // Últimas 5 velas para contexto
     sb.writeln('');
     sb.writeln('=== ÚLTIMAS 5 VELAS ===');
-    for (final candle in candles.take(5)) {
+    for (final candle in candles.reversed.take(5)) {
       sb.writeln('${candle.datetime}: '
           'O=${candle.open.toStringAsFixed(5)} '
           'H=${candle.high.toStringAsFixed(5)} '
