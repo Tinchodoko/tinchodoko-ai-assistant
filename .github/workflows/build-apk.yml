@@ -77,26 +77,9 @@ jobs:
 
       - name: 📝 Preparar notas de publicación
         run: |
-          {
-            cat CHANGELOG.md
-            cat <<EOF
-
-            ---
-
-            ### 📥 Cómo instalar
-            1. Descargá el archivo `.apk` de abajo
-            2. Android: Ajustes → Seguridad → Fuentes desconocidas
-            3. Abrí el APK e instalá
-
-            ### 🔑 Primer uso
-            1. Tab **APIs** → Ingresá tus API Keys
-            2. Tab **Trading** → Configurá el Gateway DNS mostrado por Exness en Key Management y conectá tu cuenta Demo
-            3. La integración permanece en modo de solo lectura; no ejecuta operaciones.
-
-            ---
-            Build #${GITHUB_RUN_NUMBER} — ${GITHUB_SHA}
-            EOF
-          } > RELEASE_NOTES.md
+          cat CHANGELOG.md > RELEASE_NOTES.md
+          printf '\n---\n\n### 📥 Cómo instalar\n1. Descargá el archivo .apk de abajo\n2. Android: Ajustes → Seguridad → Fuentes desconocidas\n3. Abrí el APK e instalá\n\n### 🔑 Primer uso\n1. Tab APIs → Ingresá tus API Keys\n2. Tab Trading → Configurá el Gateway DNS mostrado por Exness en Key Management y conectá tu cuenta Demo\n3. La integración permanece en modo de solo lectura; no ejecuta operaciones.\n\n---\n' >> RELEASE_NOTES.md
+          printf 'Build #%s — %s\n' "$GITHUB_RUN_NUMBER" "$GITHUB_SHA" >> RELEASE_NOTES.md
 
       - name: 🚀 Crear GitHub Release
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'

@@ -6,6 +6,10 @@ Este registro documenta los cambios de implementación incorporados en las build
 - **Build #57:** Sincronización del registro central CHANGELOG.md con las novedades y correcciones documentadas para las builds 52 a 55.
 - **Build #56:** Ampliación del historial de cambios dentro de Information para incluir las builds 52 a 55.
 
+## Builds 59–60
+- **Build #60:** Ajuste del generador de notas de publicación para producir RELEASE_NOTES.md con historial, instrucciones y datos de build.
+- **Build #59:** Documentación de las actualizaciones realizadas en Information y en el registro central de cambios.
+
 ## Build 58
 - Preparación de notas de publicación con historial completo, instrucciones de instalación y número de build.
 

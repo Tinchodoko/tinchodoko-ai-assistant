@@ -25,6 +25,8 @@ class InformationTab extends StatelessWidget {
   ];
 
   static const List<Map<String, String>> _changes = [
+    {'version': 'Build #60', 'description': 'Ajuste del generador de notas de publicación para producir un archivo RELEASE_NOTES.md con historial, instalación y datos de build mediante comandos shell compatibles.'},
+    {'version': 'Build #59', 'description': 'Documentación de las actualizaciones realizadas en la propia pestaña Information y en el registro central de cambios (builds 56 y 57).'},
     {'version': 'Build #57', 'description': 'Sincronización del registro central CHANGELOG.md con las novedades y correcciones documentadas para las builds 52 a 55.'},
     {'version': 'Build #56', 'description': 'Ampliación del historial de cambios dentro de Information para incluir las builds 52 a 55.'},
     {'version': 'Build #58', 'description': 'Preparación de notas de publicación combinando el historial de cambios con las instrucciones de instalación y el identificador de build.'},
