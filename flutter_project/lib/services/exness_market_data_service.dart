@@ -102,10 +102,12 @@ class ExnessMarketDataService {
     );
   }
 
-  static double _mean(List<double> values) => values.reduce((a, b) => a + b) / values.length;
+  static double _mean(List<double> values) =>
+      values.reduce((a, b) => a + b) / values.length;
 
   static double _stdDev(List<double> values, double mean) {
-    final variance = values.map((v) => math.pow(v - mean, 2).toDouble()).reduce((a, b) => a + b) / values.length;
+    final variance = values.map((v) => math.pow(v - mean, 2).toDouble())
+        .reduce((a, b) => a + b) / values.length;
     return math.sqrt(variance);
   }
 
@@ -120,7 +122,8 @@ class ExnessMarketDataService {
     return result;
   }
 
-  static double _ema(List<double> values, int period) => _emaSeries(values, period).last;
+  static double _ema(List<double> values, int period) =>
+      _emaSeries(values, period).last;
 
   static double _rsi(List<double> values, int period) {
     var averageGain = 0.0;
@@ -145,7 +148,28 @@ class ExnessMarketDataService {
     if (averageLoss == 0) return averageGain == 0 ? 50 : 100;
     final relativeStrength = averageGain / averageLoss;
     return 100 - (100 / (1 + relativeStrength));
-   static double _adx(List<Candle> candles, int period) {
+  }
+
+  static double _atr(List<Candle> candles, int period) {
+    final ranges = <double>[];
+    for (var i = 1; i < candles.length; i++) {
+      final previousClose = candles[i - 1].close;
+      ranges.add(math.max(
+        candles[i].high - candles[i].low,
+        math.max(
+          (candles[i].high - previousClose).abs(),
+          (candles[i].low - previousClose).abs(),
+        ),
+      ).toDouble());
+    }
+    var average = _mean(ranges.take(period).toList());
+    for (var i = period; i < ranges.length; i++) {
+      average = ((average * (period - 1)) + ranges[i]) / period;
+    }
+    return average;
+  }
+
+  static double _adx(List<Candle> candles, int period) {
     final trueRanges = <double>[];
     final positiveMoves = <double>[];
     final negativeMoves = <double>[];
@@ -158,7 +182,10 @@ class ExnessMarketDataService {
       negativeMoves.add(downwardMove > upwardMove && downwardMove > 0 ? downwardMove : 0);
       trueRanges.add(math.max(
         current.high - current.low,
-        math.max((current.high - previous.close).abs(), (current.low - previous.close).abs()),
+        math.max(
+          (current.high - previous.close).abs(),
+          (current.low - previous.close).abs(),
+        ),
       ).toDouble());
     }
 
@@ -189,19 +216,5 @@ class ExnessMarketDataService {
       adx = ((adx * (period - 1)) + dxValues[i]) / period;
     }
     return adx;
-  }rrent.low;
-      final plus = up > down && up > 0 ? up : 0.0;
-      final minus = down > up && down > 0 ? down : 0.0;
-      final tr = math.max(
-        current.high - current.low,
-        math.max((current.high - previous.close).abs(), (current.low - previous.close).abs()),
-      );
-      if (tr <= 0) continue;
-      final plusDi = 100 * plus / tr;
-      final minusDi = 100 * minus / tr;
-      final denominator = plusDi + minusDi;
-      dxValues.add(denominator == 0 ? 0 : 100 * (plusDi - minusDi).abs() / denominator);
-    }
-    return dxValues.isEmpty ? 0 : _mean(dxValues);
   }
 }
