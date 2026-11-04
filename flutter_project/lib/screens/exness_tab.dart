@@ -19,6 +19,8 @@ class _ExnessTabState extends State<ExnessTab> {
   final _accountIdController =
       TextEditingController(text: '15000251367');
   final _gatewayUrlController = TextEditingController();
+  final _gatewayIpController = TextEditingController();
+  bool _showIpOverride = false;
   bool _obscurePrivateKey = true;
   String _selectedBroker = 'Exness';
 
@@ -37,6 +39,7 @@ class _ExnessTabState extends State<ExnessTab> {
       _accountIdController.text =
           values['accountId'] ?? _accountIdController.text;
       _gatewayUrlController.text = values['gatewayUrl'] ?? '';
+      _gatewayIpController.text = values['gatewayIp'] ?? '';
     });
   }
 
@@ -46,6 +49,7 @@ class _ExnessTabState extends State<ExnessTab> {
     _privateKeyController.dispose();
     _accountIdController.dispose();
     _gatewayUrlController.dispose();
+    _gatewayIpController.dispose();
     super.dispose();
   }
 
@@ -55,6 +59,7 @@ class _ExnessTabState extends State<ExnessTab> {
       privateKey: _privateKeyController.text,
       accountId: _accountIdController.text,
       gatewayUrl: _gatewayUrlController.text,
+      gatewayIp: _gatewayIpController.text.trim(),
     );
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -234,6 +239,51 @@ class _ExnessTabState extends State<ExnessTab> {
                               prefixIcon: Icon(Icons.dns_outlined),
                             ),
                           ),
+                          const SizedBox(height: 8),
+                          // ── Gateway IP override (ISP DNS bypass) ──────────
+                          InkWell(
+                            onTap: () =>
+                                setState(() => _showIpOverride = !_showIpOverride),
+                            borderRadius: BorderRadius.circular(6),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 4),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    _showIpOverride
+                                        ? Icons.expand_less
+                                        : Icons.expand_more,
+                                    size: 16,
+                                    color: AppTheme.textSecondary,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'Gateway IP override (bypass ISP DNS block)',
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: AppTheme.textSecondary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          if (_showIpOverride) ...[
+                            const SizedBox(height: 4),
+                            TextField(
+                              controller: _gatewayIpController,
+                              enabled: !connected && !loading,
+                              keyboardType: TextInputType.number,
+                              autocorrect: false,
+                              enableSuggestions: false,
+                              decoration: const InputDecoration(
+                                hintText: 'e.g. 185.213.111.6  (get it with nslookup)',
+                                prefixIcon: Icon(Icons.router_outlined),
+                                helperText:
+                                    'Run  nslookup api.exness.com  on a PC to get the IP.',
+                              ),
+                            ),
+                          ],
                           const SizedBox(height: 14),
                           const Text(
                             'API Key',
