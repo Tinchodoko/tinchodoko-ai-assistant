@@ -78,19 +78,21 @@ jobs:
         with:
           tag_name: v${{ github.run_number }}
           name: "🤖 Tinchodoko AI Assistant v${{ github.run_number }}"
+          body_path: CHANGELOG.md
+          append_body: true
           body: |
-            ## 📱 Tinchodoko AI Assistant
+
+            ---
 
             ### 📥 Cómo instalar
             1. Descargá el archivo `.apk` de abajo
-            2. Android: Ajustes → Seguridad → Fuentes desconocidas ✅
+            2. Android: Ajustes → Seguridad → Fuentes desconocidas
             3. Abrí el APK e instalá
-            4. ¡Listo! 🎉
 
             ### 🔑 Primer uso
             1. Tab **APIs** → Ingresá tus API Keys
-            2. Tab **Trading** → Conectá tu cuenta Exness con tus credenciales API
-            3. La primera etapa es de solo lectura: balance, equity y posiciones abiertas.
+            2. Tab **Trading** → Configurá el Gateway DNS mostrado por Exness en Key Management y conectá tu cuenta Demo
+            3. La integración permanece en modo de solo lectura; no ejecuta operaciones.
 
             ---
             _Build #${{ github.run_number }} — ${{ github.sha }}_
