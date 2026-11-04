@@ -25,6 +25,10 @@ class InformationTab extends StatelessWidget {
   ];
 
   static const List<Map<String, String>> _changes = [
+    {'version': 'Build #55', 'description': 'Corrección de compatibilidad Android: Kotlin Gradle Plugin 1.9.24 para compilar dependencias que utilizan metadatos Kotlin 1.9.'},
+    {'version': 'Build #54', 'description': 'Las publicaciones APK de GitHub incluyen automáticamente el registro detallado de cambios y las instrucciones de instalación.'},
+    {'version': 'Build #53', 'description': 'Creación del registro central CHANGELOG.md con el historial de cambios de las builds recientes.'},
+    {'version': 'Build #52', 'description': 'Ampliación de List of Changes en Information para documentar las correcciones y funciones de las builds 30 a 51.'},
     {'version': 'Build #51', 'description': 'Restauración del servicio Exness sobre una base limpia; Gateway DNS configurable de Key Management para el descubrimiento del Access Point.'},
     {'version': 'Build #50', 'description': 'Integración del Gateway configurable en el servicio Exness; ajuste consolidado y validado estructuralmente en Build #51.'},
     {'version': 'Build #49', 'description': 'Corrección del servicio Exness tras detectar un bloque duplicado durante el análisis estático; la reparación definitiva se consolidó en Build #51.'},
