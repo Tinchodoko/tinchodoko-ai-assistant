@@ -156,11 +156,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               ],
             ),
             actions: [
-              TextButton.icon(
+              IconButton(
+                tooltip: 'Information',
                 onPressed: () => setState(() => _currentIndex = 6),
-                icon: const Icon(Icons.info_outline, size: 18),
-                label: const Text('Information'),
-                style: TextButton.styleFrom(foregroundColor: AppTheme.primaryGreen),
+                icon: const Icon(Icons.info_outline, color: AppTheme.primaryGreen),
               ),
               if (_latestSnapshot != null)
                 Container(
