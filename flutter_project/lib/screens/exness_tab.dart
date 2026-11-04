@@ -18,6 +18,7 @@ class _ExnessTabState extends State<ExnessTab> {
   final _privateKeyController = TextEditingController();
   final _accountIdController =
       TextEditingController(text: '15000251367');
+  final _gatewayUrlController = TextEditingController();
   bool _obscurePrivateKey = true;
   String _selectedBroker = 'Exness';
 
@@ -35,6 +36,7 @@ class _ExnessTabState extends State<ExnessTab> {
       _privateKeyController.text = values['privateKey'] ?? '';
       _accountIdController.text =
           values['accountId'] ?? _accountIdController.text;
+      _gatewayUrlController.text = values['gatewayUrl'] ?? '';
     });
   }
 
@@ -43,6 +45,7 @@ class _ExnessTabState extends State<ExnessTab> {
     _apiKeyController.dispose();
     _privateKeyController.dispose();
     _accountIdController.dispose();
+    _gatewayUrlController.dispose();
     super.dispose();
   }
 
@@ -51,6 +54,7 @@ class _ExnessTabState extends State<ExnessTab> {
       apiKey: _apiKeyController.text,
       privateKey: _privateKeyController.text,
       accountId: _accountIdController.text,
+      gatewayUrl: _gatewayUrlController.text,
     );
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -208,6 +212,27 @@ class _ExnessTabState extends State<ExnessTab> {
                                       setState(() => _selectedBroker = value);
                                     }
                                   },
+                          ),
+                          const SizedBox(height: 14),
+                          const Text(
+                            'Trader API Gateway URL (DNS widget)',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textSecondary,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          TextField(
+                            controller: _gatewayUrlController,
+                            enabled: !connected && !loading,
+                            keyboardType: TextInputType.url,
+                            autocorrect: false,
+                            enableSuggestions: false,
+                            decoration: const InputDecoration(
+                              hintText: 'https://Gateway shown in Key Management',
+                              prefixIcon: Icon(Icons.dns_outlined),
+                            ),
                           ),
                           const SizedBox(height: 14),
                           const Text(
