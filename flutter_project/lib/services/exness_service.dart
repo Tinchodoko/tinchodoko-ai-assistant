@@ -347,7 +347,7 @@ class ExnessService extends ChangeNotifier {
 
     final streamed = await _client
         .send(request)
-        .timeout(const Duration(seconds: 15));
+        .timeout(const Duration(seconds: 25));
     final response = await http.Response.fromStream(streamed)
         .timeout(const Duration(seconds: 15));
 
