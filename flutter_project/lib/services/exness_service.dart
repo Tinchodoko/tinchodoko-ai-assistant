@@ -386,7 +386,9 @@ class ExnessService extends ChangeNotifier {
           normalized.contains('name or service not known') ||
           normalized.contains('nodename nor servname') ||
           normalized.contains('getaddrinfo') ||
-          normalized.contains('no address associated with hostname');
+          normalized.contains('no address associated with hostname') ||
+          normalized.contains('could not resolve') ||
+          normalized.contains('https dns fallback');
       if (isDnsFailure) {
         return 'DNS lookup failed for ${error.address?.host ?? Uri.parse(exnessMainGateway).host}: $detail';
       }
