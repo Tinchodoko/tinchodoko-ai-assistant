@@ -25,7 +25,29 @@ class InformationTab extends StatelessWidget {
   ];
 
   static const List<Map<String, String>> _changes = [
-    {'version': 'V29', 'description': 'Corrección de los gateways DNS de Exness: api.exness.com y api.exness-api.com.'},
+    {'version': 'Build #51', 'description': 'Restauración del servicio Exness sobre una base limpia; Gateway DNS configurable de Key Management para el descubrimiento del Access Point.'},
+    {'version': 'Build #50', 'description': 'Integración del Gateway configurable en el servicio Exness; ajuste consolidado y validado estructuralmente en Build #51.'},
+    {'version': 'Build #49', 'description': 'Corrección del servicio Exness tras detectar un bloque duplicado durante el análisis estático; la reparación definitiva se consolidó en Build #51.'},
+    {'version': 'Build #48', 'description': 'Reconstrucción del servicio Exness para admitir el Gateway DNS configurable de Key Management.'},
+    {'version': 'Build #47', 'description': 'Nuevo campo Trader API Gateway URL en la pantalla de conexión para introducir el host DNS proporcionado por Exness.'},
+    {'version': 'Build #46', 'description': 'El descubrimiento del Access Point utiliza el Gateway DNS configurado en Key Management, en lugar de un host estático.'},
+    {'version': 'Build #45', 'description': 'Almacenamiento local seguro del Gateway DNS de Exness junto con las credenciales de conexión.'},
+    {'version': 'Build #44', 'description': 'Corrección del cliente HTTP DNS-over-HTTPS para resolver correctamente el error de análisis estático.'},
+    {'version': 'Build #43', 'description': 'Ampliación del tiempo de espera para completar la resolución DNS alternativa antes de solicitar conexión a Exness.'},
+    {'version': 'Build #42', 'description': 'Actualización a Flutter/Dart compatible con la conexión TLS segura del fallback DNS y análisis estático obligatorio.'},
+    {'version': 'Build #41', 'description': 'Corrección del handshake TLS en las conexiones HTTPS mediante direcciones DNS alternativas, conservando la validación del certificado.'},
+    {'version': 'Build #40', 'description': 'Mensajes de diagnóstico más claros cuando falla la resolución DNS-over-HTTPS.'},
+    {'version': 'Build #39', 'description': 'Corrección del manejo de errores de sockets en el mecanismo alternativo de resolución DNS.'},
+    {'version': 'Build #38', 'description': 'Uso del mecanismo DNS-over-HTTPS también durante las solicitudes al Gateway de Exness.'},
+    {'version': 'Build #37', 'description': 'Incorporación de resolución DNS-over-HTTPS alternativa para conexiones con la API de Exness.'},
+    {'version': 'Build #36', 'description': 'Pruebas automatizadas del vector oficial de firma Ed25519 de Exness.'},
+    {'version': 'Build #35', 'description': 'Uso del endpoint de información de cuenta confirmado para consultas de solo lectura.'},
+    {'version': 'Build #34', 'description': 'Diagnóstico más preciso de errores DNS y de conexión Socket durante las solicitudes a Exness.'},
+    {'version': 'Build #33', 'description': 'Eliminación del host alternativo estático no compatible como fallback del Gateway Trader API.'},
+    {'version': 'Build #32', 'description': 'Correcciones en el descubrimiento del Gateway de Exness y mejora del diagnóstico DNS.'},
+    {'version': 'Build #31', 'description': 'Mejoras visuales de la pantalla Information y lectura de metadatos de versión/build desde la aplicación.'},
+    {'version': 'Build #30', 'description': 'Reparación del servicio Exness e incorporación de solicitudes firmadas para datos de mercado.'},
+    {'version': 'V29', 'description': 'Actualización inicial de las direcciones Gateway de Exness.'},
     {'version': 'V28', 'description': 'Implementación de Exness Trader API para conexión y consulta de cuenta en modo de solo lectura.'},
   ];
 
