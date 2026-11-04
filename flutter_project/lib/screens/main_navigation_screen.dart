@@ -156,6 +156,12 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               ],
             ),
             actions: [
+              TextButton.icon(
+                onPressed: () => setState(() => _currentIndex = 6),
+                icon: const Icon(Icons.info_outline, size: 18),
+                label: const Text('Information'),
+                style: TextButton.styleFrom(foregroundColor: AppTheme.primaryGreen),
+              ),
               if (_latestSnapshot != null)
                 Container(
                   margin: const EdgeInsets.only(right: 6),
@@ -268,11 +274,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 icon: Icon(Icons.history_outlined),
                 selectedIcon: Icon(Icons.history),
                 label: 'Historial',
-              ),
-              const NavigationDestination(
-                icon: Icon(Icons.info_outline),
-                selectedIcon: Icon(Icons.info),
-                label: 'Information',
               ),
             ],
           ),
