@@ -26,9 +26,6 @@ class InformationTab extends StatelessWidget {
   static const List<Map<String, String>> _changes = [
     {'version': 'V29', 'description': 'Corrección de los gateways DNS de Exness: api.exness.com y api.exness-api.com.'},
     {'version': 'V28', 'description': 'Implementación de Exness Trader API para conexión y consulta de cuenta en modo de solo lectura.'},
-    {'version': 'V27', 'description': 'Integración del Panel Multi-IA, análisis paralelo y consenso entre modelos.'},
-    {'version': 'V26', 'description': 'Incorporación de la pestaña Mercado y envío de snapshots al Panel Multi-IA y al Asistente.'},
-    {'version': 'V25', 'description': 'Integración de proveedores de IA y persistencia segura de API keys.'},
   ];
 
   Future<void> _openReleases(BuildContext context) async {
