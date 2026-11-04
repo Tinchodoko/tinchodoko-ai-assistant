@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import 'exness_dns_http_client.dart';
 import 'exness_request_signer.dart';
 import 'secure_storage_service.dart';
 import '../models/market_data.dart';
@@ -50,7 +51,8 @@ class ExnessPosition {
 }
 
 class ExnessService extends ChangeNotifier {
-  ExnessService({http.Client? client}) : _client = client ?? http.Client();
+  ExnessService({http.Client? client})
+      : _client = client ?? ExnessDnsHttpClient();
 
   final http.Client _client;
   bool _isLoading = false;
