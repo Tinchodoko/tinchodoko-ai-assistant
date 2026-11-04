@@ -65,10 +65,6 @@ class _ApisTabState extends State<ApisTab> {
 
   @override
   Widget build(BuildContext context) {
-    final aiProviders =
-        widget.providers.where((p) => !p.isDataProvider).toList();
-    final dataProviders =
-        widget.providers.where((p) => p.isDataProvider).toList();
 
     return Scaffold(
       body: SafeArea(
@@ -116,43 +112,9 @@ class _ApisTabState extends State<ApisTab> {
                 _sectionHeader(
                     Icons.smart_toy, 'Modelos de IA', Colors.purple),
                 const SizedBox(height: 8),
-                ...aiProviders
-                    .map((p) => _providerCard(p))
-                    .toList(),
+                ...widget.providers.map((p) => _providerCard(p)),
 
                 const SizedBox(height: 20),
-
-                // ── Sección Datos de Mercado ─────────────
-                _sectionHeader(
-                    Icons.show_chart, 'Datos de Mercado', Colors.blue),
-                const SizedBox(height: 4),
-                Container(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.withOpacity(0.06),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                        color: Colors.blue.withOpacity(0.2)),
-                  ),
-                  child: Row(children: [
-                    const Icon(Icons.info_outline,
-                        color: Colors.blue, size: 15),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Twelve Data provee velas OHLCV e indicadores técnicos en tiempo real. '
-                        'Creá tu key gratis en twelvedata.com',
-                        style: TextStyle(
-                            color: Colors.blue.withOpacity(0.8),
-                            fontSize: 11),
-                      ),
-                    ),
-                  ]),
-                ),
-                ...dataProviders
-                    .map((p) => _providerCard(p, accentColor: Colors.blue))
-                    .toList(),
 
                 const SizedBox(height: 80),
               ],
@@ -255,8 +217,7 @@ class _ApisTabState extends State<ApisTab> {
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
                               color: AppTheme.textPrimary)),
-                      if (!provider.isDataProvider &&
-                          provider.models.isNotEmpty) ...[
+                      if (provider.models.isNotEmpty) ...[
                         const SizedBox(width: 8),
                         Text(
                           provider.models.first,
