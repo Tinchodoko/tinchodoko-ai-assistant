@@ -40,6 +40,9 @@ jobs:
           rm -rf android
           cp -R /tmp/tinchodoko_android/android android
           sed -i 's/android:label="ai_assistant"/android:label="Tinchodoko AI Assistant"/' android/app/src/main/AndroidManifest.xml
+          # shared_preferences_android 2.4.x requires Kotlin 1.9 metadata.
+          sed -i 's/id "org.jetbrains.kotlin.android" version "[^"]*"/id "org.jetbrains.kotlin.android" version "1.9.24"/' android/settings.gradle
+          grep 'org.jetbrains.kotlin.android' android/settings.gradle
         working-directory: flutter_project
 
       - name: 📦 Instalar dependencias
