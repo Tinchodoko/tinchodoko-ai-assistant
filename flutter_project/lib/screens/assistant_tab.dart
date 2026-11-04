@@ -47,8 +47,7 @@ class _AssistantTabState extends State<AssistantTab> {
   @override
   void initState() {
     super.initState();
-    _selectedProvider = widget.providers
-        .firstWhere((p) => !p.isDataProvider, orElse: () => widget.providers.first);
+    _selectedProvider = widget.providers.first;
     _selectedModel = _selectedProvider.defaultModel;
     _promptController.text =
         '¿Cuál es la mejor oportunidad de entrada basada en los indicadores actuales?';
@@ -68,7 +67,7 @@ class _AssistantTabState extends State<AssistantTab> {
   }
 
   List<AIProvider> get _aiProviders =>
-      widget.providers.where((p) => !p.isDataProvider).toList();
+      widget.providers;
 
   void _onProviderChanged(AIProvider? p) {
     if (p == null) return;
