@@ -8,9 +8,9 @@ import 'package:http/http.dart' as http;
 import 'exness_request_signer.dart';
 import 'secure_storage_service.dart';
 
-const String exnessMainGateway = 'https://mainapi.exness.com';
+const String exnessMainGateway = 'https://api.exness.com';
 const String exnessAlternativeGateway =
-    'https://alternativeapi.exness-api.com';
+    'https://api.exness-api.com';
 
 class ExnessPosition {
   const ExnessPosition({
