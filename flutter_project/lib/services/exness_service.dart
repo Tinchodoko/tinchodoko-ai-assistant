@@ -126,12 +126,15 @@ class ExnessService extends ChangeNotifier {
       _accountId = cleanAccountId;
 
       final cachedAccessPoint =
-          await SecureStorageService.getExnessAccessPoint();
+          await SecureStorageService.getExnessAccessPoint(cleanAccountId);
       if (cachedAccessPoint != null && cachedAccessPoint.isNotEmpty) {
         _accessPoint = _validateBaseUrl(cachedAccessPoint);
       } else {
         _accessPoint = await _discoverAccessPoint();
-        await SecureStorageService.saveExnessAccessPoint(_accessPoint);
+        await SecureStorageService.saveExnessAccessPoint(
+          accountId: cleanAccountId,
+          accessPoint: _accessPoint,
+        );
       }
 
       await _loadAccountSnapshot();
@@ -164,7 +167,10 @@ class ExnessService extends ChangeNotifier {
     try {
       if (_accessPoint.isEmpty) {
         _accessPoint = await _discoverAccessPoint();
-        await SecureStorageService.saveExnessAccessPoint(_accessPoint);
+        await SecureStorageService.saveExnessAccessPoint(
+          accountId: _accountId,
+          accessPoint: _accessPoint,
+        );
       }
       await _loadAccountSnapshot();
       _isConnected = true;

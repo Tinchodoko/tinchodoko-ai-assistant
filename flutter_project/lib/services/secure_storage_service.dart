@@ -12,6 +12,7 @@ class SecureStorageService {
   static const String _exnessPrivateKey = 'tinchodoko_exness_private_key';
   static const String _exnessAccountId = 'tinchodoko_exness_account_id';
   static const String _exnessAccessPoint = 'tinchodoko_exness_access_point';
+  static const String _exnessAccessPointAccountId = 'tinchodoko_exness_access_point_account_id';
 
   static Future<void> saveApiKey(String providerId, String key) async {
     await _storage.write(key: '$_keyPrefix$providerId', value: key.trim());
@@ -68,15 +69,23 @@ class SecureStorageService {
     };
   }
 
-  static Future<void> saveExnessAccessPoint(String accessPoint) async {
+  static Future<void> saveExnessAccessPoint({
+    required String accountId,
+    required String accessPoint,
+  }) async {
     await _storage.write(key: _exnessAccessPoint, value: accessPoint);
+    await _storage.write(key: _exnessAccessPointAccountId, value: accountId);
   }
 
-  static Future<String?> getExnessAccessPoint() async {
+  static Future<String?> getExnessAccessPoint(String accountId) async {
+    final savedAccountId =
+        await _storage.read(key: _exnessAccessPointAccountId);
+    if (savedAccountId != accountId) return null;
     return await _storage.read(key: _exnessAccessPoint);
   }
 
   static Future<void> clearExnessAccessPoint() async {
     await _storage.delete(key: _exnessAccessPoint);
+    await _storage.delete(key: _exnessAccessPointAccountId);
   }
 }

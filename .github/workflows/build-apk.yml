@@ -86,8 +86,8 @@ jobs:
 
             ### 🔑 Primer uso
             1. Tab **APIs** → Ingresá tus API Keys
-            2. Tab **cTrader** → Pegá tu token MCP
-            3. Tab **Assistant** → ¡Empezá a operar!
+            2. Tab **Trading** → Conectá tu cuenta Exness con tus credenciales API
+            3. La primera etapa es de solo lectura: balance, equity y posiciones abiertas.
 
             ---
             _Build #${{ github.run_number }} — ${{ github.sha }}_
