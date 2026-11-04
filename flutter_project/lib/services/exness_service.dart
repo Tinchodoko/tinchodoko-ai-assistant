@@ -397,16 +397,23 @@ class ExnessService extends ChangeNotifier {
       return 'Exness API HTTP ${error.statusCode}: ${error.message}';
     }
     if (error is SocketException) {
-      return 'Could not resolve the Exness Gateway hostname (${exnessMainGateway}). Check the device internet connection, DNS/private-DNS settings, VPN or network filtering, then retry.';
+      final detail = error.message;
+      final normalized = detail.toLowerCase();
+      final isDnsFailure = normalized.contains('failed host lookup') ||
+          normalized.contains('name or service not known') ||
+          normalized.contains('nodename nor servname') ||
+          normalized.contains('getaddrinfo') ||
+          normalized.contains('no address associated with hostname');
+      if (isDnsFailure) {
+        return 'DNS lookup failed for ${error.address?.host ?? Uri.parse(exnessMainGateway).host}: $detail';
+      }
+      final osDetail = error.osError == null
+          ? ''
+          : ' (OS ${error.osError!.errorCode}: ${error.osError!.message})';
+      return 'Network socket error while contacting Exness: $detail$osDetail';
     }
     if (error is http.ClientException) {
-      final message = error.message.toLowerCase();
-      if (message.contains('socket') ||
-          message.contains('host lookup') ||
-          message.contains('failed host lookup')) {
-        return 'Could not resolve the Exness Gateway hostname (${exnessMainGateway}). This is a device/network DNS problem; it happens before Exness can validate the API key or private signing key. Check internet, Private DNS, VPN and network filtering, then retry.';
-      }
-      return 'Could not connect to the Exness Gateway: ${error.message}';
+      return 'HTTP client connection error: ${error.message}';
     }
     if (error is FormatException) return error.message;
     return error.toString().replaceFirst('Exception: ', '');
