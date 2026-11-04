@@ -25,6 +25,7 @@ class InformationTab extends StatelessWidget {
   ];
 
   static const List<Map<String, String>> _changes = [
+    {'version': 'Build #58', 'description': 'Preparación de notas de publicación combinando el historial de cambios con las instrucciones de instalación y el identificador de build.'},
     {'version': 'Build #55', 'description': 'Corrección de compatibilidad Android: Kotlin Gradle Plugin 1.9.24 para compilar dependencias que utilizan metadatos Kotlin 1.9.'},
     {'version': 'Build #54', 'description': 'Las publicaciones APK de GitHub incluyen automáticamente el registro detallado de cambios y las instrucciones de instalación.'},
     {'version': 'Build #53', 'description': 'Creación del registro central CHANGELOG.md con el historial de cambios de las builds recientes.'},

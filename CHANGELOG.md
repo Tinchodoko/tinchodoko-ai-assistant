@@ -2,6 +2,9 @@
 
 Este registro documenta los cambios de implementación incorporados en las builds recientes. Las entradas de builds fallidas o intermedias describen trabajo de desarrollo y no implican que se haya publicado un APK instalable.
 
+## Build 58
+- Preparación de notas de publicación con historial completo, instrucciones de instalación y número de build.
+
 ## Builds 52–55
 
 ### Build #55

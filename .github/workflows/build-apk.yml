@@ -75,15 +75,11 @@ jobs:
           path: flutter_project/build/app/outputs/flutter-apk/TinchodokoAI-v*.apk
           retention-days: 30
 
-      - name: 🚀 Crear GitHub Release
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ github.run_number }}
-          name: "🤖 Tinchodoko AI Assistant v${{ github.run_number }}"
-          body_path: CHANGELOG.md
-          append_body: true
-          body: |
+      - name: 📝 Preparar notas de publicación
+        run: |
+          {
+            cat CHANGELOG.md
+            cat <<EOF
 
             ---
 
@@ -98,7 +94,17 @@ jobs:
             3. La integración permanece en modo de solo lectura; no ejecuta operaciones.
 
             ---
-            _Build #${{ github.run_number }} — ${{ github.sha }}_
+            Build #${GITHUB_RUN_NUMBER} — ${GITHUB_SHA}
+            EOF
+          } > RELEASE_NOTES.md
+
+      - name: 🚀 Crear GitHub Release
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.run_number }}
+          name: "🤖 Tinchodoko AI Assistant v${{ github.run_number }}"
+          body_path: RELEASE_NOTES.md
           files: flutter_project/build/app/outputs/flutter-apk/TinchodokoAI-v*.apk
           draft: false
           prerelease: false
