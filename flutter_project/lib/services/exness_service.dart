@@ -273,30 +273,12 @@ class ExnessService extends ChangeNotifier {
       value == null ? 0.0 : double.tryParse(value.toString()) ?? 0.0;
 
   Future<String> _discoverAccessPoint() async {
-    final path =
-        '/v1/trading/access-point?account_id=$_accountId';
-    try {
-      final response = await _getJson(exnessMainGateway, path);
-      return _validateBaseUrl(response['access_point']?.toString() ?? '');
-    } on ExnessApiException catch (error) {
-      if (error.statusCode != 500 &&
-          error.statusCode != 502 &&
-          error.statusCode != 503 &&
-          error.statusCode != 504) {
-        rethrow;
-      }
-      final response = await _getJson(exnessAlternativeGateway, path);
-      return _validateBaseUrl(response['access_point']?.toString() ?? '');
-    } on SocketException {
-      final response = await _getJson(exnessAlternativeGateway, path);
-      return _validateBaseUrl(response['access_point']?.toString() ?? '');
-    } on http.ClientException {
-      final response = await _getJson(exnessAlternativeGateway, path);
-      return _validateBaseUrl(response['access_point']?.toString() ?? '');
-    } on TimeoutException {
-      final response = await _getJson(exnessAlternativeGateway, path);
-      return _validateBaseUrl(response['access_point']?.toString() ?? '');
-    }
+    // Exness requires the Gateway host from Key Management for discovery.
+    // The published api.exness.com / api.exness-api.com review hosts are not
+    // interchangeable fallback hosts for Trader API discovery.
+    final path = '/v1/trading/access-point?account_id=$_accountId';
+    final response = await _getJson(exnessMainGateway, path);
+    return _validateBaseUrl(response['access_point']?.toString() ?? '');
   }
 
   Future<void> _loadAccountSnapshot() async {
@@ -415,6 +397,18 @@ class ExnessService extends ChangeNotifier {
   String _safeError(Object error) {
     if (error is ExnessApiException) {
       return 'Exness API HTTP ${error.statusCode}: ${error.message}';
+    }
+    if (error is SocketException) {
+      return 'Could not resolve the Exness Gateway hostname (${exnessMainGateway}). Check the device internet connection, DNS/private-DNS settings, VPN or network filtering, then retry.';
+    }
+    if (error is http.ClientException) {
+      final message = error.message.toLowerCase();
+      if (message.contains('socket') ||
+          message.contains('host lookup') ||
+          message.contains('failed host lookup')) {
+        return 'Could not resolve the Exness Gateway hostname (${exnessMainGateway}). This is a device/network DNS problem; it happens before Exness can validate the API key or private signing key. Check internet, Private DNS, VPN and network filtering, then retry.';
+      }
+      return 'Could not connect to the Exness Gateway: ${error.message}';
     }
     if (error is FormatException) return error.message;
     return error.toString().replaceFirst('Exception: ', '');
