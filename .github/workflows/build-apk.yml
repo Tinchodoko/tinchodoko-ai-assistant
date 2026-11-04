@@ -26,7 +26,7 @@ jobs:
       - name: 🐦 Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.22.0'
+          flutter-version: '3.24.0'
           channel: 'stable'
           cache: true
 
@@ -53,7 +53,6 @@ jobs:
       - name: 🔍 Analizar código
         run: flutter analyze --no-fatal-infos
         working-directory: flutter_project
-        continue-on-error: true
 
       - name: 🔨 Build APK Release
         run: flutter build apk --release --no-tree-shake-icons --build-name=1.0.0 --build-number=${{ github.run_number }}
