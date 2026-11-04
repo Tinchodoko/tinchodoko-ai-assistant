@@ -46,6 +46,10 @@ jobs:
         run: flutter pub get
         working-directory: flutter_project
 
+      - name: 🧪 Ejecutar pruebas unitarias (Exness Ed25519)
+        run: flutter test
+        working-directory: flutter_project
+
       - name: 🔍 Analizar código
         run: flutter analyze --no-fatal-infos
         working-directory: flutter_project
