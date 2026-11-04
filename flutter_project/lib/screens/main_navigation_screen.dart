@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import '../models/ai_provider.dart';
 import '../models/market_data.dart';
 import '../models/trade_operation.dart';
-import '../services/ctrader_service.dart';
+import '../services/exness_service.dart';
 import '../services/secure_storage_service.dart';
 import '../theme/app_theme.dart';
 import 'apis_tab.dart';
 import 'assistant_tab.dart';
-import 'ctrader_tab.dart';
+import 'exness_tab.dart';
 import 'history_tab.dart';
 import 'market_tab.dart';
 import 'panel_tab.dart';
@@ -23,7 +23,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   int _currentIndex = 0;
   final List<AIProvider> _providers = initialProviders;
   final List<TradeOperation> _history = [];
-  final CTraderService _ctraderService = CTraderService();
+  final ExnessService _exnessService = ExnessService();
   MarketSnapshot? _latestSnapshot;
 
   @override
@@ -34,10 +34,14 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
   Future<void> _loadStoredKeys() async {
     final keys = await SecureStorageService.loadAllApiKeys(
-        _providers.map((p) => p.id).toList());
+      _providers.map((p) => p.id).toList(),
+    );
+    if (!mounted) return;
     setState(() {
-      for (final p in _providers) {
-        if (keys.containsKey(p.id)) p.apiKey = keys[p.id]!;
+      for (final provider in _providers) {
+        if (keys.containsKey(provider.id)) {
+          provider.apiKey = keys[provider.id]!;
+        }
       }
     });
   }
@@ -45,25 +49,31 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   void _onSnapshotReady(MarketSnapshot snapshot) {
     setState(() {
       _latestSnapshot = snapshot;
-      _currentIndex = 2; // Ir al Panel IA
+      _currentIndex = 2;
     });
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      backgroundColor: AppTheme.primaryGreen,
-      content: Row(children: [
-        const Icon(Icons.check_circle, color: Colors.black),
-        const SizedBox(width: 8),
-        Text(
-          '📊 ${snapshot.symbol} listo — consultá al Panel Multi-IA',
-          style: const TextStyle(
-              color: Colors.black, fontWeight: FontWeight.bold),
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: AppTheme.primaryGreen,
+        content: Row(
+          children: [
+            const Icon(Icons.check_circle, color: Colors.black),
+            const SizedBox(width: 8),
+            Text(
+              '📊 ${snapshot.symbol} listo — consultá al Panel Multi-IA',
+              style: const TextStyle(
+                color: Colors.black,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
         ),
-      ]),
-      action: SnackBarAction(
-        label: 'Ir',
-        textColor: Colors.black,
-        onPressed: () => setState(() => _currentIndex = 2),
+        action: SnackBarAction(
+          label: 'Ir',
+          textColor: Colors.black,
+          onPressed: () => setState(() => _currentIndex = 2),
+        ),
       ),
-    ));
+    );
   }
 
   void _addTradeOperation(TradeOperation op) =>
@@ -71,6 +81,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
   void _clearHistory() => setState(() => _history.clear());
 
+  // Order execution remains intentionally disabled in this read-only phase.
   void _executeOrder({
     required String pair,
     required String direction,
@@ -79,51 +90,42 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     required double stopLoss,
     required double takeProfit,
   }) {
-    if (_ctraderService.isConnected) {
-      _ctraderService.executeOrder(
-        pair: pair,
-        direction: direction,
-        lots: lots,
-        entryPrice: entryPrice,
-        stopLoss: stopLoss,
-        takeProfit: takeProfit,
-      );
-    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Order execution is disabled in this first read-only integration stage.',
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: _ctraderService,
+      animation: _exnessService,
       builder: (context, _) {
         final screens = [
-          // Tab 0 — APIs + Twelve Data
           ApisTab(
             providers: _providers,
             onKeysUpdated: () => setState(() {}),
           ),
-          // Tab 1 — Mercado (Twelve Data)
           MarketTab(
             providers: _providers,
             onSnapshotReady: _onSnapshotReady,
           ),
-          // Tab 2 — Panel Multi-IA (debate + consenso)
           PanelTab(
             providers: _providers,
             marketSnapshot: _latestSnapshot,
             onTradeRecorded: _addTradeOperation,
             onExecuteTraderOrder: _executeOrder,
           ),
-          // Tab 3 — Assistant (análisis individual)
           AssistantTab(
             providers: _providers,
             onTradeRecorded: _addTradeOperation,
             marketSnapshot: _latestSnapshot,
             onExecuteTraderOrder: _executeOrder,
           ),
-          // Tab 4 — cTrader
-          CTraderTab(ctraderService: _ctraderService),
-          // Tab 5 — Historial
+          ExnessTab(exnessService: _exnessService),
           HistoryTab(
             operations: _history,
             onClearHistory: _clearHistory,
@@ -132,86 +134,93 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
         return Scaffold(
           appBar: AppBar(
-            title: Row(children: [
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryGreen.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(8),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryGreen.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.bolt,
+                    color: AppTheme.primaryGreen,
+                    size: 20,
+                  ),
                 ),
-                child: const Icon(Icons.bolt,
-                    color: AppTheme.primaryGreen, size: 20),
-              ),
-              const SizedBox(width: 10),
-              const Text('Tinchodoko AI Assistant'),
-            ]),
+                const SizedBox(width: 10),
+                const Text('Tinchodoko AI Assistant'),
+              ],
+            ),
             actions: [
               if (_latestSnapshot != null)
                 Container(
                   margin: const EdgeInsets.only(right: 6),
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: Colors.blue.withOpacity(0.15),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                        color: Colors.blue.withOpacity(0.4)),
+                    border: Border.all(color: Colors.blue.withOpacity(0.4)),
                   ),
                   child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.show_chart,
-                            color: Colors.blue, size: 12),
-                        const SizedBox(width: 4),
-                        Text(_latestSnapshot!.symbol,
-                            style: const TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.blue)),
-                      ]),
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.show_chart,
+                          color: Colors.blue, size: 12),
+                      const SizedBox(width: 4),
+                      Text(
+                        _latestSnapshot!.symbol,
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               Container(
                 margin: const EdgeInsets.only(right: 12),
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 10, vertical: 4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: _ctraderService.isConnected
+                  color: _exnessService.isConnected
                       ? AppTheme.primaryGreen.withOpacity(0.15)
                       : AppTheme.surfaceHighlight,
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: _ctraderService.isConnected
+                    color: _exnessService.isConnected
                         ? AppTheme.primaryGreen.withOpacity(0.4)
                         : AppTheme.surfaceBorder,
                   ),
                 ),
                 child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: _ctraderService.isConnected
-                              ? AppTheme.primaryGreen
-                              : AppTheme.errorRed,
-                        ),
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: _exnessService.isConnected
+                            ? AppTheme.primaryGreen
+                            : AppTheme.errorRed,
                       ),
-                      const SizedBox(width: 6),
-                      Text(
-                        _ctraderService.isConnected
-                            ? 'cTrader Live'
-                            : 'Offline',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                          color: _ctraderService.isConnected
-                              ? AppTheme.primaryGreen
-                              : AppTheme.textSecondary,
-                        ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      _exnessService.isConnected ? 'Exness Live' : 'Offline',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: _exnessService.isConnected
+                            ? AppTheme.primaryGreen
+                            : AppTheme.textSecondary,
                       ),
-                    ]),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -221,8 +230,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           ),
           bottomNavigationBar: NavigationBar(
             selectedIndex: _currentIndex,
-            onDestinationSelected: (idx) =>
-                setState(() => _currentIndex = idx),
+            onDestinationSelected: (index) =>
+                setState(() => _currentIndex = index),
             destinations: [
               const NavigationDestination(
                 icon: Icon(Icons.vpn_key_outlined),
@@ -250,7 +259,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               const NavigationDestination(
                 icon: Icon(Icons.candlestick_chart_outlined),
                 selectedIcon: Icon(Icons.candlestick_chart),
-                label: 'cTrader',
+                label: 'Trading',
               ),
               const NavigationDestination(
                 icon: Icon(Icons.history_outlined),
@@ -262,5 +271,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         );
       },
     );
+  }
+
+  @override
+  void dispose() {
+    _exnessService.dispose();
+    super.dispose();
   }
 }

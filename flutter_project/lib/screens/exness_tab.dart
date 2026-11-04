@@ -1,0 +1,496 @@
+import 'package:flutter/material.dart';
+
+import '../services/exness_service.dart';
+import '../services/secure_storage_service.dart';
+import '../theme/app_theme.dart';
+
+class ExnessTab extends StatefulWidget {
+  const ExnessTab({super.key, required this.exnessService});
+
+  final ExnessService exnessService;
+
+  @override
+  State<ExnessTab> createState() => _ExnessTabState();
+}
+
+class _ExnessTabState extends State<ExnessTab> {
+  final _apiKeyController = TextEditingController();
+  final _privateKeyController = TextEditingController();
+  final _accountIdController =
+      TextEditingController(text: '15000251367');
+  bool _obscurePrivateKey = true;
+  String _selectedBroker = 'Exness';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedCredentials();
+  }
+
+  Future<void> _loadSavedCredentials() async {
+    final values = await SecureStorageService.getExnessCredentials();
+    if (!mounted) return;
+    setState(() {
+      _apiKeyController.text = values['apiKey'] ?? '';
+      _privateKeyController.text = values['privateKey'] ?? '';
+      _accountIdController.text =
+          values['accountId'] ?? _accountIdController.text;
+    });
+  }
+
+  @override
+  void dispose() {
+    _apiKeyController.dispose();
+    _privateKeyController.dispose();
+    _accountIdController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _connect() async {
+    final success = await widget.exnessService.connect(
+      apiKey: _apiKeyController.text,
+      privateKey: _privateKeyController.text,
+      accountId: _accountIdController.text,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          success
+              ? 'Exness account connected successfully.'
+              : widget.exnessService.lastError,
+        ),
+        backgroundColor: success
+            ? AppTheme.surfaceHighlight
+            : AppTheme.errorRed.withOpacity(0.95),
+      ),
+    );
+  }
+
+  Widget _metric(String label, String value, IconData icon) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppTheme.surfaceHighlight,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppTheme.surfaceBorder),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, color: AppTheme.primaryGreen, size: 18),
+            const SizedBox(height: 8),
+            Text(label,
+                style: const TextStyle(
+                    fontSize: 11, color: AppTheme.textSecondary)),
+            const SizedBox(height: 4),
+            Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textPrimary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: widget.exnessService,
+      builder: (context, _) {
+        final service = widget.exnessService;
+        final connected = service.isConnected;
+        final loading = service.isLoading;
+        final currency = service.currency.isEmpty ? '' : ' ${service.currency}';
+
+        return Scaffold(
+          body: SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(9),
+                                decoration: BoxDecoration(
+                                  color: (connected
+                                          ? AppTheme.primaryGreen
+                                          : AppTheme.errorRed)
+                                      .withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Icon(
+                                  connected
+                                      ? Icons.cloud_done
+                                      : Icons.cloud_off,
+                                  color: connected
+                                      ? AppTheme.primaryGreen
+                                      : AppTheme.errorRed,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              const Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Connect trading account',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppTheme.textPrimary,
+                                      ),
+                                    ),
+                                    SizedBox(height: 3),
+                                    Text(
+                                      'Exness Trader API',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: AppTheme.textSecondary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Container(
+                                width: 10,
+                                height: 10,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: connected
+                                      ? AppTheme.primaryGreen
+                                      : AppTheme.errorRed,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 18),
+                          const Text(
+                            'Broker',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textSecondary,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          DropdownButtonFormField<String>(
+                            value: _selectedBroker,
+                            decoration: const InputDecoration(
+                              prefixIcon: Icon(Icons.account_balance),
+                            ),
+                            items: const [
+                              DropdownMenuItem(
+                                value: 'Exness',
+                                child: Text('Exness'),
+                              ),
+                            ],
+                            onChanged: connected
+                                ? null
+                                : (value) {
+                                    if (value != null) {
+                                      setState(() => _selectedBroker = value);
+                                    }
+                                  },
+                          ),
+                          const SizedBox(height: 14),
+                          const Text(
+                            'API Key',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textSecondary,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          TextField(
+                            controller: _apiKeyController,
+                            enabled: !connected && !loading,
+                            autocorrect: false,
+                            enableSuggestions: false,
+                            decoration: const InputDecoration(
+                              hintText: 'Put your API key for "Exness"',
+                              prefixIcon: Icon(Icons.vpn_key),
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          const Text(
+                            'Private signing key',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textSecondary,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          TextField(
+                            controller: _privateKeyController,
+                            enabled: !connected && !loading,
+                            obscureText: _obscurePrivateKey,
+                            autocorrect: false,
+                            enableSuggestions: false,
+                            decoration: InputDecoration(
+                              hintText: '128 hexadecimal characters',
+                              prefixIcon: const Icon(Icons.lock_outline),
+                              suffixIcon: IconButton(
+                                onPressed: () => setState(() =>
+                                    _obscurePrivateKey = !_obscurePrivateKey),
+                                icon: Icon(_obscurePrivateKey
+                                    ? Icons.visibility_off
+                                    : Icons.visibility),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          const Text(
+                            'Trading account ID',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textSecondary,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          TextField(
+                            controller: _accountIdController,
+                            enabled: !connected && !loading,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              hintText: 'Enter your Exness trading account ID',
+                              prefixIcon: Icon(Icons.numbers),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          SizedBox(
+                            width: double.infinity,
+                            child: connected
+                                ? OutlinedButton.icon(
+                                    onPressed: loading
+                                        ? null
+                                        : () => service.disconnect(),
+                                    icon: const Icon(Icons.link_off),
+                                    label: const Text('DISCONNECT'),
+                                  )
+                                : ElevatedButton.icon(
+                                    onPressed: loading ? null : _connect,
+                                    icon: loading
+                                        ? const SizedBox(
+                                            width: 18,
+                                            height: 18,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: Colors.black,
+                                            ),
+                                          )
+                                        : const Icon(Icons.link,
+                                            color: Color(0xFF003915)),
+                                    label: const Text(
+                                      'CONNECT',
+                                      style: TextStyle(
+                                          fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                          ),
+                          if (!connected)
+                            const Padding(
+                              padding: EdgeInsets.only(top: 10),
+                              child: Text(
+                                'Your API credentials are stored locally using Android secure storage. The app uses signed, read-only requests in this first stage.',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: AppTheme.textSecondary,
+                                  height: 1.4,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  if (service.lastError.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppTheme.errorRed.withOpacity(0.10),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                            color: AppTheme.errorRed.withOpacity(0.35)),
+                      ),
+                      child: Text(
+                        service.lastError,
+                        style: const TextStyle(
+                            color: AppTheme.errorRed, fontSize: 12),
+                      ),
+                    ),
+                  ],
+                  if (connected) ...[
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Account overview',
+                            style: TextStyle(
+                              color: AppTheme.textPrimary,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Refresh account data',
+                          onPressed: loading ? null : service.refresh,
+                          icon: const Icon(Icons.refresh),
+                        ),
+                      ],
+                    ),
+                    Row(
+                      children: [
+                        _metric('Balance', '${service.balance}$currency',
+                            Icons.account_balance_wallet_outlined),
+                        const SizedBox(width: 10),
+                        _metric('Equity', '${service.equity}$currency',
+                            Icons.show_chart),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        _metric('Used margin', '${service.usedMargin}$currency',
+                            Icons.pie_chart_outline),
+                        const SizedBox(width: 10),
+                        _metric('Open positions',
+                            service.positions.length.toString(),
+                            Icons.candlestick_chart),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+                    const Text(
+                      'Open positions',
+                      style: TextStyle(
+                        color: AppTheme.textPrimary,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    if (service.positions.isEmpty)
+                      Container(
+                        padding: const EdgeInsets.all(22),
+                        decoration: BoxDecoration(
+                          color: AppTheme.surfaceHighlight,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: AppTheme.surfaceBorder),
+                        ),
+                        child: const Column(
+                          children: [
+                            Icon(Icons.inbox_outlined,
+                                size: 34, color: AppTheme.textSecondary),
+                            SizedBox(height: 8),
+                            Text(
+                              'No open positions',
+                              style: TextStyle(
+                                color: AppTheme.textSecondary,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    else
+                      ...service.positions.map((position) => Card(
+                            margin: const EdgeInsets.only(bottom: 9),
+                            child: Padding(
+                              padding: const EdgeInsets.all(13),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          position.instrument,
+                                          style: const TextStyle(
+                                            color: AppTheme.textPrimary,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 15,
+                                          ),
+                                        ),
+                                      ),
+                                      Text(
+                                        position.direction,
+                                        style: TextStyle(
+                                          color: position.direction == 'BUY'
+                                              ? AppTheme.primaryGreen
+                                              : AppTheme.errorRed,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Wrap(
+                                    spacing: 16,
+                                    runSpacing: 6,
+                                    children: [
+                                      _positionValue('Volume', position.volume),
+                                      _positionValue('Open price',
+                                          position.openPrice),
+                                      _positionValue('Commission',
+                                          position.commission),
+                                      _positionValue('Swap', position.swap),
+                                      _positionValue('ID', position.id),
+                                    ],
+                                  ),
+                                  if (position.openedAt.isNotEmpty) ...[
+                                    const SizedBox(height: 7),
+                                    Text(
+                                      position.openedAt,
+                                      style: const TextStyle(
+                                        color: AppTheme.textSecondary,
+                                        fontSize: 10,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          )),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _positionValue(String label, String value) {
+    return Text(
+      '$label: $value',
+      style: const TextStyle(
+        color: AppTheme.textSecondary,
+        fontSize: 11,
+      ),
+    );
+  }
+}
