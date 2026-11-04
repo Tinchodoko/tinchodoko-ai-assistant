@@ -9,6 +9,7 @@ class InformationTab extends StatelessWidget {
   const InformationTab({super.key});
 
   static final Uri _releasesUri = Uri.parse('https://github.com/Tinchodoko/tinchodoko-ai-assistant/releases');
+  static final Future<PackageInfo> _packageInfo = PackageInfo.fromPlatform();
 
   static const List<String> _features = [
     'Integración directa con Exness Trader API para consultar datos de cuenta.',
@@ -19,7 +20,7 @@ class InformationTab extends StatelessWidget {
     'Asistente de IA con contexto de mercado e instrucciones personalizadas.',
     'Compatibilidad con Groq, Gemini, Claude, OpenAI, OpenRouter y Mistral.',
     'Almacenamiento seguro de credenciales y API keys en Android.',
-    'Historial local de señales y decisiones.',
+    'Registro de señales y decisiones durante la sesión.',
     'Modo oscuro y navegación Material 3.',
   ];
 
@@ -41,7 +42,7 @@ class InformationTab extends StatelessWidget {
       backgroundColor: Colors.transparent,
       body: SafeArea(
         child: FutureBuilder<PackageInfo>(
-          future: PackageInfo.fromPlatform(),
+          future: _packageInfo,
           builder: (context, snapshot) {
             final info = snapshot.data;
             final version = info?.version ?? '1.0.0';
