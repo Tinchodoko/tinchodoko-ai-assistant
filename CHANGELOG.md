@@ -2,6 +2,17 @@
 
 Este registro documenta los cambios de implementación incorporados en las builds recientes. Las entradas de builds fallidas o intermedias describen trabajo de desarrollo y no implican que se haya publicado un APK instalable.
 
+## Builds 52–55
+
+### Build #55
+- Corrección de compatibilidad Android: Kotlin Gradle Plugin 1.9.24 para compilar dependencias que utilizan metadatos Kotlin 1.9.
+### Build #54
+- Las publicaciones APK de GitHub incluyen automáticamente el registro detallado de cambios y las instrucciones de instalación.
+### Build #53
+- Creación del registro central CHANGELOG.md con el historial de cambios de las builds recientes.
+### Build #52
+- Ampliación de List of Changes en Information para documentar las correcciones y funciones de las builds 30 a 51.
+
 ## Builds 30–51
 
 ### Build #51
