@@ -11,6 +11,7 @@ class SecureStorageService {
   static const String _exnessApiKey = 'tinchodoko_exness_api_key';
   static const String _exnessPrivateKey = 'tinchodoko_exness_private_key';
   static const String _exnessAccountId = 'tinchodoko_exness_account_id';
+  static const String _exnessGatewayUrl = 'tinchodoko_exness_gateway_url';
   static const String _exnessAccessPoint = 'tinchodoko_exness_access_point';
   static const String _exnessAccessPointAccountId = 'tinchodoko_exness_access_point_account_id';
 
@@ -54,10 +55,12 @@ class SecureStorageService {
     required String apiKey,
     required String privateKey,
     required String accountId,
+    required String gatewayUrl,
   }) async {
     await _storage.write(key: _exnessApiKey, value: apiKey.trim());
     await _storage.write(key: _exnessPrivateKey, value: privateKey.trim());
     await _storage.write(key: _exnessAccountId, value: accountId.trim());
+    await _storage.write(key: _exnessGatewayUrl, value: gatewayUrl.trim());
   }
 
   static Future<Map<String, String>> getExnessCredentials() async {
@@ -65,11 +68,13 @@ class SecureStorageService {
       _storage.read(key: _exnessApiKey),
       _storage.read(key: _exnessPrivateKey),
       _storage.read(key: _exnessAccountId),
+      _storage.read(key: _exnessGatewayUrl),
     ]);
     return {
       if (values[0] != null) 'apiKey': values[0]!,
       if (values[1] != null) 'privateKey': values[1]!,
       if (values[2] != null) 'accountId': values[2]!,
+      if (values[3] != null) 'gatewayUrl': values[3]!,
     };
   }
 
