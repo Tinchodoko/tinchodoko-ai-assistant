@@ -60,7 +60,30 @@ class ExnessDnsHttpClient extends http.BaseClient {
         'DNS lookup failed for ${uri.host} using system DNS and HTTPS DNS fallback.',
       );
     }
-    return Socket.startConnect(addresses.first, uri.port);
+    return _connectToAddress(uri, addresses.first);
+  }
+
+  /// Opens TCP to the resolved IP, then performs TLS using the original
+  /// hostname for SNI and certificate hostname validation. HttpClient's
+  /// connectionFactory must return an already-secure socket for HTTPS.
+  Future<ConnectionTask<Socket>> _connectToAddress(
+    Uri uri,
+    InternetAddress address,
+  ) async {
+    if (uri.scheme != 'https') {
+      return Socket.startConnect(address, uri.port);
+    }
+
+    final tcpTask = await Socket.startConnect(address, uri.port);
+    final secureSocket = tcpTask.socket.then(
+      (socket) => SecureSocket.secure(
+        socket,
+        host: uri.host,
+        context: SecurityContext.defaultContext,
+        supportedProtocols: const ['http/1.1'],
+      ),
+    );
+    return ConnectionTask.fromSocket<Socket>(secureSocket, tcpTask.cancel);
   }
 
   Future<List<InternetAddress>> _resolveHost(String host) {
@@ -81,7 +104,7 @@ class ExnessDnsHttpClient extends http.BaseClient {
     // Try the Android/system resolver first; DoH is only a fallback.
     try {
       final systemAddresses = await InternetAddress.lookup(host)
-          .timeout(const Duration(seconds: 4));
+          .timeout(const Duration(seconds: 3));
       if (systemAddresses.isNotEmpty) {
         _cache[host] = _DnsCacheEntry(
           systemAddresses,
@@ -96,7 +119,7 @@ class ExnessDnsHttpClient extends http.BaseClient {
     for (final provider in _providers) {
       try {
         final addresses = await _queryDoh(provider, host)
-            .timeout(const Duration(seconds: 6));
+            .timeout(const Duration(seconds: 5));
         if (addresses.isNotEmpty) {
           _cache[host] = _DnsCacheEntry(
             addresses,
@@ -129,7 +152,13 @@ class ExnessDnsHttpClient extends http.BaseClient {
       ..connectionTimeout = const Duration(seconds: 4)
       ..findProxy = (_) => 'DIRECT'
       ..connectionFactory = (uri, proxyHost, proxyPort) {
-        return Socket.startConnect(pinnedAddress, uri.port);
+        if (proxyHost != null) {
+          if (proxyPort == null) {
+            throw const SocketException('Proxy port is missing.');
+          }
+          return Socket.startConnect(proxyHost, proxyPort);
+        }
+        return _connectToAddress(uri, pinnedAddress);
       };
 
     try {
