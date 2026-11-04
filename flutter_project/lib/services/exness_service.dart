@@ -10,8 +10,6 @@ import 'exness_request_signer.dart';
 import 'secure_storage_service.dart';
 import '../models/market_data.dart';
 
-const String exnessMainGateway = 'https://api.exness.com';
-
 class ExnessPosition {
   const ExnessPosition({
     required this.id,
@@ -51,16 +49,8 @@ class ExnessPosition {
 }
 
 class ExnessService extends ChangeNotifier {
-  ExnessService({http.Client? client, String? gatewayIp})
-      : _client = client ??
-            ExnessDnsHttpClient(
-              hostOverrides: gatewayIp != null && gatewayIp.isNotEmpty
-                  ? {
-                      'api.exness.com': gatewayIp,
-                      'api.exness-api.com': gatewayIp,
-                    }
-                  : null,
-            );
+  ExnessService({http.Client? client})
+      : _client = client ?? ExnessDnsHttpClient();
 
   http.Client _client;
   bool _isLoading = false;
@@ -107,18 +97,41 @@ class ExnessService extends ChangeNotifier {
     if (cleanApiKey.isEmpty ||
         cleanGatewayUrl.isEmpty ||
         cleanPrivateKey.isEmpty ||
-        !RegExp(r'^[1-9][0-9]{0,19}$').hasMatch(cleanAccountId)) {
+        !_isValidAccountId(cleanAccountId)) {
       _lastError = 'Enter the API key, private signing key, account ID and DNS Gateway URL.';
       notifyListeners();
       return false;
     }
 
     _isLoading = true;
+    _isConnected = false;
     _lastError = '';
     notifyListeners();
 
     try {
       final validatedGatewayUrl = _validateBaseUrl(cleanGatewayUrl);
+      final gatewayHost = Uri.parse(validatedGatewayUrl).host;
+      final cleanGatewayIp = gatewayIp?.trim() ?? '';
+      if (cleanGatewayIp.isNotEmpty) {
+        final parsedIp = InternetAddress.tryParse(cleanGatewayIp);
+        if (parsedIp == null) {
+          throw const FormatException(
+            'Gateway IP override must be a valid IPv4 or IPv6 address.',
+          );
+        }
+      }
+      // Apply the override only to the exact configured Gateway hostname.
+      // Never reuse a Gateway IP for the separately discovered Access Point.
+      if (_client is ExnessDnsHttpClient) {
+        (_client as ExnessDnsHttpClient).setHostOverride(
+          gatewayHost,
+          cleanGatewayIp.isEmpty ? null : cleanGatewayIp,
+        );
+      } else if (cleanGatewayIp.isNotEmpty) {
+        throw StateError(
+          'Manual Gateway IP override is unavailable with the injected HTTP client.',
+        );
+      }
 
       // Validate key format and its embedded public-key half before saving.
       final signer = ExnessRequestSigner(
@@ -135,7 +148,7 @@ class ExnessService extends ChangeNotifier {
         accountId: cleanAccountId,
         gatewayUrl: validatedGatewayUrl,
       );
-      await SecureStorageService.saveGatewayIp(gatewayIp ?? '');
+      await SecureStorageService.saveGatewayIp(cleanGatewayIp);
 
       _signer?.dispose();
       _signer = signer;
@@ -162,8 +175,8 @@ class ExnessService extends ChangeNotifier {
       _lastError = '';
       notifyListeners();
       return true;
-    } on TimeoutException {
-      _lastError = 'The Exness API request timed out. Please try again.';
+    } on TimeoutException catch (error) {
+      _lastError = _safeError(error);
     } catch (error) {
       _lastError = _safeError(error);
     }
@@ -209,7 +222,11 @@ class ExnessService extends ChangeNotifier {
   Future<List<String>> getAvailableInstruments() async {
     _requireConnectedMarketAccess();
     final path = '/v1/configuration/accounts/$_accountId/instruments';
-    final response = await _getJson(_accessPoint, path);
+    final response = await _getJson(
+      _accessPoint,
+      path,
+      stage: 'market instrument lookup',
+    );
     final raw = response['instruments'];
     if (raw is! List) {
       throw const FormatException('Exness returned an invalid instrument list.');
@@ -258,7 +275,11 @@ class ExnessService extends ChangeNotifier {
       'to': now.toIso8601String(),
     }).query;
     final path = '/v1/market-data/accounts/$_accountId/candles?$query';
-    final response = await _getJson(_accessPoint, path);
+    final response = await _getJson(
+      _accessPoint,
+      path,
+      stage: 'market candle request',
+    );
     final raw = response['candles'];
     if (raw is! List) {
       throw const FormatException('Exness returned an invalid candle history.');
@@ -295,8 +316,18 @@ class ExnessService extends ChangeNotifier {
     // The published api.exness.com / api.exness-api.com review hosts are not
     // interchangeable fallback hosts for Trader API discovery.
     final path = '/v1/trading/access-point?account_id=$_accountId';
-    final response = await _getJson(_gatewayUrl, path);
-    return _validateBaseUrl(response['access_point']?.toString() ?? '');
+    final response = await _getJson(
+      _gatewayUrl,
+      path,
+      stage: 'Gateway Access Point discovery',
+    );
+    final value = response['access_point']?.toString() ?? '';
+    if (value.isEmpty) {
+      throw const FormatException(
+        'Exness Gateway discovery response is missing access_point.',
+      );
+    }
+    return _validateBaseUrl(value);
   }
 
   Future<void> _loadAccountSnapshot() async {
@@ -304,7 +335,11 @@ class ExnessService extends ChangeNotifier {
     // Do not block a successful connection on an unverified snapshot route.
     final accountPath =
         '/v1/configuration/accounts/$_accountId/account';
-    _accountDetails = await _getJson(_accessPoint, accountPath);
+    _accountDetails = await _getJson(
+      _accessPoint,
+      accountPath,
+      stage: 'read-only account details request',
+    );
 
     // Account configuration does not guarantee live balance/equity or
     // open-position fields. Keep them unavailable until their exact
@@ -328,6 +363,142 @@ class ExnessService extends ChangeNotifier {
       }
     }
     return null;
+  }
+
+  bool _isValidAccountId(String value) {
+    if (!RegExp(r'^[1-9][0-9]*
+    final uri = Uri.tryParse(value);
+    if (uri == null ||
+        uri.scheme != 'https' ||
+        uri.host.isEmpty ||
+        uri.userInfo.isNotEmpty ||
+        (uri.path.isNotEmpty && uri.path != '/') ||
+        uri.hasQuery ||
+        uri.hasFragment) {
+      throw const FormatException(
+        'Exness returned an invalid HTTPS Gateway or Access Point URL.',
+      );
+    }
+    return uri.origin;
+  }
+
+  Future<Map<String, dynamic>> _getJson(
+    String baseUrl,
+    String pathWithQuery, {
+    String stage = 'Exness API request',
+  }) async {
+    final signer = _signer;
+    if (signer == null) {
+      throw StateError('The Exness signing credentials are not loaded.');
+    }
+    final request = http.Request(
+      'GET',
+      Uri.parse('$baseUrl$pathWithQuery'),
+    )
+      ..followRedirects = false
+      ..headers.addAll(
+        await signer.buildGetHeaders(pathWithQuery: pathWithQuery),
+      );
+
+    // Exness' complete read-only example uses a 15-second request timeout.
+    // Apply one total deadline to connection + response body, and identify
+    // the exact API stage in the resulting error without logging credentials.
+    final response = await (() async {
+      final streamed = await _client.send(request);
+      return http.Response.fromStream(streamed);
+    })().timeout(
+      const Duration(seconds: 15),
+      onTimeout: () => throw TimeoutException(
+        'Timed out during $stage after 15 seconds. Check the configured '
+        'Gateway/Access Point hostname, network connectivity and Exness API availability.',
+        const Duration(seconds: 15),
+      ),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      String message = 'Exness API returned HTTP ${response.statusCode}.';
+      try {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map) {
+          message = decoded['description']?.toString() ??
+              decoded['message']?.toString() ??
+              decoded['error']?.toString() ??
+              message;
+        }
+      } catch (_) {}
+      throw ExnessApiException(
+        response.statusCode,
+        message,
+      );
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map) {
+      throw const FormatException('Exness API returned an unexpected JSON response.');
+    }
+    return Map<String, dynamic>.from(decoded);
+  }
+
+  String _safeError(Object error) {
+    if (error is TimeoutException) {
+      return error.message ?? 'Exness API request timed out.';
+    }
+    if (error is ExnessApiException) {
+      return 'Exness API HTTP ${error.statusCode}: ${error.message}';
+    }
+    if (error is SocketException) {
+      final detail = error.message;
+      final normalized = detail.toLowerCase();
+      final isDnsFailure = normalized.contains('failed host lookup') ||
+          normalized.contains('name or service not known') ||
+          normalized.contains('nodename nor servname') ||
+          normalized.contains('getaddrinfo') ||
+          normalized.contains('no address associated with hostname') ||
+          normalized.contains('could not resolve') ||
+          normalized.contains('https dns fallback');
+      if (isDnsFailure) {
+        final host = _gatewayUrl.isEmpty ? 'configured Exness Gateway' : Uri.parse(_gatewayUrl).host;
+        return 'DNS lookup failed for ${error.address?.host ?? host}: $detail';
+      }
+      final osDetail = error.osError == null
+          ? ''
+          : ' (OS ${error.osError!.errorCode}: ${error.osError!.message})';
+      return 'Network socket error while contacting Exness: $detail$osDetail';
+    }
+    if (error is http.ClientException) {
+      return 'HTTP client connection error: ${error.message}';
+    }
+    if (error is FormatException) return error.message;
+    return error.toString().replaceFirst('Exception: ', '');
+  }
+
+  void disconnect() {
+    _isConnected = false;
+    _lastError = '';
+    _positions = const [];
+    _balance = '—';
+    _equity = '—';
+    _usedMargin = '—';
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _signer?.dispose();
+    _client.close();
+    super.dispose();
+  }
+}
+
+class ExnessApiException implements Exception {
+  const ExnessApiException(this.statusCode, this.message);
+  final int statusCode;
+  final String message;
+}
+).hasMatch(value)) return false;
+    final id = BigInt.tryParse(value);
+    return id != null && id > BigInt.zero &&
+        id <= BigInt.parse('18446744073709551615');
   }
 
   String _validateBaseUrl(String value) {
