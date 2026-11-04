@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 
 import 'exness_request_signer.dart';
 import 'secure_storage_service.dart';
+import '../models/market_data.dart';
 
 const String exnessMainGateway = 'https://api.exness.com';
 const String exnessAlternativeGateway =
@@ -186,6 +187,250 @@ class ExnessService extends ChangeNotifier {
     notifyListeners();
     return false;
   }
+
+  Future<List<String>> getAvailableInstruments() async {
+    _requireConnectedMarketAccess();
+    final path = '/v1/configuration/accounts/$_accountId/instruments';
+    final response = await _getJson(_accessPoint, path);
+    final raw = response['instruments'];
+    if (raw is! List) {
+      throw const FormatException('Exness returned an invalid instrument list.');
+    }
+    return raw.map((value) => value.toString()).where((value) => value.isNotEmpty).toList()
+      ..sort();
+  }
+
+  Future<List<Candle>> fetchMarketCandles({
+    required String instrument,
+    required String timeframe,
+    int candleCount = 220,
+  }) async {
+    _requireConnectedMarketAccess();
+    if (!RegExp(r'^[A-Za-z0-9._-]{1,11}
+    final path =
+        '/v1/trading/access-point?account_id=$_accountId';
+    try {
+      final response = await _getJson(exnessMainGateway, path);
+      return _validateBaseUrl(response['access_point']?.toString() ?? '');
+    } on ExnessApiException catch (error) {
+      if (error.statusCode != 500 &&
+          error.statusCode != 502 &&
+          error.statusCode != 503 &&
+          error.statusCode != 504) {
+        rethrow;
+      }
+      final response = await _getJson(exnessAlternativeGateway, path);
+      return _validateBaseUrl(response['access_point']?.toString() ?? '');
+    } on SocketException {
+      final response = await _getJson(exnessAlternativeGateway, path);
+      return _validateBaseUrl(response['access_point']?.toString() ?? '');
+    } on http.ClientException {
+      final response = await _getJson(exnessAlternativeGateway, path);
+      return _validateBaseUrl(response['access_point']?.toString() ?? '');
+    } on TimeoutException {
+      final response = await _getJson(exnessAlternativeGateway, path);
+      return _validateBaseUrl(response['access_point']?.toString() ?? '');
+    }
+  }
+
+  Future<void> _loadAccountSnapshot() async {
+    final accountPath =
+        '/v1/configuration/accounts/$_accountId/account';
+    final snapshotPath = '/v1/trading/accounts/$_accountId/snapshot';
+
+    final results = await Future.wait([
+      _getJson(_accessPoint, accountPath),
+      _getJson(_accessPoint, snapshotPath),
+    ]);
+    _accountDetails = results[0];
+    final snapshot = results[1];
+    final accountState = snapshot['account_state'];
+    if (accountState is! Map) {
+      throw const FormatException(
+        'The Exness snapshot did not include account_state.',
+      );
+    }
+
+    _balance = accountState['balance']?.toString() ?? '—';
+    _equity = accountState['equity']?.toString() ?? '—';
+    _usedMargin = accountState['used_margin']?.toString() ?? '—';
+    _currency = _findCurrency(_accountDetails) ?? _currency;
+
+    final rawPositions = snapshot['positions'];
+    if (rawPositions is List) {
+      _positions = rawPositions
+          .whereType<Map>()
+          .map((item) => ExnessPosition.fromJson(
+                Map<String, dynamic>.from(item),
+              ))
+          .toList(growable: false);
+    } else {
+      _positions = const [];
+    }
+  }
+
+  String? _findCurrency(Map<String, dynamic> values) {
+    for (final key in const ['currency', 'account_currency', 'currency_code']) {
+      final value = values[key];
+      if (value is String && value.isNotEmpty) return value;
+    }
+    for (final value in values.values) {
+      if (value is Map) {
+        final nested = _findCurrency(Map<String, dynamic>.from(value));
+        if (nested != null) return nested;
+      }
+    }
+    return null;
+  }
+
+  String _validateBaseUrl(String value) {
+    final uri = Uri.tryParse(value);
+    if (uri == null ||
+        uri.scheme != 'https' ||
+        uri.host.isEmpty ||
+        uri.userInfo.isNotEmpty ||
+        (uri.path.isNotEmpty && uri.path != '/') ||
+        uri.hasQuery ||
+        uri.hasFragment) {
+      throw const FormatException(
+        'Exness returned an invalid HTTPS Gateway or Access Point URL.',
+      );
+    }
+    return uri.origin;
+  }
+
+  Future<Map<String, dynamic>> _getJson(
+    String baseUrl,
+    String pathWithQuery,
+  ) async {
+    final signer = _signer;
+    if (signer == null) {
+      throw StateError('The Exness signing credentials are not loaded.');
+    }
+    final request = http.Request(
+      'GET',
+      Uri.parse('$baseUrl$pathWithQuery'),
+    )
+      ..followRedirects = false
+      ..headers.addAll(
+        await signer.buildGetHeaders(pathWithQuery: pathWithQuery),
+      );
+
+    final streamed = await _client
+        .send(request)
+        .timeout(const Duration(seconds: 15));
+    final response = await http.Response.fromStream(streamed)
+        .timeout(const Duration(seconds: 15));
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      String message = 'Exness API returned HTTP ${response.statusCode}.';
+      try {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map) {
+          message = decoded['description']?.toString() ??
+              decoded['message']?.toString() ??
+              decoded['error']?.toString() ??
+              message;
+        }
+      } catch (_) {}
+      throw ExnessApiException(
+        response.statusCode,
+        message,
+      );
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map) {
+      throw const FormatException('Exness API returned an unexpected JSON response.');
+    }
+    return Map<String, dynamic>.from(decoded);
+  }
+
+  String _safeError(Object error) {
+    if (error is ExnessApiException) {
+      return 'Exness API HTTP ${error.statusCode}: ${error.message}';
+    }
+    if (error is FormatException) return error.message;
+    return error.toString().replaceFirst('Exception: ', '');
+  }
+
+  void disconnect() {
+    _isConnected = false;
+    _lastError = '';
+    _positions = const [];
+    _balance = '—';
+    _equity = '—';
+    _usedMargin = '—';
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _signer?.dispose();
+    _client.close();
+    super.dispose();
+  }
+}
+
+class ExnessApiException implements Exception {
+  const ExnessApiException(this.statusCode, this.message);
+  final int statusCode;
+  final String message;
+}
+).hasMatch(instrument)) {
+      throw const FormatException('Invalid Exness instrument symbol.');
+    }
+    const allowedTimeframes = {
+      'S1', 'S5', 'S15', 'M1', 'M3', 'M5', 'M10', 'M15',
+      'M30', 'H1', 'H2', 'H4', 'D1', 'W1', 'MN',
+    };
+    if (!allowedTimeframes.contains(timeframe)) {
+      throw const FormatException('Unsupported Exness candle timeframe.');
+    }
+    final secondsByTimeframe = {
+      'S1': 1, 'S5': 5, 'S15': 15, 'M1': 60, 'M3': 180,
+      'M5': 300, 'M10': 600, 'M15': 900, 'M30': 1800,
+      'H1': 3600, 'H2': 7200, 'H4': 14400, 'D1': 86400,
+      'W1': 604800, 'MN': 2592000,
+    };
+    final now = DateTime.now().toUtc();
+    final from = now.subtract(Duration(
+      seconds: secondsByTimeframe[timeframe]! * candleCount,
+    ));
+    final query = Uri(queryParameters: {
+      'instrument': instrument,
+      'timeframe': timeframe,
+      'price_type': 'bid',
+      'from': from.toIso8601String(),
+      'to': now.toIso8601String(),
+    }).query;
+    final path = '/v1/market-data/accounts/$_accountId/candles?$query';
+    final response = await _getJson(_accessPoint, path);
+    final raw = response['candles'];
+    if (raw is! List) {
+      throw const FormatException('Exness returned an invalid candle history.');
+    }
+    return raw.whereType<Map>().map((item) {
+      final value = Map<String, dynamic>.from(item);
+      return Candle(
+        datetime: value['time']?.toString() ?? '',
+        open: _toDouble(value['open']),
+        high: _toDouble(value['high']),
+        low: _toDouble(value['low']),
+        close: _toDouble(value['close']),
+        volume: _toDouble(value['volume']),
+      );
+    }).toList(growable: false);
+  }
+
+  void _requireConnectedMarketAccess() {
+    if (!_isConnected || _accountId.isEmpty || _accessPoint.isEmpty || _signer == null) {
+      throw StateError('Connect an eligible Exness account before requesting market data.');
+    }
+  }
+
+  double _toDouble(dynamic value) =>
+      value == null ? 0.0 : double.tryParse(value.toString()) ?? 0.0;
 
   Future<String> _discoverAccessPoint() async {
     final path =
