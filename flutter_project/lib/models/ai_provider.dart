@@ -4,7 +4,6 @@ class AIProvider {
   final List<String> models;
   final String defaultModel;
   final String hint;
-  final bool isDataProvider; // true = proveedor de datos, no IA
   String apiKey;
 
   AIProvider({
@@ -13,7 +12,6 @@ class AIProvider {
     required this.models,
     required this.defaultModel,
     required this.hint,
-    this.isDataProvider = false,
     this.apiKey = '',
   });
 
@@ -99,13 +97,5 @@ final List<AIProvider> initialProviders = [
     defaultModel: 'mistral-large-latest',
     hint: 'Mistral API Key',
   ),
-  // ── Proveedores de datos de mercado ──────────
-  AIProvider(
-    id: 'twelvedata',
-    name: 'Twelve Data',
-    models: ['market-data'],
-    defaultModel: 'market-data',
-    hint: 'Tu API Key de twelvedata.com',
-    isDataProvider: true,
-  ),
+
 ];
