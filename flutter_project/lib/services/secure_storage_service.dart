@@ -12,6 +12,7 @@ class SecureStorageService {
   static const String _exnessPrivateKey = 'tinchodoko_exness_private_key';
   static const String _exnessAccountId = 'tinchodoko_exness_account_id';
   static const String _exnessGatewayUrl = 'tinchodoko_exness_gateway_url';
+  static const String _exnessGatewayIp = 'tinchodoko_exness_gateway_ip';
   static const String _exnessAccessPoint = 'tinchodoko_exness_access_point';
   static const String _exnessAccessPointAccountId = 'tinchodoko_exness_access_point_account_id';
 
@@ -69,12 +70,14 @@ class SecureStorageService {
       _storage.read(key: _exnessPrivateKey),
       _storage.read(key: _exnessAccountId),
       _storage.read(key: _exnessGatewayUrl),
+      _storage.read(key: _exnessGatewayIp),
     ]);
     return {
       if (values[0] != null) 'apiKey': values[0]!,
       if (values[1] != null) 'privateKey': values[1]!,
       if (values[2] != null) 'accountId': values[2]!,
       if (values[3] != null) 'gatewayUrl': values[3]!,
+      if (values[4] != null) 'gatewayIp': values[4]!,
     };
   }
 
@@ -96,5 +99,18 @@ class SecureStorageService {
   static Future<void> clearExnessAccessPoint() async {
     await _storage.delete(key: _exnessAccessPoint);
     await _storage.delete(key: _exnessAccessPointAccountId);
+  }
+
+  static Future<void> saveGatewayIp(String ip) async {
+    final clean = ip.trim();
+    if (clean.isEmpty) {
+      await _storage.delete(key: _exnessGatewayIp);
+    } else {
+      await _storage.write(key: _exnessGatewayIp, value: clean);
+    }
+  }
+
+  static Future<String?> getGatewayIp() async {
+    return await _storage.read(key: _exnessGatewayIp);
   }
 }
