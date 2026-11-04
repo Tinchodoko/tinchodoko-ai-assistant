@@ -10,8 +10,6 @@ import 'secure_storage_service.dart';
 import '../models/market_data.dart';
 
 const String exnessMainGateway = 'https://api.exness.com';
-const String exnessAlternativeGateway =
-    'https://api.exness-api.com';
 
 class ExnessPosition {
   const ExnessPosition({
