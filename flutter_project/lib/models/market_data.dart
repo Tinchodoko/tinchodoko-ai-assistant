@@ -95,7 +95,7 @@ class MarketSnapshot {
     if (c == null) return 'Sin datos disponibles.';
 
     final sb = StringBuffer();
-    sb.writeln('=== DATOS DE MERCADO EN TIEMPO REAL ===');
+    sb.writeln('=== DATOS DE MERCADO EXNESS ===');
     sb.writeln('Par: $symbol | Temporalidad: $interval');
     sb.writeln('Última vela: ${c.datetime}');
     sb.writeln('Open: ${c.open.toStringAsFixed(5)} | '
