@@ -51,10 +51,18 @@ class ExnessPosition {
 }
 
 class ExnessService extends ChangeNotifier {
-  ExnessService({http.Client? client})
-      : _client = client ?? ExnessDnsHttpClient();
+  ExnessService({http.Client? client, String? gatewayIp})
+      : _client = client ??
+            ExnessDnsHttpClient(
+              hostOverrides: gatewayIp != null && gatewayIp.isNotEmpty
+                  ? {
+                      'api.exness.com': gatewayIp,
+                      'api.exness-api.com': gatewayIp,
+                    }
+                  : null,
+            );
 
-  final http.Client _client;
+  http.Client _client;
   bool _isLoading = false;
   bool _isConnected = false;
   String _lastError = '';
@@ -89,6 +97,7 @@ class ExnessService extends ChangeNotifier {
     required String privateKey,
     required String accountId,
     required String gatewayUrl,
+    String? gatewayIp,
   }) async {
     final cleanApiKey = apiKey.trim();
     final cleanPrivateKey = privateKey.trim();
@@ -126,6 +135,7 @@ class ExnessService extends ChangeNotifier {
         accountId: cleanAccountId,
         gatewayUrl: validatedGatewayUrl,
       );
+      await SecureStorageService.saveGatewayIp(gatewayIp ?? '');
 
       _signer?.dispose();
       _signer = signer;
