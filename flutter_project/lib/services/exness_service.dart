@@ -280,39 +280,20 @@ class ExnessService extends ChangeNotifier {
   }
 
   Future<void> _loadAccountSnapshot() async {
+    // First verified read-only account request from Exness support/docs.
+    // Do not block a successful connection on an unverified snapshot route.
     final accountPath =
         '/v1/configuration/accounts/$_accountId/account';
-    final snapshotPath = '/v1/trading/accounts/$_accountId/snapshot';
+    _accountDetails = await _getJson(_accessPoint, accountPath);
 
-    final results = await Future.wait([
-      _getJson(_accessPoint, accountPath),
-      _getJson(_accessPoint, snapshotPath),
-    ]);
-    _accountDetails = results[0];
-    final snapshot = results[1];
-    final accountState = snapshot['account_state'];
-    if (accountState is! Map) {
-      throw const FormatException(
-        'The Exness snapshot did not include account_state.',
-      );
-    }
-
-    _balance = accountState['balance']?.toString() ?? '—';
-    _equity = accountState['equity']?.toString() ?? '—';
-    _usedMargin = accountState['used_margin']?.toString() ?? '—';
+    // Account configuration does not guarantee live balance/equity or
+    // open-position fields. Keep them unavailable until their exact
+    // documented read endpoints and response schemas are integrated.
+    _balance = '—';
+    _equity = '—';
+    _usedMargin = '—';
+    _positions = const [];
     _currency = _findCurrency(_accountDetails) ?? _currency;
-
-    final rawPositions = snapshot['positions'];
-    if (rawPositions is List) {
-      _positions = rawPositions
-          .whereType<Map>()
-          .map((item) => ExnessPosition.fromJson(
-                Map<String, dynamic>.from(item),
-              ))
-          .toList(growable: false);
-    } else {
-      _positions = const [];
-    }
   }
 
   String? _findCurrency(Map<String, dynamic> values) {
