@@ -2,6 +2,10 @@
 
 Este registro documenta los cambios de implementación incorporados en las builds recientes. Las entradas de builds fallidas o intermedias describen trabajo de desarrollo y no implican que se haya publicado un APK instalable.
 
+## Builds 56–57
+- **Build #57:** Sincronización del registro central CHANGELOG.md con las novedades y correcciones documentadas para las builds 52 a 55.
+- **Build #56:** Ampliación del historial de cambios dentro de Information para incluir las builds 52 a 55.
+
 ## Build 58
 - Preparación de notas de publicación con historial completo, instrucciones de instalación y número de build.
 
