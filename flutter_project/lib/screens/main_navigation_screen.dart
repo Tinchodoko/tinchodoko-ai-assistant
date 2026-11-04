@@ -10,6 +10,7 @@ import 'assistant_tab.dart';
 import 'exness_tab.dart';
 import 'history_tab.dart';
 import 'market_tab.dart';
+import 'information_tab.dart';
 import 'panel_tab.dart';
 
 class MainNavigationScreen extends StatefulWidget {
@@ -33,6 +34,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   }
 
   Future<void> _loadStoredKeys() async {
+    await SecureStorageService.clearLegacyMarketDataApiKey();
     final keys = await SecureStorageService.loadAllApiKeys(
       _providers.map((p) => p.id).toList(),
     );
@@ -110,7 +112,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             onKeysUpdated: () => setState(() {}),
           ),
           MarketTab(
-            providers: _providers,
+            exnessService: _exnessService,
             onSnapshotReady: _onSnapshotReady,
           ),
           PanelTab(
@@ -130,6 +132,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             operations: _history,
             onClearHistory: _clearHistory,
           ),
+          const InformationTab(),
         ];
 
         return Scaffold(
@@ -265,6 +268,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 icon: Icon(Icons.history_outlined),
                 selectedIcon: Icon(Icons.history),
                 label: 'Historial',
+              ),
+              const NavigationDestination(
+                icon: Icon(Icons.info_outline),
+                selectedIcon: Icon(Icons.info),
+                label: 'Information',
               ),
             ],
           ),
