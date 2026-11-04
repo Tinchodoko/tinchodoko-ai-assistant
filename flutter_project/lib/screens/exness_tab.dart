@@ -220,7 +220,7 @@ class _ExnessTabState extends State<ExnessTab> {
                           ),
                           const SizedBox(height: 14),
                           const Text(
-                            'Trader API Gateway URL (DNS widget)',
+                            'Trader API Gateway URL (provided by Exness)',
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
@@ -235,7 +235,7 @@ class _ExnessTabState extends State<ExnessTab> {
                             autocorrect: false,
                             enableSuggestions: false,
                             decoration: const InputDecoration(
-                              hintText: 'https://Gateway shown in Key Management',
+                              hintText: 'HTTPS Gateway hostname confirmed by Exness support',
                               prefixIcon: Icon(Icons.dns_outlined),
                             ),
                           ),
@@ -258,7 +258,7 @@ class _ExnessTabState extends State<ExnessTab> {
                                   ),
                                   const SizedBox(width: 4),
                                   Text(
-                                    'Gateway IP override (bypass ISP DNS block)',
+                                    'Gateway IP override (optional; exact Gateway host only)',
                                     style: const TextStyle(
                                       fontSize: 11,
                                       color: AppTheme.textSecondary,
@@ -277,10 +277,10 @@ class _ExnessTabState extends State<ExnessTab> {
                               autocorrect: false,
                               enableSuggestions: false,
                               decoration: const InputDecoration(
-                                hintText: 'e.g. 185.213.111.6  (get it with nslookup)',
+                                hintText: 'IP address verified for this exact Gateway hostname',
                                 prefixIcon: Icon(Icons.router_outlined),
                                 helperText:
-                                    'Run  nslookup api.exness.com  on a PC to get the IP.',
+                                    'Leave empty unless Exness confirms an IP for the configured Gateway hostname.',
                               ),
                             ),
                           ],
