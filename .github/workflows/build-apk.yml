@@ -52,7 +52,7 @@ jobs:
         continue-on-error: true
 
       - name: 🔨 Build APK Release
-        run: flutter build apk --release --no-tree-shake-icons
+        run: flutter build apk --release --no-tree-shake-icons --build-name=1.0.0 --build-number=${{ github.run_number }}
         working-directory: flutter_project
 
       - name: 📝 Renombrar APK
