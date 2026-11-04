@@ -73,8 +73,9 @@ class ExnessDnsHttpClient extends http.BaseClient {
     final addresses = await _resolveHost(uri.host);
     if (addresses.isEmpty) {
       throw SocketException(
-          'Could not resolve ${uri.host}. '
-          'Try entering the Gateway IP manually (nslookup ${uri.host}).');
+        'DNS resolution returned no addresses for ${uri.host}. '
+        'Verify the hostname with Exness before using a manual IP override.',
+      );
     }
     return _connectToAddress(uri, addresses.first);
   }
@@ -105,7 +106,7 @@ class ExnessDnsHttpClient extends http.BaseClient {
     // 1. Android system DNS
     try {
       final addrs = await InternetAddress.lookup(host)
-          .timeout(const Duration(seconds: 3));
+          .timeout(const Duration(seconds: 2));
       if (addrs.isNotEmpty) {
         _cache[host] = _DnsCacheEntry(
             addrs, DateTime.now().add(const Duration(minutes: 5)));
@@ -117,7 +118,7 @@ class ExnessDnsHttpClient extends http.BaseClient {
     for (final provider in _providers) {
       try {
         final addrs = await _queryDoh(provider, host)
-            .timeout(const Duration(seconds: 3));
+            .timeout(const Duration(seconds: 2));
         if (addrs.isNotEmpty) {
           _cache[host] = _DnsCacheEntry(
               addrs, DateTime.now().add(const Duration(minutes: 5)));
