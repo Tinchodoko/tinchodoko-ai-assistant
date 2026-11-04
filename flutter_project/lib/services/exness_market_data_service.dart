@@ -123,40 +123,73 @@ class ExnessMarketDataService {
   static double _ema(List<double> values, int period) => _emaSeries(values, period).last;
 
   static double _rsi(List<double> values, int period) {
-    var gains = 0.0;
-    var losses = 0.0;
-    for (var i = values.length - period; i < values.length; i++) {
+    var averageGain = 0.0;
+    var averageLoss = 0.0;
+    for (var i = 1; i <= period; i++) {
       final change = values[i] - values[i - 1];
       if (change >= 0) {
-        gains += change;
+        averageGain += change;
       } else {
-        losses -= change;
+        averageLoss -= change;
       }
     }
-    if (losses == 0) return gains == 0 ? 50 : 100;
-    final rs = gains / losses;
-    return 100 - (100 / (1 + rs));
-  }
-
-  static double _atr(List<Candle> candles, int period) {
-    final ranges = <double>[];
-    for (var i = candles.length - period; i < candles.length; i++) {
-      final previousClose = candles[i - 1].close;
-      ranges.add(math.max(
-        candles[i].high - candles[i].low,
-        math.max((candles[i].high - previousClose).abs(), (candles[i].low - previousClose).abs()),
-      ).toDouble());
+    averageGain /= period;
+    averageLoss /= period;
+    for (var i = period + 1; i < values.length; i++) {
+      final change = values[i] - values[i - 1];
+      final gain = change > 0 ? change : 0.0;
+      final loss = change < 0 ? -change : 0.0;
+      averageGain = ((averageGain * (period - 1)) + gain) / period;
+      averageLoss = ((averageLoss * (period - 1)) + loss) / period;
     }
-    return _mean(ranges);
-  }
-
-  static double _adx(List<Candle> candles, int period) {
-    final dxValues = <double>[];
-    for (var i = candles.length - period; i < candles.length; i++) {
+    if (averageLoss == 0) return averageGain == 0 ? 50 : 100;
+    final relativeStrength = averageGain / averageLoss;
+    return 100 - (100 / (1 + relativeStrength));
+   static double _adx(List<Candle> candles, int period) {
+    final trueRanges = <double>[];
+    final positiveMoves = <double>[];
+    final negativeMoves = <double>[];
+    for (var i = 1; i < candles.length; i++) {
       final current = candles[i];
       final previous = candles[i - 1];
-      final up = current.high - previous.high;
-      final down = previous.low - current.low;
+      final upwardMove = current.high - previous.high;
+      final downwardMove = previous.low - current.low;
+      positiveMoves.add(upwardMove > downwardMove && upwardMove > 0 ? upwardMove : 0);
+      negativeMoves.add(downwardMove > upwardMove && downwardMove > 0 ? downwardMove : 0);
+      trueRanges.add(math.max(
+        current.high - current.low,
+        math.max((current.high - previous.close).abs(), (current.low - previous.close).abs()),
+      ).toDouble());
+    }
+
+    var smoothedTr = trueRanges.take(period).reduce((a, b) => a + b);
+    var smoothedPlus = positiveMoves.take(period).reduce((a, b) => a + b);
+    var smoothedMinus = negativeMoves.take(period).reduce((a, b) => a + b);
+    final dxValues = <double>[];
+
+    for (var i = period - 1; i < trueRanges.length; i++) {
+      if (i >= period) {
+        smoothedTr = smoothedTr - (smoothedTr / period) + trueRanges[i];
+        smoothedPlus = smoothedPlus - (smoothedPlus / period) + positiveMoves[i];
+        smoothedMinus = smoothedMinus - (smoothedMinus / period) + negativeMoves[i];
+      }
+      if (smoothedTr == 0) {
+        dxValues.add(0);
+        continue;
+      }
+      final plusDi = 100 * smoothedPlus / smoothedTr;
+      final minusDi = 100 * smoothedMinus / smoothedTr;
+      final denominator = plusDi + minusDi;
+      dxValues.add(denominator == 0 ? 0 : 100 * (plusDi - minusDi).abs() / denominator);
+    }
+
+    if (dxValues.isEmpty) return 0;
+    var adx = _mean(dxValues.take(period).toList());
+    for (var i = period; i < dxValues.length; i++) {
+      adx = ((adx * (period - 1)) + dxValues[i]) / period;
+    }
+    return adx;
+  }rrent.low;
       final plus = up > down && up > 0 ? up : 0.0;
       final minus = down > up && down > 0 ? down : 0.0;
       final tr = math.max(
