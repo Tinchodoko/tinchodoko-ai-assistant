@@ -17,8 +17,26 @@ class ExnessDnsHttpClient extends http.BaseClient {
     _delegate = IOClient(_httpClient);
   }
 
-  final Map<String, String> _hostOverrides; // hostname → IP string
+  final Map<String, String> _hostOverrides; // exact hostname → IP string
   final HttpClient _httpClient;
+
+  /// Applies an IP override to one exact HTTPS hostname only.
+  /// The URL hostname is still used for TLS SNI and certificate validation.
+  void setHostOverride(String hostname, String? ipAddress) {
+    final host = hostname.trim().toLowerCase();
+    if (host.isEmpty) {
+      throw const FormatException('Gateway hostname is empty.');
+    }
+    if (ipAddress == null || ipAddress.trim().isEmpty) {
+      _hostOverrides.remove(host);
+      return;
+    }
+    final parsed = InternetAddress.tryParse(ipAddress.trim());
+    if (parsed == null) {
+      throw const FormatException('Gateway IP override must be a valid IP address.');
+    }
+    _hostOverrides[host] = parsed.address;
+  }
   late final IOClient _delegate;
   final Map<String, _DnsCacheEntry> _cache = {};
   final Map<String, Future<List<InternetAddress>>> _pending = {};
@@ -46,7 +64,7 @@ class ExnessDnsHttpClient extends http.BaseClient {
     if (literal != null) return _connectToAddress(uri, literal);
 
     // Manual override — bypasses DNS completely
-    final overrideIp = _hostOverrides[uri.host];
+    final overrideIp = _hostOverrides[uri.host.toLowerCase()];
     if (overrideIp != null) {
       final addr = InternetAddress.tryParse(overrideIp);
       if (addr != null) return _connectToAddress(uri, addr);
@@ -87,7 +105,7 @@ class ExnessDnsHttpClient extends http.BaseClient {
     // 1. Android system DNS
     try {
       final addrs = await InternetAddress.lookup(host)
-          .timeout(const Duration(seconds: 4));
+          .timeout(const Duration(seconds: 3));
       if (addrs.isNotEmpty) {
         _cache[host] = _DnsCacheEntry(
             addrs, DateTime.now().add(const Duration(minutes: 5)));
@@ -99,7 +117,7 @@ class ExnessDnsHttpClient extends http.BaseClient {
     for (final provider in _providers) {
       try {
         final addrs = await _queryDoh(provider, host)
-            .timeout(const Duration(seconds: 8));
+            .timeout(const Duration(seconds: 3));
         if (addrs.isNotEmpty) {
           _cache[host] = _DnsCacheEntry(
               addrs, DateTime.now().add(const Duration(minutes: 5)));
@@ -108,29 +126,18 @@ class ExnessDnsHttpClient extends http.BaseClient {
       } catch (_) {}
     }
 
-    // 3. Connectivity probe — distinguish "no internet" vs "domain blocked"
-    bool hasInternet = false;
-    try {
-      final probe = await InternetAddress.lookup('www.google.com')
-          .timeout(const Duration(seconds: 4));
-      hasInternet = probe.isNotEmpty;
-    } catch (_) {}
-
-    if (!hasInternet) {
-      throw SocketException(
-          'No internet connectivity. Check your network connection.');
-    }
     throw SocketException(
-        'DNS blocked for $host (ISP restriction). '
-        'Enter the Gateway IP manually or use a VPN.\n'
-        'To get the IP: run  nslookup $host  on a PC.');
+      'DNS resolution failed for $host using Android DNS and the configured '
+      'DNS-over-HTTPS resolvers. Confirm the hostname and network access. '
+      'Only use a manual IP address supplied or verified for this exact host.',
+    );
   }
 
   Future<List<InternetAddress>> _queryDoh(
       _DohProvider provider, String hostname) async {
     final pinnedAddr = InternetAddress.tryParse(provider.ip)!;
     final dohHttp = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 6);
+      ..connectionTimeout = const Duration(seconds: 4);
 
     // Keep the proxy assignment separate from the cascade above.
     // A cascade such as `..findProxy = (...) => 'DIRECT'`
