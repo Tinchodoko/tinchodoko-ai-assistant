@@ -14,6 +14,10 @@ class SecureStorageService {
   static const String _exnessAccessPoint = 'tinchodoko_exness_access_point';
   static const String _exnessAccessPointAccountId = 'tinchodoko_exness_access_point_account_id';
 
+  static Future<void> clearLegacyMarketDataApiKey() async {
+    await _storage.delete(key: '$_keyPrefix' + 'twelve' + 'data');
+  }
+
   static Future<void> saveApiKey(String providerId, String key) async {
     await _storage.write(key: '$_keyPrefix$providerId', value: key.trim());
   }
