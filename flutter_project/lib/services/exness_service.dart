@@ -10,6 +10,8 @@ import 'exness_request_signer.dart';
 import 'secure_storage_service.dart';
 import '../models/market_data.dart';
 
+const String exnessMainGateway = 'https://api.exness.com';
+
 class ExnessPosition {
   const ExnessPosition({
     required this.id,
@@ -395,8 +397,341 @@ class ExnessService extends ChangeNotifier {
           normalized.contains('could not resolve') ||
           normalized.contains('https dns fallback');
       if (isDnsFailure) {
-        final gatewayHost = _gatewayUrl.isEmpty ? 'configured Exness Gateway' : Uri.parse(_gatewayUrl).host;
-      return 'DNS lookup failed for ${error.address?.host ?? gatewayHost}: $detail';
+        final host = _gatewayUrl.isEmpty ? 'configured Exness Gateway' : Uri.parse(_gatewayUrl).host;
+        return 'DNS lookup failed for ${error.address?.host ?? host}: $detail';
+      }
+      final osDetail = error.osError == null
+          ? ''
+          : ' (OS ${error.osError!.errorCode}: ${error.osError!.message})';
+      return 'Network socket error while contacting Exness: $detail$osDetail';
+    }
+    if (error is http.ClientException) {
+      return 'HTTP client connection error: ${error.message}';
+    }
+    if (error is FormatException) return error.message;
+    return error.toString().replaceFirst('Exception: ', '');
+  }
+
+  void disconnect() {
+    _isConnected = false;
+    _lastError = '';
+    _positions = const [];
+    _balance = '—';
+    _equity = '—';
+    _usedMargin = '—';
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _signer?.dispose();
+    _client.close();
+    super.dispose();
+  }
+}
+
+class ExnessApiException implements Exception {
+  const ExnessApiException(this.statusCode, this.message);
+  final int statusCode;
+  final String message;
+}
+).hasMatch(cleanAccountId)) {
+      _lastError = 'Enter the API key, private signing key, account ID and DNS Gateway URL.';
+      notifyListeners();
+      return false;
+    }
+
+    _isLoading = true;
+    _lastError = '';
+    notifyListeners();
+
+    try {
+      // Validate key format and its embedded public-key half before saving.
+      final signer = ExnessRequestSigner(
+        apiKey: cleanApiKey,
+        privateKeyHex: cleanPrivateKey,
+      );
+      await signer.buildGetHeaders(
+        pathWithQuery: '/v1/trading/access-point?account_id=$cleanAccountId',
+      );
+
+      await SecureStorageService.saveExnessCredentials(
+        apiKey: cleanApiKey,
+        privateKey: cleanPrivateKey,
+        accountId: cleanAccountId,
+      );
+
+      _signer?.dispose();
+      _signer = signer;
+      _apiKey = cleanApiKey;
+      _privateKey = cleanPrivateKey;
+      _accountId = cleanAccountId;
+
+      final cachedAccessPoint =
+          await SecureStorageService.getExnessAccessPoint(cleanAccountId);
+      if (cachedAccessPoint != null && cachedAccessPoint.isNotEmpty) {
+        _accessPoint = _validateBaseUrl(cachedAccessPoint);
+      } else {
+        _accessPoint = await _discoverAccessPoint();
+        await SecureStorageService.saveExnessAccessPoint(
+          accountId: cleanAccountId,
+          accessPoint: _accessPoint,
+        );
+      }
+
+      await _loadAccountSnapshot();
+      _isConnected = true;
+      _isLoading = false;
+      _lastError = '';
+      notifyListeners();
+      return true;
+    } on TimeoutException {
+      _lastError = 'The Exness API request timed out. Please try again.';
+    } catch (error) {
+      _lastError = _safeError(error);
+    }
+
+    _isConnected = false;
+    _isLoading = false;
+    notifyListeners();
+    return false;
+  }
+
+  Future<bool> refresh() async {
+    if (_apiKey == null || _privateKey == null || _accountId.isEmpty) {
+      _lastError = 'Connect your Exness trading account first.';
+      notifyListeners();
+      return false;
+    }
+    _isLoading = true;
+    _lastError = '';
+    notifyListeners();
+    try {
+      if (_accessPoint.isEmpty) {
+        _accessPoint = await _discoverAccessPoint();
+        await SecureStorageService.saveExnessAccessPoint(
+          accountId: _accountId,
+          accessPoint: _accessPoint,
+        );
+      }
+      await _loadAccountSnapshot();
+      _isConnected = true;
+      _isLoading = false;
+      notifyListeners();
+      return true;
+    } on TimeoutException {
+      _lastError = 'The Exness API request timed out. Please try again.';
+    } catch (error) {
+      _lastError = _safeError(error);
+    }
+    _isLoading = false;
+    notifyListeners();
+    return false;
+  }
+
+  Future<List<String>> getAvailableInstruments() async {
+    _requireConnectedMarketAccess();
+    final path = '/v1/configuration/accounts/$_accountId/instruments';
+    final response = await _getJson(_accessPoint, path);
+    final raw = response['instruments'];
+    if (raw is! List) {
+      throw const FormatException('Exness returned an invalid instrument list.');
+    }
+    return raw
+        .map((value) => value.toString())
+        .where((value) => value.isNotEmpty)
+        .toList()
+      ..sort();
+  }
+
+  Future<List<Candle>> fetchMarketCandles({
+    required String instrument,
+    required String timeframe,
+    int candleCount = 220,
+  }) async {
+    _requireConnectedMarketAccess();
+    final symbolPattern = RegExp(r'^[A-Za-z0-9._-]+');
+    if (instrument.isEmpty ||
+        instrument.length > 11 ||
+        symbolPattern.stringMatch(instrument) != instrument) {
+      throw const FormatException('Invalid Exness instrument symbol.');
+    }
+    const allowedTimeframes = {
+      'S1', 'S5', 'S15', 'M1', 'M3', 'M5', 'M10', 'M15',
+      'M30', 'H1', 'H2', 'H4', 'D1', 'W1', 'MN',
+    };
+    if (!allowedTimeframes.contains(timeframe)) {
+      throw const FormatException('Unsupported Exness candle timeframe.');
+    }
+    final secondsByTimeframe = {
+      'S1': 1, 'S5': 5, 'S15': 15, 'M1': 60, 'M3': 180,
+      'M5': 300, 'M10': 600, 'M15': 900, 'M30': 1800,
+      'H1': 3600, 'H2': 7200, 'H4': 14400, 'D1': 86400,
+      'W1': 604800, 'MN': 2592000,
+    };
+    final now = DateTime.now().toUtc();
+    final from = now.subtract(Duration(
+      seconds: secondsByTimeframe[timeframe]! * candleCount,
+    ));
+    final query = Uri(queryParameters: {
+      'instrument': instrument,
+      'timeframe': timeframe,
+      'price_type': 'bid',
+      'from': from.toIso8601String(),
+      'to': now.toIso8601String(),
+    }).query;
+    final path = '/v1/market-data/accounts/$_accountId/candles?$query';
+    final response = await _getJson(_accessPoint, path);
+    final raw = response['candles'];
+    if (raw is! List) {
+      throw const FormatException('Exness returned an invalid candle history.');
+    }
+    return raw.whereType<Map>().map((item) {
+      final value = Map<String, dynamic>.from(item);
+      return Candle(
+        datetime: value['time']?.toString() ?? '',
+        open: _toDouble(value['open']),
+        high: _toDouble(value['high']),
+        low: _toDouble(value['low']),
+        close: _toDouble(value['close']),
+        volume: _toDouble(value['volume']),
+      );
+    }).toList(growable: false);
+  }
+
+  void _requireConnectedMarketAccess() {
+    if (!_isConnected ||
+        _accountId.isEmpty ||
+        _accessPoint.isEmpty ||
+        _signer == null) {
+      throw StateError(
+        'Connect an eligible Exness account before requesting market data.',
+      );
+    }
+  }
+
+  double _toDouble(dynamic value) =>
+      value == null ? 0.0 : double.tryParse(value.toString()) ?? 0.0;
+
+  Future<String> _discoverAccessPoint() async {
+    // Exness requires the Gateway host from Key Management for discovery.
+    // The published api.exness.com / api.exness-api.com review hosts are not
+    // interchangeable fallback hosts for Trader API discovery.
+    final path = '/v1/trading/access-point?account_id=$_accountId';
+    final response = await _getJson(exnessMainGateway, path);
+    return _validateBaseUrl(response['access_point']?.toString() ?? '');
+  }
+
+  Future<void> _loadAccountSnapshot() async {
+    // First verified read-only account request from Exness support/docs.
+    // Do not block a successful connection on an unverified snapshot route.
+    final accountPath =
+        '/v1/configuration/accounts/$_accountId/account';
+    _accountDetails = await _getJson(_accessPoint, accountPath);
+
+    // Account configuration does not guarantee live balance/equity or
+    // open-position fields. Keep them unavailable until their exact
+    // documented read endpoints and response schemas are integrated.
+    _balance = '—';
+    _equity = '—';
+    _usedMargin = '—';
+    _positions = const [];
+    _currency = _findCurrency(_accountDetails) ?? _currency;
+  }
+
+  String? _findCurrency(Map<String, dynamic> values) {
+    for (final key in const ['currency', 'account_currency', 'currency_code']) {
+      final value = values[key];
+      if (value is String && value.isNotEmpty) return value;
+    }
+    for (final value in values.values) {
+      if (value is Map) {
+        final nested = _findCurrency(Map<String, dynamic>.from(value));
+        if (nested != null) return nested;
+      }
+    }
+    return null;
+  }
+
+  String _validateBaseUrl(String value) {
+    final uri = Uri.tryParse(value);
+    if (uri == null ||
+        uri.scheme != 'https' ||
+        uri.host.isEmpty ||
+        uri.userInfo.isNotEmpty ||
+        (uri.path.isNotEmpty && uri.path != '/') ||
+        uri.hasQuery ||
+        uri.hasFragment) {
+      throw const FormatException(
+        'Exness returned an invalid HTTPS Gateway or Access Point URL.',
+      );
+    }
+    return uri.origin;
+  }
+
+  Future<Map<String, dynamic>> _getJson(
+    String baseUrl,
+    String pathWithQuery,
+  ) async {
+    final signer = _signer;
+    if (signer == null) {
+      throw StateError('The Exness signing credentials are not loaded.');
+    }
+    final request = http.Request(
+      'GET',
+      Uri.parse('$baseUrl$pathWithQuery'),
+    )
+      ..followRedirects = false
+      ..headers.addAll(
+        await signer.buildGetHeaders(pathWithQuery: pathWithQuery),
+      );
+
+    final streamed = await _client
+        .send(request)
+        .timeout(const Duration(seconds: 25));
+    final response = await http.Response.fromStream(streamed)
+        .timeout(const Duration(seconds: 15));
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      String message = 'Exness API returned HTTP ${response.statusCode}.';
+      try {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map) {
+          message = decoded['description']?.toString() ??
+              decoded['message']?.toString() ??
+              decoded['error']?.toString() ??
+              message;
+        }
+      } catch (_) {}
+      throw ExnessApiException(
+        response.statusCode,
+        message,
+      );
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map) {
+      throw const FormatException('Exness API returned an unexpected JSON response.');
+    }
+    return Map<String, dynamic>.from(decoded);
+  }
+
+  String _safeError(Object error) {
+    if (error is ExnessApiException) {
+      return 'Exness API HTTP ${error.statusCode}: ${error.message}';
+    }
+    if (error is SocketException) {
+      final detail = error.message;
+      final normalized = detail.toLowerCase();
+      final isDnsFailure = normalized.contains('failed host lookup') ||
+          normalized.contains('name or service not known') ||
+          normalized.contains('nodename nor servname') ||
+          normalized.contains('getaddrinfo') ||
+          normalized.contains('no address associated with hostname') ||
+          normalized.contains('could not resolve') ||
+          normalized.contains('https dns fallback');
+      if (isDnsFailure) {
+        return 'DNS lookup failed for ${error.address?.host ?? Uri.parse(exnessMainGateway).host}: $detail';
       }
       final osDetail = error.osError == null
           ? ''
