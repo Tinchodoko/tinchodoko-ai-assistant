@@ -1,5 +1,13 @@
 # Tinchodoko AI Assistant — Registro de cambios
 
+## Correcciones de integración Exness (posteriores a Build #64)
+- Cliente DNS: IP override dinámico limitado exclusivamente al hostname Gateway configurado; nunca reutiliza la IP del Gateway para el Access Point.
+- DNS-over-HTTPS: límites de espera acotados para evitar que los resolvers consuman el timeout total de la petición; mensajes de error sin afirmar bloqueos del ISP sin evidencia.
+- Peticiones REST: timeout total de 15 segundos alineado con el ejemplo oficial de Exness y diagnóstico diferenciado para descubrimiento del Access Point, lectura de cuenta y consultas de mercado.
+- Validación: Account ID limitado al rango uint64 admitido por el ejemplo oficial.
+- Interfaz: eliminadas las instrucciones que sugerían resolver api.exness.com como si fuera necesariamente el Gateway asignado.
+- Seguridad: se conserva HTTPS con validación TLS/SNI del hostname original, sin desactivar la validación de certificados ni registrar credenciales o cabeceras firmadas.
+
 Este registro documenta los cambios de implementación incorporados en las builds recientes. Las entradas de builds fallidas o intermedias describen trabajo de desarrollo y no implican que se haya publicado un APK instalable.
 
 ## Builds 56–57
