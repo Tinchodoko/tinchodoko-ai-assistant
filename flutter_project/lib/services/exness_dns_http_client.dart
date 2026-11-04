@@ -58,7 +58,6 @@ class ExnessDnsHttpClient extends http.BaseClient {
     if (addresses.isEmpty) {
       throw SocketException(
         'DNS lookup failed for ${uri.host} using system DNS and HTTPS DNS fallback.',
-        address: uri.host,
       );
     }
     return Socket.startConnect(addresses.first, uri.port);
@@ -112,7 +111,6 @@ class ExnessDnsHttpClient extends http.BaseClient {
 
     throw SocketException(
       'Could not resolve $host using Android DNS, Cloudflare DoH or Google DoH.',
-      address: host,
     );
   }
 
@@ -174,7 +172,6 @@ class ExnessDnsHttpClient extends http.BaseClient {
   @override
   void close() {
     _delegate.close();
-    _httpClient.close(force: true);
     super.close();
   }
 }
