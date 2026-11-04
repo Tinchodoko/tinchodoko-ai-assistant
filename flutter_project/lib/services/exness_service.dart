@@ -424,8 +424,13 @@ class ExnessApiException implements Exception {
   }
 
   void _requireConnectedMarketAccess() {
-    if (!_isConnected || _accountId.isEmpty || _accessPoint.isEmpty || _signer == null) {
-      throw StateError('Connect an eligible Exness account before requesting market data.');
+    if (!_isConnected ||
+        _accountId.isEmpty ||
+        _accessPoint.isEmpty ||
+        _signer == null) {
+      throw StateError(
+        'Connect an eligible Exness account before requesting market data.',
+      );
     }
   }
 
