@@ -148,18 +148,20 @@ class ExnessDnsHttpClient extends http.BaseClient {
 
     // Connect to the resolver's published IP while retaining the resolver
     // hostname in the URI, so HttpClient performs normal TLS/SNI validation.
-    final dohHttp = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 4)
-      ..findProxy = (_) => 'DIRECT'
-      ..connectionFactory = (uri, proxyHost, proxyPort) {
-        if (proxyHost != null) {
-          if (proxyPort == null) {
-            throw const SocketException('Proxy port is missing.');
-          }
-          return Socket.startConnect(proxyHost, proxyPort);
+    final dohHttp = HttpClient();
+    dohHttp.connectionTimeout = const Duration(seconds: 4);
+    dohHttp.findProxy = (uri) {
+      return 'DIRECT';
+    };
+    dohHttp.connectionFactory = (uri, proxyHost, proxyPort) {
+      if (proxyHost != null) {
+        if (proxyPort == null) {
+          throw const SocketException('Proxy port is missing.');
         }
-        return _connectToAddress(uri, pinnedAddress);
-      };
+        return Socket.startConnect(proxyHost, proxyPort);
+      }
+      return _connectToAddress(uri, pinnedAddress);
+    };
 
     try {
       final uri = Uri.https(
