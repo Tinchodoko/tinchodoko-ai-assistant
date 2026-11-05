@@ -25,6 +25,7 @@ class InformationTab extends StatelessWidget {
   ];
 
   static const List<Map<String, String>> _changes = [
+    {'version': 'Exness Service Fix — Build #76', 'description': 'Se elimina código duplicado y truncado al final de exness_service.dart detectado por flutter analyze en Build #75. Se conserva la lógica activa de conexión, firma Ed25519, Gateway/Access Point, cuenta y datos de mercado. Pendiente de validación en Build #76.'},
     {'version': 'Dependency Fix — Build #74', 'description': 'Se actualiza share_plus a ^10.0.1 para resolver el conflicto de dependencias web con file_picker ^8.1.7. Pendiente de validación mediante una nueva build.'},
     {'version': 'Exness Credentials UI', 'description': 'Controles independientes para mostrar u ocultar API Key y Secret; guardado local protegido; exportación JSON sin cifrar con advertencia e importación desde JSON. Incluye Gateway, API, Secret, Account ID y Gateway IP opcional.'},
     {'version': 'Python Backend — Etapa 1', 'description': 'Se incorpora un servicio FastAPI de solo lectura con firma Ed25519, descubrimiento del Access Point mediante el Gateway DNS de Key Management, consulta de cuenta y pruebas automatizadas. La conexión Flutter → Python queda pendiente de la siguiente etapa.'},

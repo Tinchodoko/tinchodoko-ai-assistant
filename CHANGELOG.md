@@ -1,3 +1,8 @@
+## Corrección estructural del servicio Exness (2026-11-04)
+- Build #75 detectó un bloque de código duplicado y truncado al final de `flutter_project/lib/services/exness_service.dart`, fuera de las declaraciones de clase.
+- Se elimina únicamente el fragmento residual duplicado, conservando la implementación activa de conexión, firma, descubrimiento del Access Point, lectura de cuenta, consultas de mercado y manejo de errores.
+- La nueva compilación debe validar `flutter analyze`, pruebas Flutter y generación del APK; esta corrección no habilita operaciones de trading.
+
 ## Corrección de dependencias Flutter (2026-11-04)
 - Se actualiza `share_plus` de `^9.0.0` a `^10.0.1` para resolver la incompatibilidad de restricciones `web` con `file_picker ^8.1.7` detectada en GitHub Actions Build #74.
 - Se conserva `file_picker ^8.1.7`; la actualización evita cambiar innecesariamente a una versión mayor de `share_plus`.
