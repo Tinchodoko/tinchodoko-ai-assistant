@@ -25,6 +25,7 @@ class InformationTab extends StatelessWidget {
   ];
 
   static const List<Map<String, String>> _changes = [
+    {'version': 'Exness Official Gateway & HTTP — 2026-11-05', 'description': 'Se adoptan exclusivamente los dos hosts confirmados por soporte: api.exness.com y api.exness-api.com. Descubrimiento firmado con failover de transporte entre ambos, cliente HTTP/DNS estándar de la plataforma según el ejemplo oficial, sin IP Override ni IPs inventadas. La firma Ed25519 mantiene el vector sintético oficial. Pendiente de validar conexión Demo real.'},
     {'version': 'Android Toolchain Fix — Build #77', 'description': 'Build #76 pasó las pruebas Python, Flutter y flutter analyze, pero falló al generar el APK por incompatibilidad AAPT2/SDK 35 y metadatos Kotlin. Se fija Android Gradle Plugin 8.6.1, Gradle 8.7 y Kotlin 1.9.24 en la estructura Android generada por CI. Pendiente de validación en Build #77.'},
     {'version': 'Exness Service Fix — Build #76', 'description': 'Se elimina código duplicado y truncado al final de exness_service.dart detectado por flutter analyze en Build #75. Se conserva la lógica activa de conexión, firma Ed25519, Gateway/Access Point, cuenta y datos de mercado. Pendiente de validación en Build #76.'},
     {'version': 'Dependency Fix — Build #74', 'description': 'Se actualiza share_plus a ^10.0.1 para resolver el conflicto de dependencias web con file_picker ^8.1.7. Pendiente de validación mediante una nueva build.'},
