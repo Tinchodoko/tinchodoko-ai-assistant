@@ -24,7 +24,7 @@ class _ExnessTabState extends State<ExnessTab> {
   final _privateKeyController = TextEditingController();
   final _accountIdController =
       TextEditingController(text: '15000251367');
-  final _gatewayUrlController = TextEditingController();
+  final _gatewayUrlController = TextEditingController(text: 'https://api.exness.com');
   final _gatewayIpController = TextEditingController();
   bool _showIpOverride = false;
   bool _obscureApiKey = true;
@@ -376,7 +376,7 @@ class _ExnessTabState extends State<ExnessTab> {
                             autocorrect: false,
                             enableSuggestions: false,
                             decoration: const InputDecoration(
-                              hintText: 'HTTPS Gateway hostname confirmed by Exness support',
+                              hintText: 'https://api.exness.com (alternative: https://api.exness-api.com)',
                               prefixIcon: Icon(Icons.dns_outlined),
                             ),
                           ),
