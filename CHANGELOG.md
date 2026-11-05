@@ -1,3 +1,9 @@
+## Corrección de toolchain Android — Build #77 (2026-11-04)
+- Build #76 confirmó que las pruebas Python, pruebas Flutter y `flutter analyze` pasan, pero falló al generar el APK durante el enlace de recursos Android.
+- El log identificó incompatibilidad del Android Gradle Plugin generado con la tabla de recursos del SDK 35 (AAPT2) y metadatos Kotlin 1.9.
+- Se fija Android Gradle Plugin en 8.6.1, Gradle Wrapper en 8.7 y Kotlin Gradle Plugin en 1.9.24 al generar la estructura Android en CI.
+- La corrección solo modifica el toolchain de compilación; no altera el flujo Exness ni habilita operaciones de trading. La compilación #77 debe validar el resultado.
+
 ## Corrección estructural del servicio Exness (2026-11-04)
 - Build #75 detectó un bloque de código duplicado y truncado al final de `flutter_project/lib/services/exness_service.dart`, fuera de las declaraciones de clase.
 - Se elimina únicamente el fragmento residual duplicado, conservando la implementación activa de conexión, firma, descubrimiento del Access Point, lectura de cuenta, consultas de mercado y manejo de errores.

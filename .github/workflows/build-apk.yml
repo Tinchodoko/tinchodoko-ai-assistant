@@ -52,9 +52,13 @@ jobs:
           rm -rf android
           cp -R /tmp/tinchodoko_android/android android
           sed -i 's/android:label="ai_assistant"/android:label="Tinchodoko AI Assistant"/' android/app/src/main/AndroidManifest.xml
-          # shared_preferences_android 2.4.x requires Kotlin 1.9 metadata.
+          # Keep the generated Android toolchain compatible with SDK 35 and current plugins.
+          # AGP 8.6.1 supports API 35; Gradle 8.7 is its minimum compatible wrapper.
+          sed -i 's/id "com.android.application" version "[^"]*"/id "com.android.application" version "8.6.1"/' android/settings.gradle
           sed -i 's/id "org.jetbrains.kotlin.android" version "[^"]*"/id "org.jetbrains.kotlin.android" version "1.9.24"/' android/settings.gradle
-          grep 'org.jetbrains.kotlin.android' android/settings.gradle
+          sed -i 's#distributionUrl=.*#distributionUrl=https\\://services.gradle.org/distributions/gradle-8.7-all.zip#' android/gradle/wrapper/gradle-wrapper.properties
+          grep -E 'com.android.application|org.jetbrains.kotlin.android' android/settings.gradle
+          grep 'distributionUrl=' android/gradle/wrapper/gradle-wrapper.properties
         working-directory: flutter_project
 
       - name: 📦 Instalar dependencias

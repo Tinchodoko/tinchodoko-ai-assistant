@@ -25,6 +25,7 @@ class InformationTab extends StatelessWidget {
   ];
 
   static const List<Map<String, String>> _changes = [
+    {'version': 'Android Toolchain Fix — Build #77', 'description': 'Build #76 pasó las pruebas Python, Flutter y flutter analyze, pero falló al generar el APK por incompatibilidad AAPT2/SDK 35 y metadatos Kotlin. Se fija Android Gradle Plugin 8.6.1, Gradle 8.7 y Kotlin 1.9.24 en la estructura Android generada por CI. Pendiente de validación en Build #77.'},
     {'version': 'Exness Service Fix — Build #76', 'description': 'Se elimina código duplicado y truncado al final de exness_service.dart detectado por flutter analyze en Build #75. Se conserva la lógica activa de conexión, firma Ed25519, Gateway/Access Point, cuenta y datos de mercado. Pendiente de validación en Build #76.'},
     {'version': 'Dependency Fix — Build #74', 'description': 'Se actualiza share_plus a ^10.0.1 para resolver el conflicto de dependencias web con file_picker ^8.1.7. Pendiente de validación mediante una nueva build.'},
     {'version': 'Exness Credentials UI', 'description': 'Controles independientes para mostrar u ocultar API Key y Secret; guardado local protegido; exportación JSON sin cifrar con advertencia e importación desde JSON. Incluye Gateway, API, Secret, Account ID y Gateway IP opcional.'},
