@@ -31,7 +31,7 @@ The health check is `GET /health`. The authenticated read-only endpoint is `POST
 ```bash
 cd backend
 pip install -r requirements.txt
-python -m unittest discover -s tests -v
+python -m unittest discover -s tests -t . -v
 ```
 
 The signing test uses Exness' published synthetic RFC 8032 test vector; it is not a real credential.
