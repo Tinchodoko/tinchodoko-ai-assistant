@@ -25,6 +25,7 @@ class InformationTab extends StatelessWidget {
   ];
 
   static const List<Map<String, String>> _changes = [
+    {'version': 'Python Backend — Etapa 1', 'description': 'Se incorpora un servicio FastAPI de solo lectura con firma Ed25519, descubrimiento del Access Point mediante el Gateway DNS de Key Management, consulta de cuenta y pruebas automatizadas. La conexión Flutter → Python queda pendiente de la siguiente etapa.'},
     {'version': 'Build #60', 'description': 'Ajuste del generador de notas de publicación para producir un archivo RELEASE_NOTES.md con historial, instalación y datos de build mediante comandos shell compatibles.'},
     {'version': 'Build #59', 'description': 'Documentación de las actualizaciones realizadas en la propia pestaña Information y en el registro central de cambios (builds 56 y 57).'},
     {'version': 'Build #57', 'description': 'Sincronización del registro central CHANGELOG.md con las novedades y correcciones documentadas para las builds 52 a 55.'},

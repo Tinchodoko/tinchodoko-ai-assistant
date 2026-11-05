@@ -1,3 +1,11 @@
+## Python backend — etapa 1 (2026-11-04)
+- Se incorpora un servicio FastAPI independiente para la integración Exness de solo lectura.
+- Python implementa la firma Ed25519, valida la clave de 128 caracteres hexadecimales y comprueba que la mitad pública corresponda a la semilla.
+- Se implementa descubrimiento firmado del Access Point mediante el Gateway DNS configurado en Key Management y consulta firmada de detalles de cuenta.
+- Se agregan autenticación del cliente del backend, validación HTTPS, timeout de 15 segundos y respuestas de error sin incluir credenciales ni cabeceras firmadas.
+- Se agregan pruebas unitarias basadas en el vector sintético oficial de Exness y validaciones de URL/Account ID.
+- El backend no persiste credenciales y no incorpora endpoints de trading. La app Flutter todavía no está migrada a este backend en esta etapa.
+
 # Tinchodoko AI Assistant — Registro de cambios
 
 ## Correcciones de integración Exness (posteriores a Build #64)
