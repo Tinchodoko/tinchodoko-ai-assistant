@@ -1,3 +1,8 @@
+## Corrección de dependencias Flutter (2026-11-04)
+- Se actualiza `share_plus` de `^9.0.0` a `^10.0.1` para resolver la incompatibilidad de restricciones `web` con `file_picker ^8.1.7` detectada en GitHub Actions Build #74.
+- Se conserva `file_picker ^8.1.7`; la actualización evita cambiar innecesariamente a una versión mayor de `share_plus`.
+- La compilación APK y las pruebas Flutter deben volver a ejecutarse para validar la corrección.
+
 ## Exness credentials UI (2026-11-04)
 - API Key y Private Secret ahora tienen controles independientes para mostrar u ocultar su contenido.
 - Se agrega guardado manual de Gateway, API Key, Secret, Account ID y Gateway IP opcional mediante Android secure storage.
