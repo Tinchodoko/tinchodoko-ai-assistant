@@ -1,3 +1,9 @@
+## Exness credentials UI (2026-11-04)
+- API Key y Private Secret ahora tienen controles independientes para mostrar u ocultar su contenido.
+- Se agrega guardado manual de Gateway, API Key, Secret, Account ID y Gateway IP opcional mediante Android secure storage.
+- Se agrega importación desde JSON y exportación JSON en texto plano con confirmación y advertencia de seguridad.
+- El formato de exportación incluye Gateway, API, Secret y Account; los archivos exportados no se agregan al repositorio ni se registran en logs.
+
 ## Python backend — etapa 1 (2026-11-04)
 - Se incorpora un servicio FastAPI independiente para la integración Exness de solo lectura.
 - Python implementa la firma Ed25519, valida la clave de 128 caracteres hexadecimales y comprueba que la mitad pública corresponda a la semilla.

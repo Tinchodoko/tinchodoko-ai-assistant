@@ -57,11 +57,18 @@ class SecureStorageService {
     required String privateKey,
     required String accountId,
     required String gatewayUrl,
+    String gatewayIp = '',
   }) async {
     await _storage.write(key: _exnessApiKey, value: apiKey.trim());
     await _storage.write(key: _exnessPrivateKey, value: privateKey.trim());
     await _storage.write(key: _exnessAccountId, value: accountId.trim());
     await _storage.write(key: _exnessGatewayUrl, value: gatewayUrl.trim());
+    final cleanGatewayIp = gatewayIp.trim();
+    if (cleanGatewayIp.isEmpty) {
+      await _storage.delete(key: _exnessGatewayIp);
+    } else {
+      await _storage.write(key: _exnessGatewayIp, value: cleanGatewayIp);
+    }
   }
 
   static Future<Map<String, String>> getExnessCredentials() async {

@@ -25,6 +25,7 @@ class InformationTab extends StatelessWidget {
   ];
 
   static const List<Map<String, String>> _changes = [
+    {'version': 'Exness Credentials UI', 'description': 'Controles independientes para mostrar u ocultar API Key y Secret; guardado local protegido; exportación JSON sin cifrar con advertencia e importación desde JSON. Incluye Gateway, API, Secret, Account ID y Gateway IP opcional.'},
     {'version': 'Python Backend — Etapa 1', 'description': 'Se incorpora un servicio FastAPI de solo lectura con firma Ed25519, descubrimiento del Access Point mediante el Gateway DNS de Key Management, consulta de cuenta y pruebas automatizadas. La conexión Flutter → Python queda pendiente de la siguiente etapa.'},
     {'version': 'Build #60', 'description': 'Ajuste del generador de notas de publicación para producir un archivo RELEASE_NOTES.md con historial, instalación y datos de build mediante comandos shell compatibles.'},
     {'version': 'Build #59', 'description': 'Documentación de las actualizaciones realizadas en la propia pestaña Information y en el registro central de cambios (builds 56 y 57).'},

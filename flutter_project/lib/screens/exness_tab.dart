@@ -1,4 +1,10 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:cross_file/cross_file.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../services/exness_service.dart';
 import '../services/secure_storage_service.dart';
@@ -21,7 +27,9 @@ class _ExnessTabState extends State<ExnessTab> {
   final _gatewayUrlController = TextEditingController();
   final _gatewayIpController = TextEditingController();
   bool _showIpOverride = false;
+  bool _obscureApiKey = true;
   bool _obscurePrivateKey = true;
+  bool _credentialsBusy = false;
   String _selectedBroker = 'Exness';
 
   @override
@@ -51,6 +59,139 @@ class _ExnessTabState extends State<ExnessTab> {
     _gatewayUrlController.dispose();
     _gatewayIpController.dispose();
     super.dispose();
+  }
+
+  Future<void> _saveCredentials() async {
+    if (_credentialsBusy) return;
+    if (_apiKeyController.text.trim().isEmpty ||
+        _privateKeyController.text.trim().isEmpty ||
+        _accountIdController.text.trim().isEmpty ||
+        _gatewayUrlController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Complete Gateway, API Key, Secret and Account ID before saving.')),
+      );
+      return;
+    }
+    setState(() => _credentialsBusy = true);
+    try {
+      await SecureStorageService.saveExnessCredentials(
+        apiKey: _apiKeyController.text,
+        privateKey: _privateKeyController.text,
+        accountId: _accountIdController.text,
+        gatewayUrl: _gatewayUrlController.text,
+        gatewayIp: _gatewayIpController.text,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Exness credentials saved securely on this device.')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not save Exness credentials securely.')),
+      );
+    } finally {
+      if (mounted) setState(() => _credentialsBusy = false);
+    }
+  }
+
+  Future<void> _exportCredentials() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Export credentials without encryption?'),
+        content: const Text(
+          'The JSON file contains Gateway, API Key, private Secret and Account ID in plain text. Anyone who obtains it may access your Exness API within the key permissions. Keep it private and delete exported copies when finished.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('CANCEL'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('EXPORT JSON'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final payload = <String, String>{
+      'gateway': _gatewayUrlController.text.trim(),
+      'api': _apiKeyController.text.trim(),
+      'secret': _privateKeyController.text.trim(),
+      'account': _accountIdController.text.trim(),
+      'gatewayIp': _gatewayIpController.text.trim(),
+      'format': 'tinchodoko-exness-credentials',
+      'version': '1',
+    };
+    final bytes = Uint8List.fromList(
+      utf8.encode(const JsonEncoder.withIndent('  ').convert(payload)),
+    );
+    try {
+      await Share.shareXFiles(
+        [XFile.fromData(bytes, mimeType: 'application/json', name: 'exness_credentials_export.json')],
+        text: 'Exness backup — contains unencrypted credentials.',
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open the system share sheet for the JSON export.')),
+      );
+    }
+  }
+
+  Future<void> _importCredentials() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) return;
+      final bytes = result.files.single.bytes;
+      if (bytes == null) {
+        throw const FormatException('The selected JSON file could not be read.');
+      }
+      final decoded = jsonDecode(utf8.decode(bytes));
+      if (decoded is! Map<String, dynamic>) {
+        throw const FormatException('The JSON root must be an object.');
+      }
+      final gateway = decoded['gateway'] ?? decoded['gatewayUrl'];
+      final api = decoded['api'] ?? decoded['apiKey'];
+      final privateSecret = decoded['secret'] ?? decoded['privateKey'];
+      final account = decoded['account'] ?? decoded['accountId'];
+      if ([gateway, api, privateSecret, account].any((value) => value is! String)) {
+        throw const FormatException('JSON must contain gateway, api, secret and account as strings.');
+      }
+      if ([gateway, api, privateSecret, account].any((value) => (value as String).trim().isEmpty)) {
+        throw const FormatException('Required credential fields cannot be empty.');
+      }
+      if (!mounted) return;
+      setState(() {
+        _gatewayUrlController.text = gateway as String;
+        _apiKeyController.text = api as String;
+        _privateKeyController.text = privateSecret as String;
+        _accountIdController.text = account as String;
+        _gatewayIpController.text = decoded['gatewayIp'] is String ? decoded['gatewayIp'] as String : '';
+      });
+      await _saveCredentials();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('JSON imported. Review the values before connecting.')),
+      );
+    } on FormatException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Invalid credentials JSON: ${error.message}')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not import the selected JSON file.')),
+      );
+    }
   }
 
   Future<void> _connect() async {
@@ -299,10 +440,16 @@ class _ExnessTabState extends State<ExnessTab> {
                             enabled: !connected && !loading,
                             autocorrect: false,
                             enableSuggestions: false,
-                            decoration: const InputDecoration(
+                            decoration: InputDecoration(
                               hintText: 'Put your API key for "Exness"',
-                              prefixIcon: Icon(Icons.vpn_key),
+                              prefixIcon: const Icon(Icons.vpn_key),
+                              suffixIcon: IconButton(
+                                tooltip: _obscureApiKey ? 'Show API Key' : 'Hide API Key',
+                                onPressed: () => setState(() => _obscureApiKey = !_obscureApiKey),
+                                icon: Icon(_obscureApiKey ? Icons.visibility_off : Icons.visibility),
+                              ),
                             ),
+                            obscureText: _obscureApiKey,
                           ),
                           const SizedBox(height: 14),
                           const Text(
@@ -350,6 +497,28 @@ class _ExnessTabState extends State<ExnessTab> {
                               hintText: 'Enter your Exness trading account ID',
                               prefixIcon: Icon(Icons.numbers),
                             ),
+                          ),
+                          const SizedBox(height: 16),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              OutlinedButton.icon(
+                                onPressed: loading || _credentialsBusy ? null : _saveCredentials,
+                                icon: const Icon(Icons.save_outlined),
+                                label: const Text('SAVE'),
+                              ),
+                              OutlinedButton.icon(
+                                onPressed: loading || _credentialsBusy ? null : _importCredentials,
+                                icon: const Icon(Icons.file_open_outlined),
+                                label: const Text('IMPORT JSON'),
+                              ),
+                              OutlinedButton.icon(
+                                onPressed: loading || _credentialsBusy ? null : _exportCredentials,
+                                icon: const Icon(Icons.ios_share),
+                                label: const Text('EXPORT JSON'),
+                              ),
+                            ],
                           ),
                           const SizedBox(height: 16),
                           SizedBox(
