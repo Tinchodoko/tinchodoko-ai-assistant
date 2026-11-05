@@ -1,3 +1,9 @@
+## Exness Gateway y transporte HTTP — corrección (2026-11-05)
+- Se utilizan exclusivamente los dos hosts confirmados por Exness Support: `https://api.exness.com` y `https://api.exness-api.com`.
+- El descubrimiento firmado `GET /v1/trading/access-point?account_id=...` prueba primero el host configurado y utiliza el segundo como failover únicamente ante errores de transporte; los errores HTTP/autenticación no se ocultan.
+- Se reemplaza el cliente DNS-over-HTTPS/IP pinning personalizado por el cliente HTTP estándar de la plataforma, alineado con el ejemplo oficial de Exness y evitando resolución DNS manual y direcciones IP no verificadas.
+- La IP Override heredada se limpia y no se utiliza. El Access Point sigue siendo extraído de la respuesta y validado como origen HTTPS antes de consultar `GET /v1/configuration/accounts/{account_id}/account`.
+- Se conserva la firma Ed25519 ya cubierta por el vector sintético oficial. La integración continúa en modo de solo lectura; esta modificación requiere validar con una nueva build y una conexión Demo real.
 ## Corrección de toolchain Android — Build #77 (2026-11-04)
 - Build #76 confirmó que las pruebas Python, pruebas Flutter y `flutter analyze` pasan, pero falló al generar el APK durante el enlace de recursos Android.
 - El log identificó incompatibilidad del Android Gradle Plugin generado con la tabla de recursos del SDK 35 (AAPT2) y metadatos Kotlin 1.9.
