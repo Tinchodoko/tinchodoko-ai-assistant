@@ -137,7 +137,6 @@ class ExnessService extends ChangeNotifier {
         accountId: cleanAccountId,
         gatewayUrl: validatedGatewayUrl,
       );
-      await SecureStorageService.saveGatewayIp(cleanGatewayIp);
 
       _signer?.dispose();
       _signer = signer;
@@ -352,7 +351,7 @@ class ExnessService extends ChangeNotifier {
     throw TimeoutException(
       'Gateway discovery failed using both Exness-confirmed hosts '
       '(api.exness.com and api.exness-api.com). Last network error: '
-      '${lastTransportError == null ? 'unknown transport failure' : _safeError(lastTransportError!)}',
+      '${lastTransportError == null ? 'unknown transport failure' : _safeError(lastTransportError)}',
     );
   }
   Future<void> _loadAccountSnapshot() async {
