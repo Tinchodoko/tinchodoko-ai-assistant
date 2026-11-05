@@ -26,7 +26,6 @@ class _ExnessTabState extends State<ExnessTab> {
       TextEditingController(text: '15000251367');
   final _gatewayUrlController = TextEditingController(text: 'https://api.exness.com');
   final _gatewayIpController = TextEditingController();
-  bool _showIpOverride = false;
   bool _obscureApiKey = true;
   bool _obscurePrivateKey = true;
   bool _credentialsBusy = false;
@@ -46,7 +45,7 @@ class _ExnessTabState extends State<ExnessTab> {
       _privateKeyController.text = values['privateKey'] ?? '';
       _accountIdController.text =
           values['accountId'] ?? _accountIdController.text;
-      _gatewayUrlController.text = values['gatewayUrl'] ?? '';
+      _gatewayUrlController.text = values['gatewayUrl'] ?? 'https://api.exness.com';
       _gatewayIpController.text = values['gatewayIp'] ?? '';
     });
   }
@@ -381,50 +380,6 @@ class _ExnessTabState extends State<ExnessTab> {
                             ),
                           ),
                           const SizedBox(height: 8),
-                          // ── Gateway IP override (ISP DNS bypass) ──────────
-                          InkWell(
-                            onTap: () =>
-                                setState(() => _showIpOverride = !_showIpOverride),
-                            borderRadius: BorderRadius.circular(6),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 4),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    _showIpOverride
-                                        ? Icons.expand_less
-                                        : Icons.expand_more,
-                                    size: 16,
-                                    color: AppTheme.textSecondary,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    'Gateway IP override (optional; exact Gateway host only)',
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      color: AppTheme.textSecondary,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          if (_showIpOverride) ...[
-                            const SizedBox(height: 4),
-                            TextField(
-                              controller: _gatewayIpController,
-                              enabled: !connected && !loading,
-                              keyboardType: TextInputType.number,
-                              autocorrect: false,
-                              enableSuggestions: false,
-                              decoration: const InputDecoration(
-                                hintText: 'IP address verified for this exact Gateway hostname',
-                                prefixIcon: Icon(Icons.router_outlined),
-                                helperText:
-                                    'Leave empty unless Exness confirms an IP for the configured Gateway hostname.',
-                              ),
-                            ),
-                          ],
                           const SizedBox(height: 14),
                           const Text(
                             'API Key',
