@@ -5,7 +5,6 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
-import 'exness_dns_http_client.dart';
 import 'exness_request_signer.dart';
 import 'secure_storage_service.dart';
 import '../models/market_data.dart';
@@ -50,7 +49,7 @@ class ExnessPosition {
 
 class ExnessService extends ChangeNotifier {
   ExnessService({http.Client? client})
-      : _client = client ?? ExnessDnsHttpClient();
+      : _client = client ?? http.Client();
 
   http.Client _client;
   bool _isLoading = false;
@@ -110,28 +109,18 @@ class ExnessService extends ChangeNotifier {
 
     try {
       final validatedGatewayUrl = _validateBaseUrl(cleanGatewayUrl);
-      final gatewayHost = Uri.parse(validatedGatewayUrl).host;
-      final cleanGatewayIp = gatewayIp?.trim() ?? '';
-      if (cleanGatewayIp.isNotEmpty) {
-        final parsedIp = InternetAddress.tryParse(cleanGatewayIp);
-        if (parsedIp == null) {
-          throw const FormatException(
-            'Gateway IP override must be a valid IPv4 or IPv6 address.',
-          );
-        }
-      }
-      // Apply the override only to the exact configured Gateway hostname.
-      // Never reuse a Gateway IP for the separately discovered Access Point.
-      if (_client is ExnessDnsHttpClient) {
-        (_client as ExnessDnsHttpClient).setHostOverride(
-          gatewayHost,
-          cleanGatewayIp.isEmpty ? null : cleanGatewayIp,
-        );
-      } else if (cleanGatewayIp.isNotEmpty) {
-        throw StateError(
-          'Manual Gateway IP override is unavailable with the injected HTTP client.',
+      const supportedGatewayHosts = {
+        'api.exness.com',
+        'api.exness-api.com',
+      };
+      if (!supportedGatewayHosts.contains(Uri.parse(validatedGatewayUrl).host)) {
+        throw const FormatException(
+          'Use only the Exness-confirmed Gateway URLs: https://api.exness.com or https://api.exness-api.com.',
         );
       }
+      // Match the official example: use the platform HTTP/DNS stack.
+      // The optional legacy IP override is deliberately cleared and unused.
+      await SecureStorageService.saveGatewayIp('');
 
       // Validate key format and its embedded public-key half before saving.
       final signer = ExnessRequestSigner(
@@ -312,24 +301,60 @@ class ExnessService extends ChangeNotifier {
       value == null ? 0.0 : double.tryParse(value.toString()) ?? 0.0;
 
   Future<String> _discoverAccessPoint() async {
-    // Exness requires the Gateway host from Key Management for discovery.
-    // The published api.exness.com / api.exness-api.com review hosts are not
-    // interchangeable fallback hosts for Trader API discovery.
+    // These are the only two Gateway base URLs confirmed by Exness Support.
+    // Try the configured one first, then the confirmed alternative only for
+    // transport failures. HTTP/authentication errors must not be masked.
+    const supportedGateways = [
+      'https://api.exness.com',
+      'https://api.exness-api.com',
+    ];
+    final configured = _validateBaseUrl(_gatewayUrl);
+    final candidates = <String>[
+      configured,
+      ...supportedGateways.where((url) => url != configured),
+    ];
     final path = '/v1/trading/access-point?account_id=$_accountId';
-    final response = await _getJson(
-      _gatewayUrl,
-      path,
-      stage: 'Gateway Access Point discovery',
-    );
-    final value = response['access_point']?.toString() ?? '';
-    if (value.isEmpty) {
-      throw const FormatException(
-        'Exness Gateway discovery response is missing access_point.',
-      );
-    }
-    return _validateBaseUrl(value);
-  }
+    Object? lastTransportError;
 
+    for (final gateway in candidates) {
+      try {
+        final response = await _getJson(
+          gateway,
+          path,
+          stage: 'Gateway Access Point discovery at ${Uri.parse(gateway).host}',
+        );
+        final value = response['access_point']?.toString() ?? '';
+        if (value.isEmpty) {
+          throw const FormatException(
+            'Exness Gateway discovery response is missing access_point.',
+          );
+        }
+        if (gateway != _gatewayUrl) {
+          _gatewayUrl = gateway;
+          final credentials = await SecureStorageService.getExnessCredentials();
+          await SecureStorageService.saveExnessCredentials(
+            apiKey: credentials['apiKey'] ?? _apiKey ?? '',
+            privateKey: credentials['privateKey'] ?? _privateKey ?? '',
+            accountId: _accountId,
+            gatewayUrl: gateway,
+          );
+        }
+        return _validateBaseUrl(value);
+      } on TimeoutException catch (error) {
+        lastTransportError = error;
+      } on SocketException catch (error) {
+        lastTransportError = error;
+      } on http.ClientException catch (error) {
+        lastTransportError = error;
+      }
+    }
+
+    throw TimeoutException(
+      'Gateway discovery failed using both Exness-confirmed hosts '
+      '(api.exness.com and api.exness-api.com). Last network error: '
+      '${lastTransportError == null ? 'unknown transport failure' : _safeError(lastTransportError!)}',
+    );
+  }
   Future<void> _loadAccountSnapshot() async {
     // First verified read-only account request from Exness support/docs.
     // Do not block a successful connection on an unverified snapshot route.
