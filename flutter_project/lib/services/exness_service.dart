@@ -1,8 +1,9 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+
+import 'exness_dns_http_client.dart';
 import 'package:http/io_client.dart';
 
 import '../models/market_data.dart';
@@ -40,94 +41,7 @@ class ExnessTick {
 }
 
 class ExnessService extends ChangeNotifier {
-  // Use the normal Android resolver first. If it cannot resolve Render, retry
-  // through DNS-over-HTTPS using resolver IPs and verified TLS/SNI hostnames.
-  static const String _backendHost = 'tinchodoko-bridge.onrender.com';
-
-  static Future<List<InternetAddress>> _resolveBackendHost(String host) async {
-    try {
-      final systemAddresses = await InternetAddress.lookup(host)
-          .timeout(const Duration(seconds: 4));
-      if (systemAddresses.isNotEmpty) return systemAddresses;
-    } catch (_) {
-      // Continue with DNS-over-HTTPS when the device resolver fails.
-    }
-
-    const resolvers = <({String host, String ip, String path})>[
-      (host: 'cloudflare-dns.com', ip: '1.1.1.1', path: '/dns-query'),
-      (host: 'dns.google', ip: '8.8.8.8', path: '/resolve'),
-    ];
-
-    for (final resolver in resolvers) {
-      final resolverClient = HttpClient()
-        ..connectionFactory = (uri, proxyHost, proxyPort) {
-          // Connect to the resolver IP, while HttpClient retains the URL host
-          // for TLS SNI and certificate hostname verification.
-          return Socket.startConnect(
-            InternetAddress(resolver.ip),
-            uri.port,
-          );
-        };
-
-      try {
-        final uri = Uri.https(
-          resolver.host,
-          resolver.path,
-          <String, String>{'name': host, 'type': 'A'},
-        );
-        final request = await resolverClient.getUrl(uri)
-            .timeout(const Duration(seconds: 6));
-        request.headers.set(HttpHeaders.acceptHeader, 'application/dns-json');
-        final response = await request.close()
-            .timeout(const Duration(seconds: 6));
-        if (response.statusCode != HttpStatus.ok) continue;
-
-        final payload = jsonDecode(await response.transform(utf8.decoder).join());
-        final answers = payload is Map<String, dynamic> ? payload['Answer'] : null;
-        if (answers is! List) continue;
-
-        final addresses = <InternetAddress>[];
-        for (final answer in answers) {
-          if (answer is! Map<String, dynamic> || answer['type'] != 1) continue;
-          final value = answer['data'];
-          if (value is! String) continue;
-          try {
-            addresses.add(InternetAddress(value));
-          } on FormatException {
-            // Ignore non-address DNS answer data.
-          }
-        }
-        if (addresses.isNotEmpty) return addresses;
-      } catch (_) {
-        // Try the next independent DoH resolver.
-      } finally {
-        resolverClient.close(force: true);
-      }
-    }
-
-    throw SocketException('Unable to resolve $host using system DNS or DNS-over-HTTPS.');
-  }
-
-  static http.Client _createBackendHttpClient() {
-    final ioClient = HttpClient()
-      ..connectionFactory = (uri, proxyHost, proxyPort) async {
-        if (proxyHost != null && proxyPort != null) {
-          return Socket.startConnect(proxyHost, proxyPort);
-        }
-        if (uri.host != _backendHost) {
-          return Socket.startConnect(uri.host, uri.port);
-        }
-        final addresses = await _resolveBackendHost(uri.host);
-        final ipv4 = addresses.where(
-          (address) => address.type == InternetAddressType.IPv4,
-        );
-        final selected = ipv4.isNotEmpty ? ipv4.first : addresses.first;
-        return Socket.startConnect(selected, uri.port);
-      };
-    return IOClient(ioClient);
-  }
   static const String _backendBaseUrl = 'https://tinchodoko-bridge.onrender.com';
-  // Render Free services can take a while to wake after inactivity.
   static const Duration _requestTimeout = Duration(seconds: 90);
 
   bool _isConnected = false;
@@ -204,7 +118,7 @@ class ExnessService extends ChangeNotifier {
       }
 
       final uri = Uri.parse('$_backendBaseUrl/api/exness/connect');
-      final backendClient = _createBackendHttpClient();
+      final backendClient = ExnessDnsHttpClient();
       late final http.Response response;
       try {
         response = await backendClient
