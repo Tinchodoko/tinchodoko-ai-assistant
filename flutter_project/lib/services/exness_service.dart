@@ -1,7 +1,8 @@
 import 'dart:convert';
-import 'package:cryptography/cryptography.dart';
+
 import 'package:flutter/foundation.dart';
-import 'package:crypto/crypto.dart' as crypto;
+import 'package:http/http.dart' as http;
+
 import '../models/market_data.dart';
 
 class ExnessCredentials {
@@ -37,6 +38,9 @@ class ExnessTick {
 }
 
 class ExnessService extends ChangeNotifier {
+  static const String _backendBaseUrl = 'https://tinchodoko-bridge.onrender.com';
+  static const Duration _requestTimeout = Duration(seconds: 35);
+
   bool _isConnected = false;
   bool _isLoading = false;
   String? _accessPoint;
@@ -47,6 +51,7 @@ class ExnessService extends ChangeNotifier {
   String _lastError = '';
   List<Map<String, dynamic>> _positions = [];
   Map<String, ExnessTick> _liveTicks = {};
+  Map<String, dynamic> _account = {};
 
   bool get isConnected => _isConnected;
   String get lastError => _lastError;
@@ -58,70 +63,38 @@ class ExnessService extends ChangeNotifier {
   double get equity => _equity;
   List<Map<String, dynamic>> get positions => _positions;
   Map<String, ExnessTick> get liveTicks => _liveTicks;
+  Map<String, dynamic> get account => Map.unmodifiable(_account);
 
-  /// Helper to base64url encode without padding
-  static String base64UrlNoPadding(List<int> bytes) {
-    return base64UrlEncode(bytes).replaceAll('=', '');
-  }
-
-  /// Calculates the SHA256 body hash for Exness headers
-  static String calculateBodyHash(List<int> bodyBytes) {
-    final digest = crypto.sha256.convert(bodyBytes);
-    return base64UrlNoPadding(digest.bytes);
-  }
-
-  /// Builds signed headers for Exness API requests using Ed25519
-  static Future<Map<String, String>> buildSignedHeaders({
-    required String apiKey,
-    required String privateKeyHex,
-    required String method,
-    required String pathWithQuery,
-    Map<String, dynamic>? body,
-    String idempotencyKey = '',
-    int? timestampOverride,
-  }) async {
-    final timestamp = timestampOverride ?? DateTime.now().millisecondsSinceEpoch;
-    final bodyBytes = body != null ? utf8.encode(jsonEncode(body)) : <int>[];
-    final bodyHash = calculateBodyHash(bodyBytes);
-
-    final payloadMap = {
-      'api_key': apiKey,
-      'idempotency_key': idempotencyKey,
-      'timestamp': timestamp,
-      'sign_version': 1,
-      'method': method,
-      'path': pathWithQuery,
-      'body_hash': bodyHash,
-    };
-
-    final payloadBytes = utf8.encode(jsonEncode(payloadMap));
-    final exnData = base64UrlNoPadding(payloadBytes);
-
-    // Ed25519 signing using cryptography package
-    final algorithm = Ed25519();
-    final cleanHex = privateKeyHex.trim();
-    final seedBytes = <int>[];
-    for (int i = 0; i < 64; i += 2) {
-      seedBytes.add(int.parse(cleanHex.substring(i, i + 2), radix: 16));
+  static double _number(Map<String, dynamic> data, List<String> keys) {
+    for (final key in keys) {
+      final value = data[key];
+      if (value is num) return value.toDouble();
+      if (value is String) {
+        final parsed = double.tryParse(value);
+        if (parsed != null) return parsed;
+      }
     }
-
-    final keyPair = await algorithm.newKeyPairFromSeed(seedBytes);
-    final signature = await algorithm.sign(payloadBytes, keyPair: keyPair);
-    final exnSign = base64UrlNoPadding(signature.bytes);
-
-    return {
-      'EXN-API-KEY': apiKey,
-      'EXN-IDEMPOTENCY-KEY': idempotencyKey,
-      'EXN-TIMESTAMP': timestamp.toString(),
-      'EXN-SIGN-VERSION': '1',
-      'EXN-DATA': exnData,
-      'EXN-SIGN': exnSign,
-    };
+    return 0;
   }
 
-  /// The mobile UI must use the TypeScript Exness backend.
-  /// Direct Dart signing/network access is deliberately disabled to avoid
-  /// maintaining a second authentication implementation.
+  static String _string(Map<String, dynamic> data, List<String> keys) {
+    for (final key in keys) {
+      final value = data[key];
+      if (value != null && value.toString().isNotEmpty) return value.toString();
+    }
+    return '';
+  }
+
+  void _applyAccount(Map<String, dynamic> account) {
+    _account = account;
+    _balance = _number(account, ['balance']);
+    _equity = _number(account, ['equity']);
+    _usedMargin = _number(account, ['margin', 'used_margin', 'usedMargin']);
+    _currency = _string(account, ['currency', 'currency_code']);
+    // The current TypeScript server intentionally exposes no positions endpoint.
+    _positions = [];
+  }
+
   Future<bool> connect({
     required String apiKey,
     required String privateKey,
@@ -141,12 +114,50 @@ class ExnessService extends ChangeNotifier {
         throw ArgumentError('Complete Gateway, API Key, Secret and Account ID.');
       }
 
-      // No TypeScript backend URL is configured in this Android build yet.
-      // Never report a connection using fabricated account data.
-      throw StateError(
-        'Exness TypeScript backend is not connected to this Android app yet. '
-        'No request was sent and no account data was loaded.',
-      );
+      final uri = Uri.parse('$_backendBaseUrl/api/exness/connect');
+      final response = await http
+          .post(
+            uri,
+            headers: const {'Content-Type': 'application/json', 'Accept': 'application/json'},
+            body: jsonEncode({
+              'apiKey': apiKey.trim(),
+              'privateKey': privateKey.trim(),
+              'accountId': accountId.trim(),
+              'discoveryBaseUrl': gatewayUrl.trim(),
+            }),
+          )
+          .timeout(_requestTimeout);
+
+      Map<String, dynamic> payload;
+      try {
+        final decoded = jsonDecode(response.body);
+        if (decoded is! Map<String, dynamic>) {
+          throw const FormatException('Unexpected backend response');
+        }
+        payload = decoded;
+      } on FormatException {
+        throw StateError('The backend returned an invalid response (HTTP ${response.statusCode}).');
+      }
+
+      if (response.statusCode < 200 || response.statusCode >= 300 || payload['success'] != true) {
+        final message = payload['error'] is String ? payload['error'] as String : 'Backend request failed (HTTP ${response.statusCode}).';
+        throw StateError(message);
+      }
+
+      final rawAccount = payload['account'];
+      if (rawAccount is! Map<String, dynamic>) {
+        throw StateError('Exness connected, but the account response has an unexpected format.');
+      }
+
+      _accessPoint = payload['access_point']?.toString();
+      _applyAccount(rawAccount);
+      _isConnected = true;
+      _lastError = '';
+      return true;
+    } on http.ClientException {
+      _isConnected = false;
+      _lastError = 'Could not reach the Exness backend. Check the server deployment and network connection.';
+      return false;
     } catch (error) {
       _isConnected = false;
       _accessPoint = null;
@@ -155,6 +166,7 @@ class ExnessService extends ChangeNotifier {
       _usedMargin = 0;
       _currency = '';
       _positions = [];
+      _account = {};
       _lastError = error.toString().replaceFirst('Bad state: ', '');
       return false;
     } finally {
@@ -164,32 +176,35 @@ class ExnessService extends ChangeNotifier {
   }
 
   Future<void> refresh() async {
-    _lastError = 'Account refresh is unavailable until the TypeScript backend is connected.';
+    _lastError = 'Account refresh is not available yet. Reconnect to fetch the latest account data.';
     notifyListeners();
   }
 
   Future<List<String>> getAvailableInstruments() async {
-    throw StateError(
-      'Instrument discovery is unavailable until the TypeScript backend is connected.',
-    );
+    throw StateError('Instrument discovery is not implemented in the read-only backend yet.');
   }
 
   Future<List<Candle>> fetchMarketCandles({
     required String instrument,
     required String timeframe,
   }) async {
-    throw StateError(
-      'Market candle retrieval is unavailable until the TypeScript backend is connected.',
-    );
+    throw StateError('Market candle retrieval is not implemented in the read-only backend yet.');
   }
 
   void disconnect() {
     _isConnected = false;
     _accessPoint = null;
+    _balance = 0;
+    _equity = 0;
+    _usedMargin = 0;
+    _currency = '';
+    _positions = [];
+    _account = {};
+    _lastError = '';
     notifyListeners();
   }
 
-  /// Order execution is intentionally disabled in this read-only rebuild.
+  /// Order execution remains disabled. This backend exposes read-only access only.
   Future<Map<String, dynamic>> openPosition({
     required ExnessCredentials creds,
     required String instrument,
@@ -198,5 +213,4 @@ class ExnessService extends ChangeNotifier {
   }) async {
     throw StateError('Trading execution is disabled. This build is read-only.');
   }
-
 }
