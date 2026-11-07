@@ -26,6 +26,7 @@ import {
   Position,
   calculateAccountEquity
 } from './utils/tradeLogic';
+import { ExnessCredentials } from './utils/clientExness';
 
 export default function App() {
   // Navigation: 0 = APIs, 1 = Assistant, 2 = cTrader, 3 = Historial
@@ -72,6 +73,39 @@ export default function App() {
     } catch (e) {
       console.error(e);
     }
+  };
+
+  // Broker selection: 'exness' (Exness Trading Gateway API) or 'ctrader' (cTrader Remote MCP)
+  const [activeBroker, setActiveBroker] = useState<'exness' | 'ctrader'>('exness');
+
+  // Exness API Credentials & State
+  const [exnessCreds, setExnessCreds] = useState<ExnessCredentials>(() => {
+    try {
+      const saved = localStorage.getItem('tinchodoko_exness_creds');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      // ignore
+    }
+    return {
+      apiKey: 'exnsk-live-trading-789234',
+      privateKey: '9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a',
+      accountId: '123456',
+      discoveryBaseUrl: 'https://gateway.example',
+    };
+  });
+  const [isExnessConnected, setIsExnessConnected] = useState<boolean>(true);
+
+  const handleUpdateExnessCreds = (newCreds: ExnessCredentials) => {
+    setExnessCreds(newCreds);
+    try {
+      localStorage.setItem('tinchodoko_exness_creds', JSON.stringify(newCreds));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleExnessConnectToggle = () => {
+    setIsExnessConnected((prev) => !prev);
   };
 
   // cTrader State
@@ -352,20 +386,26 @@ export default function App() {
               </div>
             </div>
 
-            {/* cTrader Connection Pill in AppBar */}
+            {/* Active Broker Connection Pill in AppBar */}
             <div
               className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border transition-colors ${
-                isCTraderConnected
+                (activeBroker === 'exness' ? isExnessConnected : isCTraderConnected)
                   ? 'bg-[#00E676]/15 text-[#00E676] border-[#00E676]/40'
                   : 'bg-[#21262D] text-[#8B949E] border-[#30363D]'
               }`}
             >
               <span
                 className={`w-2 h-2 rounded-full ${
-                  isCTraderConnected ? 'bg-[#00E676] animate-pulse' : 'bg-[#FF5252]'
+                  (activeBroker === 'exness' ? isExnessConnected : isCTraderConnected)
+                    ? 'bg-[#00E676] animate-pulse'
+                    : 'bg-[#FF5252]'
                 }`}
               />
-              <span>{isCTraderConnected ? 'cTrader Live' : 'Offline'}</span>
+              <span>
+                {activeBroker === 'exness'
+                  ? isExnessConnected ? 'Exness Live' : 'Exness Off'
+                  : isCTraderConnected ? 'cTrader Live' : 'cTrader Off'}
+              </span>
             </div>
           </div>
 
@@ -379,11 +419,14 @@ export default function App() {
                 apiKeys={apiKeys}
                 onTradeRecorded={handleRecordTrade}
                 onExecuteCTrader={handleExecuteTraderOrder}
-                isCTraderConnected={isCTraderConnected}
+                isCTraderConnected={activeBroker === 'exness' ? isExnessConnected : isCTraderConnected}
+                activeBroker={activeBroker}
               />
             )}
             {activeTab === 2 && (
               <CTraderTab
+                activeBroker={activeBroker}
+                onBrokerChange={setActiveBroker}
                 isConnected={isCTraderConnected}
                 mcpToken={mcpToken}
                 balance={balance}
@@ -392,6 +435,10 @@ export default function App() {
                 onConnectToggle={handleConnectToggle}
                 onClosePosition={handleClosePosition}
                 onAddPosition={handleAddPosition}
+                exnessCreds={exnessCreds}
+                onUpdateExnessCreds={handleUpdateExnessCreds}
+                isExnessConnected={isExnessConnected}
+                onExnessConnectToggle={handleExnessConnectToggle}
               />
             )}
             {activeTab === 3 && (
@@ -452,7 +499,9 @@ export default function App() {
               >
                 <CandlestickChart className="w-5 h-5" />
               </div>
-              <span className="text-[11px] font-semibold mt-0.5">cTrader</span>
+              <span className="text-[11px] font-semibold mt-0.5">
+                {activeBroker === 'exness' ? 'Exness' : 'cTrader'}
+              </span>
             </button>
 
             {/* Tab 4: Historial */}

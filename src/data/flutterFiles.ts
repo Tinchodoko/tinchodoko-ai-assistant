@@ -338,6 +338,83 @@ class SecureStorageService {
 }`
   },
   {
+    path: 'lib/services/exness_service.dart',
+    filename: 'exness_service.dart',
+    language: 'dart',
+    category: 'services',
+    content: `import 'dart:convert';
+import 'package:cryptography/cryptography.dart';
+import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
+import 'package:crypto/crypto.dart' as crypto;
+
+class ExnessCredentials {
+  final String apiKey;
+  final String privateKeyHex;
+  final String accountId;
+  final String discoveryBaseUrl;
+
+  ExnessCredentials({
+    required this.apiKey,
+    required this.privateKeyHex,
+    required this.accountId,
+    required this.discoveryBaseUrl,
+  });
+}
+
+class ExnessService extends ChangeNotifier {
+  bool _isConnected = false;
+  String? _accessPoint;
+
+  static Future<Map<String, String>> buildSignedHeaders({
+    required String apiKey,
+    required String privateKeyHex,
+    required String method,
+    required String pathWithQuery,
+    Map<String, dynamic>? body,
+    String idempotencyKey = '',
+  }) async {
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final bodyBytes = body != null ? utf8.encode(jsonEncode(body)) : <int>[];
+    final digest = crypto.sha256.convert(bodyBytes);
+    final bodyHash = base64UrlEncode(digest.bytes).replaceAll('=', '');
+
+    final payloadMap = {
+      'api_key': apiKey,
+      'idempotency_key': idempotencyKey,
+      'timestamp': timestamp,
+      'sign_version': 1,
+      'method': method,
+      'path': pathWithQuery,
+      'body_hash': bodyHash,
+    };
+
+    final payloadBytes = utf8.encode(jsonEncode(payloadMap));
+    final exnData = base64UrlEncode(payloadBytes).replaceAll('=', '');
+
+    // Ed25519 signing
+    final algorithm = Ed25519();
+    final cleanHex = privateKeyHex.trim();
+    final seedBytes = <int>[];
+    for (int i = 0; i < 64; i += 2) {
+      seedBytes.add(int.parse(cleanHex.substring(i, i + 2), radix: 16));
+    }
+    final keyPair = await algorithm.newKeyPairFromSeed(seedBytes);
+    final signature = await algorithm.sign(payloadBytes, keyPair: keyPair);
+    final exnSign = base64UrlEncode(signature.bytes).replaceAll('=', '');
+
+    return {
+      'EXN-API-KEY': apiKey,
+      'EXN-IDEMPOTENCY-KEY': idempotencyKey,
+      'EXN-TIMESTAMP': timestamp.toString(),
+      'EXN-SIGN-VERSION': '1',
+      'EXN-DATA': exnData,
+      'EXN-SIGN': exnSign,
+    };
+  }
+}`
+  },
+  {
     path: 'lib/screens/main_navigation_screen.dart',
     filename: 'main_navigation_screen.dart',
     language: 'dart',

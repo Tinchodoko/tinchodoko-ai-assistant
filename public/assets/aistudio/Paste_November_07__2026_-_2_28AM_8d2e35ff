@@ -1,0 +1,941 @@
+Code Examples
+Signed request helpers, REST examples, WebSocket subscriptions, and integration patterns.
+
+Start with the complete read-only example below, available in TypeScript, Python and Go. It discovers the account Access Point on the Gateway and then reads account details from that Access Point with signed GET requests.
+
+Complete read-only example
+Each example uses only its language's standard library, except Python, which needs the cryptography package. It loads an Ed25519 private key, sends a signed GET /v1/trading/access-point request to the Gateway to resolve the account Access Point, and then sends a signed GET /v1/configuration/accounts/{account_id}/account request to that Access Point.
+
+Prepare your inputs
+Create an API key with Trading read access to your account in Key Management. Set EXN_PRIVATE_KEY to the generated private key text (128 hex characters). If you generated your own key pair, use the PEM contents of private.pem instead: export EXN_PRIVATE_KEY="$(cat private.pem)". See Private key formats.
+
+Set these variables in your terminal, replacing the placeholders with your own values. Use the HTTPS Gateway base URL from the DNS widget in Key Management for EXN_DISCOVERY_BASE_URL.
+
+export EXN_API_KEY="exnsk-{your_public_api_key}"
+export EXN_PRIVATE_KEY="your_private_key_text"
+export EXN_ACCOUNT_ID="123456"
+export EXN_DISCOVERY_BASE_URL="https://gateway.example"
+
+Load the key and send the requests
+TypeScript
+Python
+Go
+Requires Node.js 20 or newer. Save the code as trader-read-only.ts and run npx tsx trader-read-only.ts.
+
+import { createHash, createPrivateKey, createPublicKey, sign } from 'node:crypto';
+import type { KeyObject } from 'node:crypto';
+
+type DiscoveryResponse = { access_point?: unknown };
+type AccountDetailsResponse = Record<string, unknown>;
+
+function requiredEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`Set ${name}`);
+  return value;
+}
+
+function loadSigningKey(text: string): KeyObject {
+  const input = text.trim();
+  let key: KeyObject;
+  if (input.startsWith('-----BEGIN PRIVATE KEY-----')) {
+    key = createPrivateKey(input);
+  } else {
+    if (!/^[0-9a-fA-F]{128}$/.test(input)) {
+      throw new Error('Expected 128 hex characters or unencrypted PKCS#8 PEM');
+    }
+    const raw = Buffer.from(input, 'hex');
+    // RFC 8410 PKCS#8 DER wrapper for a 32-byte Ed25519 seed.
+    key = createPrivateKey({
+      key: Buffer.concat([
+        Buffer.from('302e020100300506032b657004220420', 'hex'),
+        raw.subarray(0, 32),
+      ]),
+      format: 'der',
+      type: 'pkcs8',
+    });
+    const publicJwk = createPublicKey(key).export({ format: 'jwk' });
+    if (!Buffer.from(publicJwk.x ?? '', 'base64url').equals(raw.subarray(32))) {
+      throw new Error('Private key public half does not match its seed');
+    }
+  }
+  if (key.asymmetricKeyType !== 'ed25519') {
+    throw new Error('Expected an Ed25519 private key');
+  }
+  return key;
+}
+
+function baseUrl(value: string): string {
+  const url = new URL(value);
+  if (url.protocol !== 'https:' || url.username || url.password ||
+      url.pathname !== '/' || url.search || url.hash) {
+    throw new Error('Expected an HTTPS base URL without credentials, path, query or fragment');
+  }
+  return url.origin;
+}
+
+function signedGetHeaders(
+  apiKey: string,
+  privateKey: KeyObject,
+  pathWithQuery: string,
+): Record<string, string> {
+  const timestamp = Date.now();
+  // Serialize once: encode and sign the very same UTF-8 bytes.
+  const payload = Buffer.from(JSON.stringify({
+    api_key: apiKey,
+    idempotency_key: '',
+    timestamp,
+    sign_version: 1,
+    method: 'GET',
+    path: pathWithQuery,
+    body_hash: createHash('sha256').update(Buffer.alloc(0)).digest('base64url'),
+  }), 'utf8');
+  return {
+    'EXN-API-KEY': apiKey,
+    'EXN-IDEMPOTENCY-KEY': '',
+    'EXN-TIMESTAMP': String(timestamp),
+    'EXN-SIGN-VERSION': '1',
+    'EXN-DATA': payload.toString('base64url'),
+    'EXN-SIGN': sign(null, payload, privateKey).toString('base64url'),
+  };
+}
+
+async function main(): Promise<void> {
+  const apiKey = requiredEnv('EXN_API_KEY');
+  const accountId = requiredEnv('EXN_ACCOUNT_ID');
+  if (!/^[1-9][0-9]*$/.test(accountId) || BigInt(accountId) > 18446744073709551615n) {
+    throw new Error('EXN_ACCOUNT_ID must be a positive uint64 decimal string');
+  }
+  const gateway = baseUrl(requiredEnv('EXN_DISCOVERY_BASE_URL'));
+  const privateKey = loadSigningKey(requiredEnv('EXN_PRIVATE_KEY'));
+
+  async function getJson<T>(host: string, pathWithQuery: string): Promise<T> {
+    const response = await fetch(host + pathWithQuery, {
+      method: 'GET',
+      headers: signedGetHeaders(apiKey, privateKey, pathWithQuery),
+      // Do not forward signed headers to a redirect destination.
+      redirect: 'error',
+      signal: AbortSignal.timeout(15000),
+      // No body: hash the empty byte sequence, not "{}" or "null".
+    });
+    if (!response.ok) throw new Error(`Request failed: HTTP ${response.status}`);
+    return (await response.json()) as T;
+  }
+
+  // 1. Discover the Access Point on the Gateway. Cache the result in your application.
+  const discovery = await getJson<DiscoveryResponse>(
+    gateway,
+    `/v1/trading/access-point?account_id=${accountId}`,
+  );
+  if (typeof discovery.access_point !== 'string' || !discovery.access_point) {
+    throw new Error('Discovery response is missing access_point');
+  }
+  const accessPoint = baseUrl(discovery.access_point);
+  console.log(`Access Point: ${accessPoint}`);
+
+  // 2. Send the read-only request to the Access Point, not to the Gateway.
+  const account = await getJson<AccountDetailsResponse>(
+    accessPoint,
+    `/v1/configuration/accounts/${accountId}/account`,
+  );
+  console.log(JSON.stringify(account, null, 2));
+}
+
+main().catch((error: unknown) => {
+  // Print the message only, without credentials or signed headers.
+  console.error(error instanceof Error ? error.message : 'Unexpected error');
+  process.exitCode = 1;
+});
+
+Each example decodes the hex key into its 32-byte seed and checks that the public half matches; a PEM key is imported directly. The signed payload is serialized once as UTF-8 and those same bytes are signed. The GET requests have no body, so their body_hash is 47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU. The signed path includes the query string exactly as sent. Every request gets a fresh timestamp and signature. See Request signing for the protocol rules.
+
+On success, the script prints the Access Point URL and the account details returned by the Access Point. On failure, it stops and prints an error message. Discovery is rate limited: resolve the Access Point once and cache it instead of calling discovery before every request. Keep your system clock synchronized. Do not log private key material or signed headers.
+
+Test vector
+Use this synthetic vector to check your own signing code before calling the API. The key is the public test key from RFC 8032 (Test 1). It is not a credential: never register or use it, and never use it for real requests.
+
+Ed25519 signatures are deterministic, so the same inputs always produce the same EXN-SIGN.
+
+Input	Value
+Private key (hex, 128 characters)	9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a
+Same key as PKCS#8 PEM	-----BEGIN PRIVATE KEY-----
+MC4CAQAwBQYDK2VwBCIEIJ1hsZ3v/VpguoRK9JLsLMREScVpezJpGXA7rAMcrn9g
+-----END PRIVATE KEY-----
+api_key	exnsk-synthetic-example
+timestamp	1773656070123
+Request	GET /v1/trading/access-point?account_id=123456, no body
+Signed payload (the exact bytes that are encoded and signed):
+
+{"api_key":"exnsk-synthetic-example","idempotency_key":"","timestamp":1773656070123,"sign_version":1,"method":"GET","path":"/v1/trading/access-point?account_id=123456","body_hash":"47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU"}
+
+
+Expected headers:
+
+EXN-API-KEY: exnsk-synthetic-example
+EXN-IDEMPOTENCY-KEY:
+EXN-TIMESTAMP: 1773656070123
+EXN-SIGN-VERSION: 1
+EXN-DATA: eyJhcGlfa2V5IjoiZXhuc2stc3ludGhldGljLWV4YW1wbGUiLCJpZGVtcG90ZW5jeV9rZXkiOiIiLCJ0aW1lc3RhbXAiOjE3NzM2NTYwNzAxMjMsInNpZ25fdmVyc2lvbiI6MSwibWV0aG9kIjoiR0VUIiwicGF0aCI6Ii92MS90cmFkaW5nL2FjY2Vzcy1wb2ludD9hY2NvdW50X2lkPTEyMzQ1NiIsImJvZHlfaGFzaCI6IjQ3REVRcGo4SEJTYS1fVEltVy01SkNldVFlUmttNU5NcEpXWkczaFN1RlUifQ
+EXN-SIGN: l-H_Acia8YoTjKFMg-3fon3NOEX8TalNVA7c01DQ9dHb7pVBJC4y06qC-DbpETzh1KToiOprqEV6uzN3t69ICQ
+
+
+If your EXN-DATA matches but EXN-SIGN does not, check how your code loads the private key. If EXN-DATA differs, check the payload serialization and the body hash.
+
+For the following TypeScript examples, resolve the account Access Point. Set config.discoveryBaseUrl to the Gateway URL from the DNS widget. Send account-scoped REST requests to the returned access_point; use the same Access Point for WebSockets. The WebSocket helper below is illustrative; its URL construction is not yet verified. The imported ./lib/ helpers are illustrative dependencies and are not provided by this page.
+
+Disclaimer
+
+The following examples are simplified onboarding examples intended for API exploration and integration learning.
+
+They are NOT production-ready trading bots.
+
+Production systems should additionally implement:
+
+reconnect handling
+
+rate limit tracking
+
+persistence
+
+retry policies
+
+risk management
+
+monitoring
+
+security hardening
+
+TypeScript: open position and wait for transaction event
+import { loadExampleConfig } from './lib/config.js';
+import { createIdempotencyKey, loadSignedAuthFromEnv, requestJson, resolveTradingAccessPoint } from './lib/http.js';
+import { closeOnSigint, connectSignedWebSocket, subscribeTransactions, waitForJsonMessage } from './lib/ws.js';
+
+type AckResponse = {
+  status: string;
+  operation_id?: string;
+  client_request_id?: string;
+};
+
+type TransactionEvent = {
+  event_type?: string;
+  client_request_id?: string;
+  operation_id?: string;
+};
+
+const config = loadExampleConfig();
+const auth = await loadSignedAuthFromEnv();
+
+const accessPoint = await resolveTradingAccessPoint({
+  accountId: config.accountId,
+  discoveryBaseUrl: config.discoveryBaseUrl,
+  auth,
+});
+
+const ws = await connectSignedWebSocket({
+  baseUrl: accessPoint.access_point,
+  path: `/v1/server-events/accounts/${config.accountId}/ws/events`,
+  auth,
+});
+
+closeOnSigint(ws);
+subscribeTransactions(ws, 'open-position-transactions');
+
+const idempotencyKey = createIdempotencyKey('open-position');
+const ack = await requestJson<AckResponse>({
+  baseUrl: accessPoint.access_point,
+  method: 'POST',
+  path: `/v1/trading/accounts/${config.accountId}/positions`,
+  auth,
+  idempotencyKey,
+  body: {
+    instrument: config.instrument,
+    side: config.side,
+    volume: config.volume,
+  },
+});
+
+console.log('ACK:');
+console.log(JSON.stringify(ack, null, 2));
+
+const transactionEvent = await waitForJsonMessage<TransactionEvent>(
+  ws,
+  (message) =>
+    message.event_type === 'transaction_event' &&
+    (message.client_request_id === idempotencyKey || message.operation_id === ack.operation_id),
+  config.timeoutMs,
+);
+
+console.log('Matched transaction_event:');
+console.log(JSON.stringify(transactionEvent, null, 2));
+
+ws.close();
+
+
+TypeScript: place pending order
+import { loadExampleConfig, requireEnv } from './lib/config.js';
+import { createIdempotencyKey, loadSignedAuthFromEnv, requestJson, resolveTradingAccessPoint } from './lib/http.js';
+
+type AckResponse = Record<string, unknown>;
+
+const config = loadExampleConfig();
+const auth = await loadSignedAuthFromEnv();
+const price = requireEnv('EXNESS_LIMIT_PRICE', config.limitPrice);
+
+const accessPoint = await resolveTradingAccessPoint({
+  accountId: config.accountId,
+  discoveryBaseUrl: config.discoveryBaseUrl,
+  auth,
+});
+
+const ack = await requestJson<AckResponse>({
+  baseUrl: accessPoint.access_point,
+  method: 'POST',
+  path: `/v1/trading/accounts/${config.accountId}/orders`,
+  auth,
+  idempotencyKey: createIdempotencyKey('pending-order'),
+  body: {
+    type: 'limit',
+    instrument: config.instrument,
+    side: config.side,
+    volume: config.volume,
+    price,
+  },
+});
+
+console.log('Pending order ACK:');
+console.log(JSON.stringify(ack, null, 2));
+
+
+TypeScript: helper for signed WebSocket requests
+The URL construction in this helper still requires verification of supported schemes, ports, trailing slashes and base-path prefixes. Do not treat it as a validated production URL builder. The connection URL and signed path must agree.
+
+import { randomUUID } from 'node:crypto';
+import WebSocket from 'ws';
+import { buildSignedHeaders } from './signing.js';
+import type { SignedAuth } from './http.js';
+
+export type WsJson = Record<string, unknown>;
+
+export function toWsBaseUrl(baseUrl: string): string {
+  return baseUrl.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
+}
+
+export async function connectSignedWebSocket({
+  baseUrl,
+  path,
+  auth,
+}: {
+  baseUrl: string;
+  path: string;
+  auth: SignedAuth;
+}): Promise<WebSocket> {
+  const headers = await buildSignedHeaders({
+    apiKey: auth.apiKey,
+    privateKey: auth.privateKey,
+    method: 'GET',
+    pathWithQuery: path,
+    body: '',
+    idempotencyKey: '',
+  });
+
+  const ws = new WebSocket(`${toWsBaseUrl(baseUrl)}${path}`, 'exness-ws-protocol', {
+    headers,
+    handshakeTimeout: 10000,
+    perMessageDeflate: false,
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    ws.once('open', () => resolve());
+    ws.once('error', (error: Error) => reject(error));
+  });
+
+  return ws;
+}
+
+export function sendJson(ws: WebSocket, payload: object): void {
+  ws.send(JSON.stringify(payload));
+}
+
+export function closeOnSigint(ws: WebSocket): void {
+  process.on('SIGINT', () => {
+    ws.close();
+    process.exit(0);
+  });
+}
+
+export function logParsedMessages(ws: WebSocket, label = 'ws'): void {
+  ws.on('message', (raw: WebSocket.RawData) => {
+    const text = raw.toString();
+    try {
+      console.log(`[${label}]`, JSON.stringify(JSON.parse(text)));
+    } catch {
+      console.log(`[${label}]`, text);
+    }
+  });
+}
+
+export function subscribeTransactions(ws: WebSocket, requestId: string = randomUUID()): string {
+  sendJson(ws, { id: requestId, subscribe: { event: 'transactions' } });
+  return requestId;
+}
+
+export function subscribeAccountState(ws: WebSocket, requestId: string = randomUUID()): string {
+  sendJson(ws, { id: requestId, subscribe: { event: 'account_state' } });
+  return requestId;
+}
+
+export function subscribeInstruments(ws: WebSocket, instruments: string[] = ['all'], requestId: string = randomUUID()): string {
+  sendJson(ws, { id: requestId, subscribe: { event: 'instruments', instruments } });
+  return requestId;
+}
+
+export function subscribeHmr(ws: WebSocket, instruments: string[], requestId: string = randomUUID()): string {
+  sendJson(ws, { id: requestId, subscribe: { event: 'hmr', instruments } });
+  return requestId;
+}
+
+export function subscribeTicks(ws: WebSocket, instruments: string[], requestId: string = randomUUID()): string {
+  sendJson(ws, { id: requestId, subscribe: { event: 'ticks', instruments } });
+  return requestId;
+}
+
+export function waitForJsonMessage<T extends WsJson>(
+  ws: WebSocket,
+  predicate: (message: T) => boolean,
+  timeoutMs = 30000,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error(`Timed out after ${timeoutMs} ms`));
+    }, timeoutMs);
+
+    const onMessage = (raw: WebSocket.RawData) => {
+      const text = raw.toString();
+      let parsed: T;
+      try {
+        parsed = JSON.parse(text) as T;
+      } catch {
+        return;
+      }
+
+      if (!predicate(parsed)) {
+        return;
+      }
+
+      cleanup();
+      resolve(parsed);
+    };
+
+    const onError = (error: Error) => {
+      cleanup();
+      reject(error);
+    };
+
+    function cleanup() {
+      clearTimeout(timer);
+      ws.off('message', onMessage);
+      ws.off('error', onError);
+    }
+
+    ws.on('message', onMessage);
+    ws.on('error', onError);
+  });
+}
+
+
+TypeScript: subscribe to live XAUUSD ticks
+import type WebSocket from 'ws';
+import { loadExampleConfig } from './lib/config.js';
+import { loadSignedAuthFromEnv, resolveTradingAccessPoint } from './lib/http.js';
+import { closeOnSigint, connectSignedWebSocket, subscribeTicks } from './lib/ws.js';
+
+const config = loadExampleConfig();
+const auth = await loadSignedAuthFromEnv();
+
+const accessPoint = await resolveTradingAccessPoint({
+  accountId: config.accountId,
+  discoveryBaseUrl: config.discoveryBaseUrl,
+  auth,
+});
+
+const ws = await connectSignedWebSocket({
+  baseUrl: accessPoint.access_point,
+  path: `/v1/server-events/accounts/${config.accountId}/ws/ticks`,
+  auth,
+});
+
+closeOnSigint(ws);
+subscribeTicks(ws, [config.instrument], 'ticks-live');
+
+console.log(`Subscribed to live ticks for ${config.instrument}`);
+
+ws.on('message', (raw: WebSocket.RawData) => {
+  const text = raw.toString();
+  try {
+    const message = JSON.parse(text);
+    console.log(JSON.stringify(message, null, 2));
+  } catch {
+    console.log(text);
+  }
+});
+
+TypeScript: ticks bot
+import type WebSocket from 'ws';
+import { loadExampleConfig } from './lib/config.js';
+import { loadSignedAuthFromEnv, resolveTradingAccessPoint } from './lib/http.js';
+import { closeOnSigint, connectSignedWebSocket, subscribeTicks } from './lib/ws.js';
+
+type TickMessage = {
+  instrument?: string;
+  bid?: number | string;
+  ask?: number | string;
+  timestamp?: string;
+};
+
+const config = loadExampleConfig();
+const auth = await loadSignedAuthFromEnv();
+
+const accessPoint = await resolveTradingAccessPoint({
+  accountId: config.accountId,
+  discoveryBaseUrl: config.discoveryBaseUrl,
+  auth,
+});
+
+const ws = await connectSignedWebSocket({
+  baseUrl: accessPoint.access_point,
+  path: `/v1/server-events/accounts/${config.accountId}/ws/ticks`,
+  auth,
+});
+
+closeOnSigint(ws);
+subscribeTicks(ws, [config.instrument], 'ticks-bot');
+
+let previousMid: number | null = null;
+
+console.log(`Ticks bot started for ${config.instrument}`);
+
+ws.on('message', (raw: WebSocket.RawData) => {
+  const text = raw.toString();
+  let message: TickMessage;
+  try {
+    message = JSON.parse(text) as TickMessage;
+  } catch {
+    return;
+  }
+
+  if (!message.instrument || message.bid === undefined || message.ask === undefined) {
+    return;
+  }
+
+  const bid = Number(message.bid);
+  const ask = Number(message.ask);
+  const mid = (bid + ask) / 2;
+  const spread = ask - bid;
+  const direction =
+    previousMid === null ? 'flat' :
+    mid > previousMid ? 'up' :
+    mid < previousMid ? 'down' :
+    'flat';
+
+  previousMid = mid;
+
+  console.log(JSON.stringify({
+    instrument: message.instrument,
+    timestamp: message.timestamp,
+    bid,
+    ask,
+    mid,
+    spread,
+    direction,
+  }));
+});
+
+TypeScript: account equity monitor
+import type WebSocket from 'ws';
+import { loadExampleConfig } from './lib/config.js';
+import { loadSignedAuthFromEnv, resolveTradingAccessPoint } from './lib/http.js';
+import { closeOnSigint, connectSignedWebSocket, subscribeAccountState } from './lib/ws.js';
+
+type AccountStateEvent = {
+  event_type?: string;
+  event_time?: string;
+  payload?: {
+    account_state?: {
+      balance?: string;
+      equity?: string;
+      used_margin?: string;
+    };
+  };
+};
+
+const config = loadExampleConfig();
+const auth = await loadSignedAuthFromEnv();
+
+const accessPoint = await resolveTradingAccessPoint({
+  accountId: config.accountId,
+  discoveryBaseUrl: config.discoveryBaseUrl,
+  auth,
+});
+
+const ws = await connectSignedWebSocket({
+  baseUrl: accessPoint.access_point,
+  path: `/v1/server-events/accounts/${config.accountId}/ws/events`,
+  auth,
+});
+
+closeOnSigint(ws);
+subscribeAccountState(ws, 'equity-monitor');
+
+console.log('Account equity monitor started');
+
+ws.on('message', (raw: WebSocket.RawData) => {
+  const text = raw.toString();
+  let message: AccountStateEvent;
+  try {
+    message = JSON.parse(text) as AccountStateEvent;
+  } catch {
+    return;
+  }
+
+  if (message.event_type !== 'account_state_event') {
+    return;
+  }
+
+  const state = message.payload?.account_state;
+  console.log(JSON.stringify({
+    event_time: message.event_time,
+    balance: state?.balance,
+    equity: state?.equity,
+    used_margin: state?.used_margin,
+  }));
+});
+
+TypeScript: get available instruments and subscribe to updates
+import type WebSocket from 'ws';
+import { loadExampleConfig } from './lib/config.js';
+import { loadSignedAuthFromEnv, requestJson, resolveTradingAccessPoint } from './lib/http.js';
+import { closeOnSigint, connectSignedWebSocket, subscribeInstruments } from './lib/ws.js';
+
+type InstrumentListResponse = {
+  instruments?: string[];
+};
+
+type InstrumentEvent = {
+  event_type?: string;
+};
+
+const config = loadExampleConfig();
+const auth = await loadSignedAuthFromEnv();
+
+const accessPoint = await resolveTradingAccessPoint({
+  accountId: config.accountId,
+  discoveryBaseUrl: config.discoveryBaseUrl,
+  auth,
+});
+
+const instrumentList = await requestJson<InstrumentListResponse>({
+  baseUrl: accessPoint.access_point,
+  method: 'GET',
+  path: `/v1/configuration/accounts/${config.accountId}/instruments`,
+  auth,
+});
+
+console.log('Available instruments:');
+console.log(JSON.stringify({
+  count: instrumentList.instruments?.length ?? 0,
+  preview: instrumentList.instruments?.slice(0, 20) ?? [],
+}, null, 2));
+
+const ws = await connectSignedWebSocket({
+  baseUrl: accessPoint.access_point,
+  path: `/v1/server-events/accounts/${config.accountId}/ws/events`,
+  auth,
+});
+
+closeOnSigint(ws);
+subscribeInstruments(ws, ['all'], 'instrument-updates');
+
+console.log('Subscribed to instrument updates');
+
+ws.on('message', (raw: WebSocket.RawData) => {
+  const text = raw.toString();
+  let message: InstrumentEvent;
+  try {
+    message = JSON.parse(text) as InstrumentEvent;
+  } catch {
+    return;
+  }
+
+  if (message.event_type === 'instrument_event') {
+    console.log(JSON.stringify(message, null, 2));
+  }
+});
+
+TypeScript: Subscribe to HMR
+import type WebSocket from 'ws';
+import { loadExampleConfig } from './lib/config.js';
+import { loadSignedAuthFromEnv, resolveTradingAccessPoint } from './lib/http.js';
+import { closeOnSigint, connectSignedWebSocket, subscribeHmr } from './lib/ws.js';
+
+type HmrEvent = {
+  event_type?: string;
+};
+
+const config = loadExampleConfig();
+const auth = await loadSignedAuthFromEnv();
+
+const accessPoint = await resolveTradingAccessPoint({
+  accountId: config.accountId,
+  discoveryBaseUrl: config.discoveryBaseUrl,
+  auth,
+});
+const instruments = (process.env.EXNESS_HMR_INSTRUMENTS ?? config.instrument)
+  .split(',')
+  .map((item: string) => item.trim())
+  .filter(Boolean);
+
+const ws = await connectSignedWebSocket({
+  baseUrl: accessPoint.access_point,
+  path: `/v1/server-events/accounts/${config.accountId}/ws/events`,
+  auth,
+});
+
+closeOnSigint(ws);
+subscribeHmr(ws, instruments, 'hmr-subscribe');
+
+console.log(`Subscribed to HMR for: ${instruments.join(', ')}`);
+
+ws.on('message', (raw: WebSocket.RawData) => {
+  const text = raw.toString();
+  let message: HmrEvent;
+  try {
+    message = JSON.parse(text) as HmrEvent;
+  } catch {
+    return;
+  }
+
+  if (message.event_type === 'hmr_snapshot' || message.event_type === 'hmr_update') {
+    console.log(JSON.stringify(message, null, 2));
+  }
+});
+
+TypeScript: Subscribe to Transactions
+import type WebSocket from 'ws';
+import { loadExampleConfig } from './lib/config.js';
+import { loadSignedAuthFromEnv, resolveTradingAccessPoint } from './lib/http.js';
+import { closeOnSigint, connectSignedWebSocket, subscribeTransactions } from './lib/ws.js';
+
+type TradingEvent = {
+  event_type?: string;
+};
+
+const config = loadExampleConfig();
+const auth = await loadSignedAuthFromEnv();
+
+const accessPoint = await resolveTradingAccessPoint({
+  accountId: config.accountId,
+  discoveryBaseUrl: config.discoveryBaseUrl,
+  auth,
+});
+
+const ws = await connectSignedWebSocket({
+  baseUrl: accessPoint.access_point,
+  path: `/v1/server-events/accounts/${config.accountId}/ws/events`,
+  auth,
+});
+
+closeOnSigint(ws);
+subscribeTransactions(ws, 'transactions-subscribe');
+
+console.log('Subscribed to transactions');
+
+ws.on('message', (raw: WebSocket.RawData) => {
+  const text = raw.toString();
+  let message: TradingEvent;
+  try {
+    message = JSON.parse(text) as TradingEvent;
+  } catch {
+    return;
+  }
+
+  if (message.event_type === 'trading_state_snapshot' || message.event_type === 'transaction_event') {
+    console.log(JSON.stringify(message, null, 2));
+  }
+});
+
+TypeScript: Correlate ACK and transaction_event
+import { loadExampleConfig, requireEnv } from './lib/config.js';
+import { createIdempotencyKey, loadSignedAuthFromEnv, requestJson, resolveTradingAccessPoint } from './lib/http.js';
+import { closeOnSigint, connectSignedWebSocket, subscribeTransactions, waitForJsonMessage } from './lib/ws.js';
+
+type AckResponse = {
+  operation_id?: string;
+  client_request_id?: string;
+};
+
+type TransactionEvent = {
+  event_type?: string;
+  client_request_id?: string;
+  operation_id?: string;
+  status?: string;
+  error_code?: number;
+  error_message?: string;
+};
+
+const config = loadExampleConfig();
+const auth = await loadSignedAuthFromEnv();
+const price = requireEnv('EXNESS_LIMIT_PRICE', config.limitPrice);
+
+const accessPoint = await resolveTradingAccessPoint({
+  accountId: config.accountId,
+  discoveryBaseUrl: config.discoveryBaseUrl,
+  auth,
+});
+
+const ws = await connectSignedWebSocket({
+  baseUrl: accessPoint.access_point,
+  path: `/v1/server-events/accounts/${config.accountId}/ws/events`,
+  auth,
+});
+
+closeOnSigint(ws);
+subscribeTransactions(ws, 'ack-correlation');
+
+const idempotencyKey = createIdempotencyKey('ack-correlation');
+const ack = await requestJson<AckResponse>({
+  baseUrl: accessPoint.access_point,
+  method: 'POST',
+  path: `/v1/trading/accounts/${config.accountId}/orders`,
+  auth,
+  idempotencyKey,
+  body: {
+    type: 'limit',
+    instrument: config.instrument,
+    side: config.side,
+    volume: config.volume,
+    price,
+  },
+});
+
+console.log('ACK:');
+console.log(JSON.stringify(ack, null, 2));
+
+const transactionEvent = await waitForJsonMessage<TransactionEvent>(
+  ws,
+  (message) =>
+    message.event_type === 'transaction_event' &&
+    (message.client_request_id === idempotencyKey || message.operation_id === ack.operation_id),
+  config.timeoutMs,
+);
+
+console.log('Correlation result:');
+console.log(JSON.stringify({
+  ack_operation_id: ack.operation_id,
+  ack_client_request_id: ack.client_request_id,
+  matched_operation_id: transactionEvent.operation_id,
+  matched_client_request_id: transactionEvent.client_request_id,
+  matched_status: transactionEvent.status,
+  matched_error_code: transactionEvent.error_code,
+  matched_error_message: transactionEvent.error_message,
+}, null, 2));
+
+ws.close();
+
+
+TypeScript: Poll Operation Status
+import { loadExampleConfig, requireEnv } from './lib/config.js';
+import { createIdempotencyKey, loadSignedAuthFromEnv, requestJson, resolveTradingAccessPoint } from './lib/http.js';
+
+type AckResponse = {
+  operation_id?: string;
+};
+
+type OperationStatusResponse = {
+  status: string;
+};
+
+function isTerminalStatus(status: string): boolean {
+  return status === 'confirmed' || status === 'rejected' || status === 'failed';
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+const config = loadExampleConfig();
+const auth = await loadSignedAuthFromEnv();
+const accessPoint = await resolveTradingAccessPoint({
+  accountId: config.accountId,
+  discoveryBaseUrl: config.discoveryBaseUrl,
+  auth,
+});
+
+let operationId = process.env.EXNESS_OPERATION_ID;
+
+if (!operationId) {
+  const price = requireEnv('EXNESS_LIMIT_PRICE', config.limitPrice);
+  const ack = await requestJson<AckResponse>({
+    baseUrl: accessPoint.access_point,
+    method: 'POST',
+    path: `/v1/trading/accounts/${config.accountId}/orders`,
+    auth,
+    idempotencyKey: createIdempotencyKey('poll-operation'),
+    body: {
+      type: 'limit',
+      instrument: config.instrument,
+      side: config.side,
+      volume: config.volume,
+      price,
+    },
+  });
+  operationId = ack.operation_id;
+  console.log('Created operation from new pending order ACK:');
+  console.log(JSON.stringify(ack, null, 2));
+}
+
+if (!operationId) {
+  throw new Error('Operation ID is missing');
+}
+
+for (;;) {
+  const status = await requestJson<OperationStatusResponse & Record<string, unknown>>({
+    baseUrl: accessPoint.access_point,
+    method: 'GET',
+    path: `/v1/trading/accounts/${config.accountId}/operations/${operationId}`,
+    auth,
+  });
+
+  console.log(JSON.stringify(status, null, 2));
+
+  if (isTerminalStatus(status.status)) {
+    break;
+  }
+
+  await sleep(1000);
+}
+
+
+TypeScript: Get Rate Limits
+import { loadExampleConfig } from './lib/config.js';
+import { loadSignedAuthFromEnv, requestJson, resolveTradingAccessPoint } from './lib/http.js';
+
+type LimitsResponse = Record<string, unknown>;
+
+const config = loadExampleConfig();
+const auth = await loadSignedAuthFromEnv();
+
+const accessPoint = await resolveTradingAccessPoint({
+  accountId: config.accountId,
+  discoveryBaseUrl: config.discoveryBaseUrl,
+  auth,
+});
+
+const limits = await requestJson<LimitsResponse>({
+  baseUrl: accessPoint.access_point,
+  method: 'GET',
+  path: `/v1/configuration/accounts/${config.accountId}/limits`,
+  auth,
+});
+
+console.log('API limits:');
+console.log(JSON.stringify(limits, null, 2));

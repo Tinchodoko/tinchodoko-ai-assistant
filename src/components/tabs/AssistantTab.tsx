@@ -24,6 +24,7 @@ interface AssistantTabProps {
   onTradeRecorded: (trade: TradeOperation) => void;
   onExecuteCTrader?: (pair: string, direction: 'BUY' | 'SELL', entry: number, sl: number, tp: number) => void;
   isCTraderConnected: boolean;
+  activeBroker?: 'exness' | 'ctrader';
 }
 
 export const AssistantTab: React.FC<AssistantTabProps> = ({
@@ -31,6 +32,7 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
   onTradeRecorded,
   onExecuteCTrader,
   isCTraderConnected,
+  activeBroker = 'exness',
 }) => {
   const [selectedProviderId, setSelectedProviderId] = useState<string>('gemini');
   const [selectedModel, setSelectedModel] = useState<string>('gemini-2.5-flash');
@@ -89,6 +91,7 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
       const sl = signal.stopLoss || (isBuy ? Number((entry - 0.0035).toFixed(4)) : Number((entry + 0.0035).toFixed(4)));
       const tp = signal.takeProfit || (isBuy ? Number((entry + 0.0075).toFixed(4)) : Number((entry - 0.0075).toFixed(4)));
 
+      const brokerLabel = activeBroker === 'exness' ? 'Exness Gateway API (Ed25519)' : 'cTrader Remote MCP';
       const responseMarkdown = `📊 **INFORME DE ANÁLISIS CUANTITATIVO [${currentProvider.name} — ${selectedModel}]**
 
 ───────────────────────────────────────────────────────
@@ -101,11 +104,11 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
 
 📈 **Tesis Técnica & Smart Money Concepts:**
 1. **Estructura de Mercado:** Quiebre de estructura (BOS) con desplazamiento claro tras barrido de liquidez en el rango asiático.
-2. **Confluencia:** Zona de Inbalance (FVG) mitigada con divergencia alcista en RSI 14 (nivel 38.5) y aumento de volumen tick en cTrader.
+2. **Confluencia:** Zona de Inbalance (FVG) mitigada con divergencia alcista en RSI 14 (nivel 38.5) y aumento de volumen tick en ${activeBroker === 'exness' ? 'Exness' : 'cTrader'}.
 3. **Gestión de Posición:** Lote recomendado: 0.20 lotes con trailing stop automático al alcanzar 1R de ganancia.
 
 ⚡ **Acción Requerida:**
-Presiona "**✅ Confirmar**" para registrar la orden en cTrader o "**❌ Rechazar**" para declinar la operación.`;
+Presiona "**✅ Confirmar**" para registrar la orden en ${brokerLabel} o "**❌ Rechazar**" para declinar la operación.`;
 
       setAnalysisResponse(responseMarkdown);
       setParsedSignal({
@@ -127,6 +130,7 @@ Presiona "**✅ Confirmar**" para registrar la orden en cTrader o "**❌ Rechaza
   const handleConfirm = () => {
     if (!parsedSignal) return;
 
+    const brokerName = activeBroker === 'exness' ? 'Exness Gateway' : 'cTrader';
     const op: TradeOperation = {
       id: `TRD-${Math.floor(1000 + Math.random() * 9000)}`,
       date: new Date().toISOString(),
@@ -139,7 +143,7 @@ Presiona "**✅ Confirmar**" para registrar la orden en cTrader o "**❌ Rechaza
       result: '+$145.20 (Ejecutada)',
       pnl: 145.2,
       status: 'Confirmada',
-      notes: `Señal generada por ${currentProvider.name} (${selectedModel}). Transmitida a cTrader.`,
+      notes: `Señal generada por ${currentProvider.name} (${selectedModel}). Transmitida a ${brokerName}.`,
     };
 
     onTradeRecorded(op);
@@ -154,7 +158,7 @@ Presiona "**✅ Confirmar**" para registrar la orden en cTrader o "**❌ Rechaza
       );
     }
 
-    setActionFeedback(`✅ Operación ${op.pair} ${op.direction} CONFIRMADA y enviada a cTrader.`);
+    setActionFeedback(`✅ Operación ${op.pair} ${op.direction} CONFIRMADA y enviada a ${brokerName}.`);
     setAnalysisResponse(null);
     setParsedSignal(null);
   };
