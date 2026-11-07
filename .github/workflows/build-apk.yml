@@ -53,6 +53,7 @@ jobs:
         run: flutter pub get
         working-directory: flutter_project
 
+      # npm cache intentionally disabled: this repository has no committed lockfile.
       - name: 🟢 Setup Node.js
         uses: actions/setup-node@v4
         with:
