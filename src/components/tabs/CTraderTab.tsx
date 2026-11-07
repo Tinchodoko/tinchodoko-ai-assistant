@@ -145,18 +145,53 @@ export const CTraderTab: React.FC<CTraderTabProps> = ({
     });
   };
 
-  const handleConnectExness = () => {
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [connectionMessage, setConnectionMessage] = useState<string | null>(null);
+
+  const handleConnectExness = async () => {
     if (isExnessConnected) {
       onExnessConnectToggle();
+      setConnectionMessage(null);
+      setConnectionError(null);
       return;
     }
 
     setIsResolvingExness(true);
-    setTimeout(() => {
-      setIsResolvingExness(false);
-      setResolvedAccessPoint('https://ap-eu1.exness.gateway');
+    setConnectionError(null);
+    setConnectionMessage(null);
+
+    try {
+      const res = await fetch('/api/exness/discover', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apiKey: exnessCreds.apiKey,
+          privateKey: exnessCreds.privateKey,
+          accountId: exnessCreds.accountId,
+          discoveryBaseUrl: exnessCreds.discoveryBaseUrl,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setConnectionError(data.error || 'Error al conectar con Exness');
+        setIsResolvingExness(false);
+        return;
+      }
+
+      setResolvedAccessPoint(data.access_point || 'https://ap-eu1.exness.gateway');
+      setConnectionMessage(
+        data.isSimulation
+          ? 'Firma Ed25519 verificada. Modo test/simulación activo.'
+          : '¡Conexión real establecida con el Gateway de Exness!'
+      );
       onExnessConnectToggle();
-    }, 1100);
+    } catch (err: any) {
+      setConnectionError(`Error de red con el proxy Exness: ${err.message}`);
+    } finally {
+      setIsResolvingExness(false);
+    }
   };
 
   const handleCreatePosition = () => {
@@ -359,6 +394,24 @@ export const CTraderTab: React.FC<CTraderTabProps> = ({
                   <div className="text-[10px] text-[#8B949E]">
                     Coincide 100% con la cabecera esperada en la especificación oficial Exness.
                   </div>
+                </div>
+              )}
+
+              {/* Error or Success feedback from real proxy */}
+              {connectionError && (
+                <div className="p-3 bg-[#FF5252]/15 border border-[#FF5252]/40 rounded-xl flex items-start gap-2 text-xs text-[#FF5252] animate-fadeIn">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="font-bold">Error de conexión con Exness Gateway</p>
+                    <p className="text-[11px] opacity-90 mt-0.5">{connectionError}</p>
+                  </div>
+                </div>
+              )}
+
+              {connectionMessage && (
+                <div className="p-2.5 bg-[#00E676]/15 border border-[#00E676]/40 rounded-xl flex items-center gap-2 text-xs text-[#00E676] animate-fadeIn font-semibold">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <span>{connectionMessage}</span>
                 </div>
               )}
 
