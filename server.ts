@@ -15,81 +15,82 @@ type ExnessRequest = {
   privateKey?: string;
   accountId?: string;
   discoveryBaseUrl?: string;
-  accessPoint?: string;
 };
 
-function credentialsFrom(body: ExnessRequest): {
-  apiKey: string;
-  privateKey: string;
-  accountId: string;
-  discoveryBaseUrl: string;
-} {
+function credentialsFrom(body: ExnessRequest) {
   const apiKey = body.apiKey?.trim();
   const privateKey = body.privateKey?.trim();
   const accountId = body.accountId?.trim();
   const discoveryBaseUrl = body.discoveryBaseUrl?.trim();
 
   if (!apiKey || !privateKey || !accountId || !discoveryBaseUrl) {
-    throw new Error(
-      'Required: apiKey, privateKey, accountId and discoveryBaseUrl',
-    );
+    throw new Error('Required: apiKey, privateKey, accountId and discoveryBaseUrl');
+  }
+
+  const gateway = new URL(discoveryBaseUrl);
+  if (
+    gateway.protocol !== 'https:' ||
+    !['api.exness.com', 'api.exness-api.com'].includes(gateway.hostname) ||
+    gateway.pathname !== '/' ||
+    gateway.search ||
+    gateway.hash ||
+    gateway.username ||
+    gateway.password
+  ) {
+    throw new Error('Gateway must be https://api.exness.com or https://api.exness-api.com');
   }
 
   return { apiKey, privateKey, accountId, discoveryBaseUrl };
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : 'Unexpected error';
+function safeError(error: unknown): string {
+  // Never serialize request objects, headers, or credentials into API responses.
+  return error instanceof Error ? error.message.slice(0, 240) : 'Unexpected error';
 }
 
 async function startServer(): Promise<void> {
   const app = express();
-  const port = process.env.PORT ? Number.parseInt(process.env.PORT, 10) : 3000;
+  const port = Number.parseInt(process.env.PORT ?? '3000', 10);
+  const requests = new Map<string, { count: number; resetAt: number }>();
 
-  app.use(express.json({ limit: '32kb' }));
+  app.disable('x-powered-by');
+  app.use(express.json({ limit: '16kb' }));
 
-  // Exness Trader API: read-only connection flow.
-  // Private keys stay on the server and are never returned to the browser.
-  app.post('/api/exness/discover', async (req, res) => {
+  // Small per-instance abuse guard. Credentials are processed in memory only.
+  app.use('/api/', (req, res, next) => {
+    const now = Date.now();
+    const key = req.ip ?? 'unknown';
+    const current = requests.get(key);
+    if (!current || current.resetAt <= now) {
+      requests.set(key, { count: 1, resetAt: now + 60_000 });
+      return next();
+    }
+    current.count += 1;
+    if (current.count > 20) {
+      return res.status(429).json({ success: false, error: 'Rate limit exceeded. Try again in one minute.' });
+    }
+    return next();
+  });
+
+  app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'tinchodoko-exness-readonly' }));
+
+  app.post('/api/exness/connect', async (req, res) => {
     try {
       const client = new ExnessTraderClient(credentialsFrom(req.body));
-      const accessPoint = await client.discoverAccessPoint();
-      return res.json({ success: true, access_point: accessPoint });
-    } catch (error) {
-      return res.status(502).json({ success: false, error: errorMessage(error) });
-    }
-  });
-
-  app.post('/api/exness/account', async (req, res) => {
-    try {
-      const credentials = credentialsFrom(req.body);
-      const client = new ExnessTraderClient(credentials);
-
-      const accessPoint = req.body.accessPoint?.trim();
-      const resolvedAccessPoint = accessPoint
-        ? accessPoint
-        : await client.discoverAccessPoint();
-
-      const account = await client.getAccount(resolvedAccessPoint);
-
+      const result = await client.connect();
       return res.json({
         success: true,
-        access_point: resolvedAccessPoint,
-        account,
+        access_point: result.accessPoint,
+        account: result.account,
       });
     } catch (error) {
-      return res.status(502).json({ success: false, error: errorMessage(error) });
+      return res.status(502).json({ success: false, error: safeError(error) });
     }
   });
 
-  // Trading execution is intentionally disabled in this clean rebuild.
-  // It will only be enabled after the read-only connection is validated end-to-end.
-  app.post('/api/exness/positions', (_req, res) => {
-    return res.status(403).json({
-      success: false,
-      error: 'Trading execution is disabled. This build is read-only.',
-    });
-  });
+  // There are intentionally no order-placement or order-modification routes.
+  // Position retrieval will be added only after its exact official endpoint/schema
+  // is verified against Exness documentation.
 
   if (process.env.NODE_ENV === 'production') {
     app.use(express.static(path.join(__dirname, 'dist')));
@@ -97,19 +98,16 @@ async function startServer(): Promise<void> {
       res.sendFile(path.join(__dirname, 'dist', 'index.html'));
     });
   } else {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
+    const vite = await createViteServer({ server: { middlewareMode: true }, appType: 'spa' });
     app.use(vite.middlewares);
   }
 
   app.listen(port, '0.0.0.0', () => {
-    console.log(`Server listening on http://0.0.0.0:${port}`);
+    console.log(`Tinchodoko read-only backend listening on port ${port}`);
   });
 }
 
 startServer().catch((error) => {
-  console.error('Failed to start server:', errorMessage(error));
+  console.error('Failed to start server:', safeError(error));
   process.exit(1);
 });
