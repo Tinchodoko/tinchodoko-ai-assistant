@@ -1,231 +1,99 @@
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
-import {
-  buildSignedGetHeaders,
-  buildSignedPostHeaders,
-  loadSigningKey,
-} from './src/utils/exnessSigner.js';
+import { ExnessTraderClient } from './src/exness/client.ts';
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-async function startServer() {
+type ExnessRequest = {
+  apiKey?: string;
+  privateKey?: string;
+  accountId?: string;
+  discoveryBaseUrl?: string;
+  accessPoint?: string;
+};
+
+function credentialsFrom(body: ExnessRequest): {
+  apiKey: string;
+  privateKey: string;
+  accountId: string;
+  discoveryBaseUrl: string;
+} {
+  const apiKey = body.apiKey?.trim();
+  const privateKey = body.privateKey?.trim();
+  const accountId = body.accountId?.trim();
+  const discoveryBaseUrl = body.discoveryBaseUrl?.trim();
+
+  if (!apiKey || !privateKey || !accountId || !discoveryBaseUrl) {
+    throw new Error(
+      'Required: apiKey, privateKey, accountId and discoveryBaseUrl',
+    );
+  }
+
+  return { apiKey, privateKey, accountId, discoveryBaseUrl };
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'Unexpected error';
+}
+
+async function startServer(): Promise<void> {
   const app = express();
-  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+  const port = process.env.PORT ? Number.parseInt(process.env.PORT, 10) : 3000;
 
-  app.use(express.json());
+  app.use(express.json({ limit: '32kb' }));
 
-  // ==================== REAL EXNESS API PROXY ROUTES ====================
-  // Avoids browser CORS and keeps Ed25519 private key securely signed
-
-  // 1. Verify Test Vector RFC 8032
-  app.post('/api/exness/test-sign', (req, res) => {
-    try {
-      const privateKeyHex =
-        '9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a';
-      const apiKey = 'exnsk-synthetic-example';
-      const timestamp = 1773656070123;
-      const pathWithQuery = '/v1/trading/access-point?account_id=123456';
-
-      const headers = buildSignedGetHeaders(apiKey, privateKeyHex, pathWithQuery, timestamp);
-      return res.json({
-        success: true,
-        headers,
-      });
-    } catch (err: any) {
-      return res.status(500).json({ error: err.message });
-    }
-  });
-
-  // 2. Discover Access Point on Gateway
+  // Exness Trader API: read-only connection flow.
+  // Private keys stay on the server and are never returned to the browser.
   app.post('/api/exness/discover', async (req, res) => {
-    const { apiKey, privateKey, accountId, discoveryBaseUrl } = req.body;
-
-    if (!apiKey || !privateKey || !accountId || !discoveryBaseUrl) {
-      return res.status(400).json({
-        error: 'Faltan parámetros requeridos: apiKey, privateKey, accountId, discoveryBaseUrl',
-      });
-    }
-
     try {
-      // Validate accountId is positive uint64
-      if (!/^[1-9][0-9]*$/.test(accountId)) {
-        return res.status(400).json({ error: 'EXN_ACCOUNT_ID debe ser un número entero positivo.' });
-      }
-
-      const pathWithQuery = `/v1/trading/access-point?account_id=${accountId}`;
-      const signedHeaders = buildSignedGetHeaders(apiKey, privateKey, pathWithQuery);
-
-      // Check if synthetic test gateway
-      if (discoveryBaseUrl.includes('gateway.example') || apiKey.includes('synthetic')) {
-        return res.json({
-          success: true,
-          isSimulation: true,
-          access_point: 'https://ap-eu1.exness.gateway',
-          message: 'Firma Ed25519 generada correctamente. Simulación exitosa del Access Point.',
-          signedHeaders: {
-            'EXN-API-KEY': signedHeaders['EXN-API-KEY'],
-            'EXN-TIMESTAMP': signedHeaders['EXN-TIMESTAMP'],
-            'EXN-DATA': signedHeaders['EXN-DATA'],
-            'EXN-SIGN': signedHeaders['EXN-SIGN'],
-          },
-        });
-      }
-
-      // Real HTTPS Request to Exness Gateway
-      const cleanGateway = discoveryBaseUrl.replace(/\/$/, '');
-      const targetUrl = `${cleanGateway}${pathWithQuery}`;
-
-      const response = await fetch(targetUrl, {
-        method: 'GET',
-        headers: signedHeaders as unknown as Record<string, string>,
-        redirect: 'error',
-        signal: AbortSignal.timeout(15000),
-      });
-
-      const responseData = await response.json();
-
-      if (!response.ok) {
-        return res.status(response.status).json({
-          error: `Exness Gateway respondió con código ${response.status}`,
-          details: responseData,
-        });
-      }
-
-      return res.json({
-        success: true,
-        isSimulation: false,
-        access_point: responseData.access_point,
-        data: responseData,
-      });
-    } catch (err: any) {
-      return res.status(502).json({
-        error: `Error de red al conectar con el Gateway de Exness (${discoveryBaseUrl}): ${err.message}`,
-        hint: 'Verifica que la URL del Gateway sea accesible y que el par de claves Ed25519 sea válido.',
-      });
+      const client = new ExnessTraderClient(credentialsFrom(req.body));
+      const accessPoint = await client.discoverAccessPoint();
+      return res.json({ success: true, access_point: accessPoint });
+    } catch (error) {
+      return res.status(502).json({ success: false, error: errorMessage(error) });
     }
   });
 
-  // 3. Read Account Details from Access Point
   app.post('/api/exness/account', async (req, res) => {
-    const { apiKey, privateKey, accountId, accessPoint } = req.body;
-
-    if (!apiKey || !privateKey || !accountId || !accessPoint) {
-      return res.status(400).json({ error: 'Faltan parámetros requeridos.' });
-    }
-
     try {
-      const pathWithQuery = `/v1/configuration/accounts/${accountId}/account`;
-      const signedHeaders = buildSignedGetHeaders(apiKey, privateKey, pathWithQuery);
+      const credentials = credentialsFrom(req.body);
+      const client = new ExnessTraderClient(credentials);
 
-      if (accessPoint.includes('.example') || accessPoint.includes('.gateway')) {
-        return res.json({
-          success: true,
-          isSimulation: true,
-          account: {
-            account_id: accountId,
-            currency: 'USD',
-            balance: '12450.00',
-            equity: '12720.50',
-            free_margin: '12350.00',
-            leverage: '1:2000',
-            status: 'active',
-          },
-        });
-      }
+      const accessPoint = req.body.accessPoint?.trim();
+      const resolvedAccessPoint = accessPoint
+        ? accessPoint
+        : await client.discoverAccessPoint();
 
-      const cleanAp = accessPoint.replace(/\/$/, '');
-      const response = await fetch(`${cleanAp}${pathWithQuery}`, {
-        method: 'GET',
-        headers: signedHeaders as unknown as Record<string, string>,
-        redirect: 'error',
-        signal: AbortSignal.timeout(15000),
-      });
-
-      const responseData = await response.json();
-      if (!response.ok) {
-        return res.status(response.status).json({
-          error: `Exness Access Point respondió con error ${response.status}`,
-          details: responseData,
-        });
-      }
+      const account = await client.getAccount(resolvedAccessPoint);
 
       return res.json({
         success: true,
-        account: responseData,
+        access_point: resolvedAccessPoint,
+        account,
       });
-    } catch (err: any) {
-      return res.status(502).json({
-        error: `Error al leer detalles de cuenta Exness: ${err.message}`,
-      });
+    } catch (error) {
+      return res.status(502).json({ success: false, error: errorMessage(error) });
     }
   });
 
-  // 4. Place New Order / Position on Access Point
-  app.post('/api/exness/positions', async (req, res) => {
-    const { apiKey, privateKey, accountId, accessPoint, instrument, side, volume } = req.body;
-
-    if (!apiKey || !privateKey || !accountId || !accessPoint || !instrument || !side || !volume) {
-      return res.status(400).json({ error: 'Faltan parámetros requeridos para la orden.' });
-    }
-
-    try {
-      const idempotencyKey = `ord-${Date.now()}`;
-      const pathWithQuery = `/v1/trading/accounts/${accountId}/positions`;
-      const bodyObj = {
-        instrument,
-        side: String(side).toLowerCase(),
-        volume: Number(volume),
-      };
-
-      const signedHeaders = buildSignedPostHeaders(
-        apiKey,
-        privateKey,
-        pathWithQuery,
-        bodyObj,
-        idempotencyKey
-      );
-
-      if (accessPoint.includes('.example') || accessPoint.includes('.gateway')) {
-        return res.json({
-          status: 'confirmed',
-          operation_id: `op_${Date.now()}`,
-          client_request_id: idempotencyKey,
-          instrument,
-          side,
-          volume,
-          isSimulation: true,
-        });
-      }
-
-      const cleanAp = accessPoint.replace(/\/$/, '');
-      const response = await fetch(`${cleanAp}${pathWithQuery}`, {
-        method: 'POST',
-        headers: {
-          ...(signedHeaders as unknown as Record<string, string>),
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(bodyObj),
-        redirect: 'error',
-        signal: AbortSignal.timeout(15000),
-      });
-
-      const responseData = await response.json();
-      return res.status(response.status).json(responseData);
-    } catch (err: any) {
-      return res.status(502).json({ error: `Error al emitir orden en Exness: ${err.message}` });
-    }
+  // Trading execution is intentionally disabled in this clean rebuild.
+  // It will only be enabled after the read-only connection is validated end-to-end.
+  app.post('/api/exness/positions', (_req, res) => {
+    return res.status(403).json({
+      success: false,
+      error: 'Trading execution is disabled. This build is read-only.',
+    });
   });
 
-  // ==================== VITE MIDDLEWARE (DEV) / STATIC (PROD) ====================
   if (process.env.NODE_ENV === 'production') {
     app.use(express.static(path.join(__dirname, 'dist')));
-    app.get('*', (req, res) => {
+    app.get('*', (_req, res) => {
       res.sendFile(path.join(__dirname, 'dist', 'index.html'));
     });
   } else {
@@ -236,12 +104,12 @@ async function startServer() {
     app.use(vite.middlewares);
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server listening on http://0.0.0.0:${PORT}`);
+  app.listen(port, '0.0.0.0', () => {
+    console.log(`Server listening on http://0.0.0.0:${port}`);
   });
 }
 
-startServer().catch((err) => {
-  console.error('Failed to start server:', err);
+startServer().catch((error) => {
+  console.error('Failed to start server:', errorMessage(error));
   process.exit(1);
 });
