@@ -53,7 +53,23 @@ jobs:
         run: flutter pub get
         working-directory: flutter_project
 
-      - name: 🧪 TypeScript Exness signing test\n        run: npm test\n\n      - name: 🧪 Ejecutar pruebas Flutter\n        run: flutter test\n        working-directory: flutter_project\n\n      - name: 🔍 Analizar código
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: 📦 Instalar dependencias TypeScript
+        run: npm install
+
+      - name: 🧪 TypeScript Exness signing test
+        run: npm test
+
+      - name: 🧪 Ejecutar pruebas Flutter
+        run: flutter test
+        working-directory: flutter_project
+
+      - name: 🔍 Analizar código
         run: flutter analyze --no-fatal-infos
         working-directory: flutter_project
 
