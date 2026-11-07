@@ -39,7 +39,8 @@ class ExnessTick {
 
 class ExnessService extends ChangeNotifier {
   static const String _backendBaseUrl = 'https://tinchodoko-bridge.onrender.com';
-  static const Duration _requestTimeout = Duration(seconds: 35);
+  // Render Free services can take a while to wake after inactivity.
+  static const Duration _requestTimeout = Duration(seconds: 90);
 
   bool _isConnected = false;
   bool _isLoading = false;
@@ -118,7 +119,10 @@ class ExnessService extends ChangeNotifier {
       final response = await http
           .post(
             uri,
-            headers: const {'Content-Type': 'application/json', 'Accept': 'application/json'},
+            headers: const {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
             body: jsonEncode({
               'apiKey': apiKey.trim(),
               'privateKey': privateKey.trim(),
@@ -136,17 +140,25 @@ class ExnessService extends ChangeNotifier {
         }
         payload = decoded;
       } on FormatException {
-        throw StateError('The backend returned an invalid response (HTTP ${response.statusCode}).');
+        throw StateError(
+          'The backend returned an invalid response (HTTP ${response.statusCode}).',
+        );
       }
 
-      if (response.statusCode < 200 || response.statusCode >= 300 || payload['success'] != true) {
-        final message = payload['error'] is String ? payload['error'] as String : 'Backend request failed (HTTP ${response.statusCode}).';
+      if (response.statusCode < 200 ||
+          response.statusCode >= 300 ||
+          payload['success'] != true) {
+        final message = payload['error'] is String
+            ? payload['error'] as String
+            : 'Backend request failed (HTTP ${response.statusCode}).';
         throw StateError(message);
       }
 
       final rawAccount = payload['account'];
       if (rawAccount is! Map<String, dynamic>) {
-        throw StateError('Exness connected, but the account response has an unexpected format.');
+        throw StateError(
+          'Exness connected, but the account response has an unexpected format.',
+        );
       }
 
       _accessPoint = payload['access_point']?.toString();
@@ -154,9 +166,10 @@ class ExnessService extends ChangeNotifier {
       _isConnected = true;
       _lastError = '';
       return true;
-    } on http.ClientException {
+    } on http.ClientException catch (error) {
       _isConnected = false;
-      _lastError = 'Could not reach the Exness backend. Check the server deployment and network connection.';
+      // Preserve the underlying socket/TLS/HTTP detail instead of hiding it.
+      _lastError = 'Backend network error: ${error.message}';
       return false;
     } catch (error) {
       _isConnected = false;
@@ -176,19 +189,24 @@ class ExnessService extends ChangeNotifier {
   }
 
   Future<void> refresh() async {
-    _lastError = 'Account refresh is not available yet. Reconnect to fetch the latest account data.';
+    _lastError =
+        'Account refresh is not available yet. Reconnect to fetch the latest account data.';
     notifyListeners();
   }
 
   Future<List<String>> getAvailableInstruments() async {
-    throw StateError('Instrument discovery is not implemented in the read-only backend yet.');
+    throw StateError(
+      'Instrument discovery is not implemented in the read-only backend yet.',
+    );
   }
 
   Future<List<Candle>> fetchMarketCandles({
     required String instrument,
     required String timeframe,
   }) async {
-    throw StateError('Market candle retrieval is not implemented in the read-only backend yet.');
+    throw StateError(
+      'Market candle retrieval is not implemented in the read-only backend yet.',
+    );
   }
 
   void disconnect() {
