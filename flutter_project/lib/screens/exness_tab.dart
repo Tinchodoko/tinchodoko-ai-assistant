@@ -624,7 +624,7 @@ class _ExnessTabState extends State<ExnessTab> {
                                     children: [
                                       Expanded(
                                         child: Text(
-                                          position.instrument,
+                                          (position['instrument'] ?? position['pair'] ?? 'Unknown instrument').toString(),
                                           style: const TextStyle(
                                             color: AppTheme.textPrimary,
                                             fontWeight: FontWeight.bold,
@@ -633,9 +633,9 @@ class _ExnessTabState extends State<ExnessTab> {
                                         ),
                                       ),
                                       Text(
-                                        position.direction,
+                                        (position['direction'] ?? 'UNKNOWN').toString(),
                                         style: TextStyle(
-                                          color: position.direction == 'BUY'
+                                          color: (position['direction'] ?? 'UNKNOWN').toString() == 'BUY'
                                               ? AppTheme.primaryGreen
                                               : AppTheme.errorRed,
                                           fontWeight: FontWeight.bold,
@@ -649,19 +649,19 @@ class _ExnessTabState extends State<ExnessTab> {
                                     spacing: 16,
                                     runSpacing: 6,
                                     children: [
-                                      _positionValue('Volume', position.volume),
+                                      _positionValue('Volume', (position['volume'] ?? position['lots'] ?? 0).toString()),
                                       _positionValue('Open price',
-                                          position.openPrice),
+                                          (position['openPrice'] ?? position['entryPrice'] ?? 0).toString()),
                                       _positionValue('Commission',
-                                          position.commission),
-                                      _positionValue('Swap', position.swap),
-                                      _positionValue('ID', position.id),
+                                          (position['commission'] ?? 0).toString()),
+                                      _positionValue('Swap', (position['swap'] ?? 0).toString()),
+                                      _positionValue('ID', (position['id'] ?? '').toString()),
                                     ],
                                   ),
-                                  if (position.openedAt.isNotEmpty) ...[
+                                  if ((position['openedAt'] ?? '').toString().isNotEmpty) ...[
                                     const SizedBox(height: 7),
                                     Text(
-                                      position.openedAt,
+                                      (position['openedAt'] ?? '').toString(),
                                       style: const TextStyle(
                                         color: AppTheme.textSecondary,
                                         fontSize: 10,
