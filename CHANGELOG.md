@@ -1,3 +1,12 @@
+## TypeScript Exness Trader API — clean rebuild (2026-11-07)
+- Se elimina la implementación Python anterior de Exness.
+- Se elimina la firma simulada del cliente TypeScript anterior.
+- Se implementa una única capa TypeScript basada en el ejemplo oficial actual de Exness.
+- Firma Ed25519 real con soporte para clave Exness de 128 caracteres hexadecimales o PKCS#8 PEM.
+- GET firmado con `EXN-API-KEY`, `EXN-IDEMPOTENCY-KEY` vacío, `EXN-TIMESTAMP`, `EXN-SIGN-VERSION`, `EXN-DATA` y `EXN-SIGN`.
+- Flujo read-only: Gateway `/v1/trading/access-point` → Access Point → `/v1/configuration/accounts/{account_id}/account`.
+- Ejecución de operaciones deshabilitada hasta validar completamente la conexión Demo.
+
 ## Exness Gateway y transporte HTTP — corrección (2026-11-05)
 - Se utilizan exclusivamente los dos hosts confirmados por Exness Support: `https://api.exness.com` y `https://api.exness-api.com`.
 - El descubrimiento firmado `GET /v1/trading/access-point?account_id=...` prueba primero el host configurado y utiliza el segundo como failover únicamente ante errores de transporte; los errores HTTP/autenticación no se ocultan.
