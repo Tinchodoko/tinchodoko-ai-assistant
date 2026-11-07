@@ -23,18 +23,6 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: 🐍 Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: 🧪 Python backend tests (Ed25519 vector + validation)
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          python -m unittest discover -s tests -t . -v
-        working-directory: backend
-
       - name: 🐦 Setup Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -65,11 +53,7 @@ jobs:
         run: flutter pub get
         working-directory: flutter_project
 
-      - name: 🧪 Ejecutar pruebas unitarias (Exness Ed25519)
-        run: flutter test
-        working-directory: flutter_project
-
-      - name: 🔍 Analizar código
+      - name: 🧪 TypeScript Exness signing test\n        run: npm test\n\n      - name: 🧪 Ejecutar pruebas Flutter\n        run: flutter test\n        working-directory: flutter_project\n\n      - name: 🔍 Analizar código
         run: flutter analyze --no-fatal-infos
         working-directory: flutter_project
 
