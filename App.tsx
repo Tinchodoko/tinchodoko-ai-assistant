@@ -1,15 +1,23 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Linking, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { connectAndGetAccount, type Credentials } from './src/exness';
 import { loadCredentials, saveCredentials } from './src/storage';
+import { BUILD_INFO } from './src/buildInfo';
 
 const PERIOD = 5 * 60 * 1000;
-type Screen = 'connection' | 'profile';
+const RELEASES_URL = 'https://github.com/Tinchodoko/tinchodoko-ai-assistant/releases';
+const LATEST_RELEASE_API = 'https://api.github.com/repos/Tinchodoko/tinchodoko-ai-assistant/releases/latest';
+type Screen = 'connection' | 'profile' | 'app';
 
 function dateText(d: Date | null) {
   if (!d) return '--/--/---- --:--:--';
   const p = (n:number) => String(n).padStart(2,'0');
   return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
+function versionNumber(v:string) {
+  const m=v.replace(/^v/i,'').match(/^(\\d+)(?:\\.(\\d+))?(?:\\.(\\d+))?/);
+  return m ? Number(m[1])*1000000 + Number(m[2]||0)*1000 + Number(m[3]||0) : 0;
 }
 
 export default function App() {
@@ -23,6 +31,8 @@ export default function App() {
   const [last,setLast]=useState<Date|null>(null);
   const [next,setNext]=useState<Date|null>(null);
   const [busy,setBusy]=useState(false);
+  const [latestVersion,setLatestVersion]=useState<string|null>(null);
+  const [checkingUpdate,setCheckingUpdate]=useState(false);
 
   useEffect(()=>{ loadCredentials().then(x=>x&&setC(x)); },[]);
 
@@ -50,6 +60,30 @@ export default function App() {
     } finally { setBusy(false); }
   }
 
+  async function checkUpdate() {
+    setCheckingUpdate(true);
+    try {
+      const res=await fetch(LATEST_RELEASE_API, { headers: { Accept: 'application/vnd.github+json' } });
+      if (res.status === 404) { setLatestVersion(null); Alert.alert('Actualización', 'No hay releases publicadas todavía.'); return; }
+      if (!res.ok) throw new Error(`GitHub HTTP ${res.status}`);
+      const release=await res.json() as { tag_name?:string; name?:string };
+      const tag=release.tag_name || release.name || '';
+      if (!tag) throw new Error('GitHub no devolvió una versión válida.');
+      setLatestVersion(tag);
+      if (versionNumber(tag) > versionNumber(BUILD_INFO.version)) {
+        Alert.alert('Actualización disponible', `Nueva versión: ${tag}`);
+      } else {
+        Alert.alert('Actualización', 'La aplicación ya está actualizada.');
+      }
+    } catch(e) {
+      Alert.alert('Actualización', e instanceof Error?e.message:String(e));
+    } finally { setCheckingUpdate(false); }
+  }
+
+  function updateApp() {
+    // Intencionalmente vacío por ahora. La instalación automática se implementará después.
+  }
+
   useEffect(()=>{
     if(screen!=='profile') return;
     const id=setInterval(refresh,PERIOD);
@@ -57,7 +91,6 @@ export default function App() {
   },[screen,c.apiKey,c.secret,c.accountId,c.gatewayUrl]);
 
   const set=(key:keyof Credentials)=>(value:string)=>setC(x=>({...x,[key]:value}));
-
   const field=(label:string,key:keyof Credentials,secure=false,visible=false,toggle?:()=>void)=>(
     <View style={s.field} key={key}>
       <Text style={s.label}>{label}</Text>
@@ -74,6 +107,7 @@ export default function App() {
     <View style={s.tabs}>
       <Pressable onPress={()=>setScreen('connection')} style={[s.tab,screen==='connection'&&s.active]}><Text style={s.tabText}>CONEXIÓN</Text></Pressable>
       <Pressable onPress={()=>setScreen('profile')} style={[s.tab,screen==='profile'&&s.active]}><Text style={s.tabText}>PROFILE</Text></Pressable>
+      <Pressable onPress={()=>setScreen('app')} style={[s.tab,screen==='app'&&s.active]}><Text style={s.tabText}>APP</Text></Pressable>
     </View>
 
     {screen==='connection' ? <ScrollView contentContainerStyle={s.content}>
@@ -84,7 +118,7 @@ export default function App() {
       {field('ACCOUNT','accountId')}
       <Pressable disabled={busy} onPress={connect} style={[s.button,busy&&s.disabled]}>{busy?<ActivityIndicator/>:<Text style={s.buttonText}>CONECTAR</Text>}</Pressable>
       <Text style={status==='online'?s.onlineText:s.offlineText}>Estado: {status}</Text>
-    </ScrollView> : <ScrollView contentContainerStyle={s.content}>
+    </ScrollView> : screen==='profile' ? <ScrollView contentContainerStyle={s.content}>
       <Text style={s.h1}>PROFILE</Text>
       <View style={s.card}>
         <Info label="APIKEY" value={c.apiKey?'••••••••••••':'—'}/>
@@ -98,6 +132,27 @@ export default function App() {
       <Text style={s.meta}>PRÓXIMA ACTUALIZACIÓN</Text><Text style={s.time}>{dateText(next)}</Text>
       <Text style={status==='online'?s.onlineText:s.offlineText}>Estado: {status}</Text>
       {!!accessPoint && <Text style={s.ap}>Access Point: {accessPoint}</Text>}
+    </ScrollView> : <ScrollView contentContainerStyle={s.content}>
+      <Text style={s.h1}>APP</Text>
+      <View style={s.card}>
+        <Info label="NOMBRE DE APP" value={BUILD_INFO.appName}/>
+        <Info label="NOMBRE DE PAQUETE" value={BUILD_INFO.packageName}/>
+        <Info label="FIRMA DE APP" value={BUILD_INFO.signature}/>
+        <Info label="VERSION ACTUAL" value={`V${BUILD_INFO.build}`}/>
+        <Info label="ULTIMA VERSION" value={latestVersion || 'No comprobada'}/>
+      </View>
+      <Pressable disabled={checkingUpdate} onPress={latestVersion && versionNumber(latestVersion)>versionNumber(BUILD_INFO.version) ? updateApp : checkUpdate} style={[s.button,checkingUpdate&&s.disabled]}>
+        {checkingUpdate ? <ActivityIndicator/> : <Text style={s.buttonText}>{latestVersion && versionNumber(latestVersion)>versionNumber(BUILD_INFO.version) ? 'ACTUALIZAR APP' : 'BUSCAR ACTUALIZACIÓN'}</Text>}
+      </Pressable>
+      <Pressable onPress={()=>Linking.openURL(RELEASES_URL)} style={s.githubButton}>
+        <Image source={{uri:'https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png'}} style={s.githubLogo}/>
+        <Text style={s.githubText}>GITHUB</Text>
+        <Text style={s.githubVersion}>V{BUILD_INFO.build}</Text>
+      </Pressable>
+      <Text style={s.meta}>REGISTRO DE CAMBIOS</Text>
+      <View style={s.card}>
+        {(BUILD_INFO.changelog.length ? BUILD_INFO.changelog : ['#V0 — Historial inicial']).map((entry,i)=><Text key={i} style={s.change}>{entry}</Text>)}
+      </View>
     </ScrollView>}
   </SafeAreaView>;
 }
@@ -116,5 +171,6 @@ const s=StyleSheet.create({
  onlineText:{color:'#28d17c',textAlign:'center',fontWeight:'800'},offlineText:{color:'#e05252',textAlign:'center',fontWeight:'800'},
  card:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:14,padding:17,gap:17},info:{gap:5},infoLabel:{color:'#8f98a8',fontSize:11,fontWeight:'900'},infoValue:{color:'#fff',fontSize:15,fontWeight:'600'},
  refresh:{minHeight:48,borderRadius:10,borderWidth:1,borderColor:'#3b4350',alignItems:'center',justifyContent:'center'},refreshText:{color:'#fff',fontWeight:'900'},
- meta:{color:'#8f98a8',fontSize:11,fontWeight:'900'},time:{color:'#fff',fontWeight:'600',marginTop:-9},ap:{color:'#707988',fontSize:11}
+ meta:{color:'#8f98a8',fontSize:11,fontWeight:'900'},time:{color:'#fff',fontWeight:'600',marginTop:-9},ap:{color:'#707988',fontSize:11},
+ githubButton:{minHeight:54,borderRadius:12,borderWidth:1,borderColor:'#3b4350',paddingHorizontal:16,flexDirection:'row',alignItems:'center',gap:12},githubLogo:{width:24,height:24},githubText:{color:'#fff',fontWeight:'900',flex:1},githubVersion:{color:'#9da6b5',fontWeight:'800'},change:{color:'#dce1e9',fontSize:13,lineHeight:20}
 });
