@@ -1,0 +1,13 @@
+{
+  "expo": {
+    "name": "Tinchodoko AI Assistant",
+    "slug": "tinchodoko-ai-assistant",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "android": {
+      "package": "com.tinchodoko.aiassistant",
+      "versionCode": 1
+    }
+  }
+}
