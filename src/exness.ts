@@ -27,9 +27,14 @@ function b64url(bytes: Uint8Array): string {
   return btoa(binary).replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/g, '');
 }
 
-function headers(c: Credentials, path: string): Record<string, string> {
+async function sha256Base64Url(data: Uint8Array): Promise<string> {
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', data);
+  return b64url(new Uint8Array(digest));
+}
+
+async function headers(c: Credentials, path: string): Promise<Record<string, string>> {
   const timestamp = Date.now();
-  const bodyHash = b64url(new Uint8Array(32));
+  const bodyHash = await sha256Base64Url(new Uint8Array(0));
   const payload = JSON.stringify({
     api_key: c.apiKey,
     idempotency_key: '',
@@ -53,7 +58,10 @@ function headers(c: Credentials, path: string): Record<string, string> {
 }
 
 async function getJson<T>(host: string, path: string, c: Credentials): Promise<T> {
-  const res = await fetch(host.replace(/\\/$/, '') + path, { method: 'GET', headers: headers(c, path) });
+  const res = await fetch(host.replace(/\\/$/, '') + path, {
+    method: 'GET',
+    headers: await headers(c, path)
+  });
   const text = await res.text();
   if (!res.ok) throw new Error(`HTTP ${res.status}: ${text}`);
   return JSON.parse(text) as T;
