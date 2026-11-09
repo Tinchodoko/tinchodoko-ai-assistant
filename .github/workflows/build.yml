@@ -5,26 +5,81 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Capture build change
+        run: |
+          echo "BUILD_NUMBER=$GITHUB_RUN_NUMBER" >> "$GITHUB_ENV"
+          echo "BUILD_CHANGE=$(git log -1 --pretty=%s)" >> "$GITHUB_ENV"
+      - name: Install dependencies
+        uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-      - uses: actions/setup-java@v4
+      - name: Setup Java
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-      - run: npm install
-      - run: npm run typecheck
-      - run: npx expo prebuild --platform android --non-interactive
-      - working-directory: android
+      - name: Install npm packages
+        run: npm install
+      - name: Generate Android project
+        run: |
+          node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync('app.json','utf8')); p.expo.version='1.0.'+process.env.BUILD_NUMBER; p.expo.android.versionCode=Number(process.env.BUILD_NUMBER); fs.writeFileSync('app.json', JSON.stringify(p,null,2)+'\\n')"
+          npx expo prebuild --platform android --non-interactive
+      - name: Record build in CHANGELOG.md
+        run: |
+          printf '%s\\n' "#V${BUILD_NUMBER} — ${BUILD_CHANGE}" > CHANGELOG.new
+          cat CHANGELOG.md >> CHANGELOG.new
+          mv CHANGELOG.new CHANGELOG.md
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git diff --cached --quiet || git commit -m "chore(build): record #V${BUILD_NUMBER} [skip ci]"
+          git push
+      - name: Generate Android signing fingerprint
+        run: |
+          mkdir -p "$HOME/.android"
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            keytool -genkeypair -v \
+              -keystore "$HOME/.android/debug.keystore" \
+              -storepass android -keypass android -alias androiddebugkey \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          SIGNATURE=$(keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey | awk -F': ' '/SHA256:/{print $2; exit}')
+          echo "APP_SIGNATURE=$SIGNATURE" >> "$GITHUB_ENV"
+      - name: Generate build metadata
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, json
+          changes = [line[2:] for line in Path("CHANGELOG.md").read_text(encoding="utf-8").splitlines() if line.startswith("- #V")]
+          content = "export const BUILD_INFO = " + json.dumps({
+              "appName": "Tinchodoko AI Assistant",
+              "packageName": "com.tinchodoko.aiassistant",
+              "version": "V" + os.environ["BUILD_NUMBER"],
+              "build": os.environ["BUILD_NUMBER"],
+              "signature": os.environ.get("APP_SIGNATURE", "DEBUG"),
+              "changelog": changes,
+          }, ensure_ascii=False, indent=2) + ";\\n"
+          Path("src/buildInfo.ts").write_text(content, encoding="utf-8")
+          PY
+      - name: TypeScript check
+        run: npm run typecheck
+      - name: Build debug APK
+        working-directory: android
         run: ./gradlew assembleDebug --no-daemon
-      - uses: actions/upload-artifact@v4
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
         with:
-          name: tinchodoko-ai-assistant-debug
+          name: tinchodoko-ai-assistant-V${{ github.run_number }}-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
