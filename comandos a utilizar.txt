@@ -1,0 +1,252 @@
+# EXNESS BOT — GUÍA DE INSTALACIÓN Y EJECUCIÓN
+
+**Proyecto:** `exness-bot`  
+**Entorno:** Termux / Node.js / TypeScript  
+**Ubicación:** `~/storage/downloads/exness-bot`
+
+---
+
+## 1. INSTALACIÓN Y CONFIGURACIÓN DEL ENTORNO
+
+Estos comandos se ejecutan para preparar Termux.
+
+### 1.1. Reinstalar Node.js LTS
+
+```bash
+pkg uninstall nodejs -y
+pkg install nodejs-lts -y
+```
+
+### 1.2. Comprobar la versión de Node.js
+
+```bash
+node --version
+npm --version
+```
+
+### 1.3. Acceder a la carpeta del proyecto
+
+```bash
+cd ~/storage/downloads/exness-bot
+```
+
+### 1.4. Verificar los archivos existentes
+
+```bash
+ls -la ~/storage/downloads/exness-bot/
+```
+
+### 1.5. Inicializar el proyecto Node.js
+
+Este comando crea `package.json` si todavía no existe.
+
+```bash
+npm init -y
+```
+
+### 1.6. Instalar dependencias
+
+Instalar TypeScript, los tipos de Node.js y WebSocket:
+
+```bash
+npm install -D @types/node @types/ws typescript
+npm install ws
+```
+
+Instalar TSX globalmente para ejecutar los archivos TypeScript:
+
+```bash
+npm install -g tsx
+```
+
+---
+
+## 2. SCRIPTS DE CONSULTA Y DIAGNÓSTICO
+
+Todos los comandos deben ejecutarse desde la carpeta del proyecto:
+
+```bash
+cd ~/storage/downloads/exness-bot
+```
+
+### 2.1. `balance.ts` — Consulta de balance
+
+Obtiene información del balance de la cuenta de Exness.
+
+```bash
+npx tsx balance.ts | tee ~/storage/downloads/balance_output.txt
+```
+
+**Archivo de salida:** `balance_output.txt`
+
+### 2.2. `equity.ts` — Consulta de Equity en vivo
+
+Obtiene información del Equity de la cuenta en tiempo real.
+
+```bash
+npx tsx equity.ts | tee ~/storage/downloads/equity_output.txt
+```
+
+**Archivo de salida:** `equity_output.txt`
+
+**Importante:** si el script mantiene una conexión en vivo, se detiene manualmente con `CTRL + C`.
+
+### 2.3. `probe.ts` — Prueba de diagnóstico
+
+Ejecuta el script de prueba y diagnóstico de la integración con Exness.
+
+```bash
+npx tsx probe.ts | tee ~/storage/downloads/probe_output.txt
+```
+
+**Archivo de salida:** `probe_output.txt`
+
+### 2.4. `positions.ts` — Consulta de posiciones
+
+Obtiene información de las posiciones abiertas de la cuenta.
+
+```bash
+npx tsx positions.ts | tee ~/storage/downloads/positions_output.txt
+```
+
+**Archivo de salida:** `positions_output.txt`
+
+---
+
+## 3. SCRIPTS DE OPERACIONES DE TRADING
+
+### 3.1. `trade1.ts` — Apertura de operaciones a mercado
+
+Permite abrir operaciones BUY o SELL a precio de mercado.
+
+Incluye la configuración de:
+
+- Instrumento financiero.
+- Dirección de la operación: BUY o SELL.
+- Volumen.
+- Stop Loss (SL).
+- Take Profit (TP).
+
+El script envía la solicitud a Exness y espera la confirmación del resultado mediante WebSocket.
+
+**Ejecución:**
+
+```bash
+npx tsx trade1.ts | tee ~/storage/downloads/trade1_output.txt
+```
+
+**Archivo de salida:** `trade1_output.txt`
+
+### 3.2. `trade2.ts` — Cierre de posiciones y cancelación de órdenes
+
+Permite realizar las siguientes operaciones:
+
+- Cerrar una posición individual mediante su Position ID.
+- Cancelar una orden pendiente individual mediante su Order ID.
+- Ejecutar `CLOSE_ALL=true` para cancelar las órdenes pendientes y cerrar las posiciones del instrumento configurado.
+
+**Comportamiento de CLOSE ALL:**
+
+1. Obtiene una instantánea de las posiciones y órdenes.
+2. Cancela las órdenes pendientes correspondientes.
+3. Conserva las órdenes de protección SL/TP (`sltp`).
+4. Cierra las posiciones abiertas.
+5. Informa las operaciones exitosas y fallidas.
+
+**Ejecución:**
+
+```bash
+npx tsx trade2.ts | tee ~/storage/downloads/trade2_output.txt
+```
+
+**Archivo de salida:** `trade2_output.txt`
+
+**Precaución:** `CLOSE_ALL=true` realiza acciones de trading. Verificar el instrumento y la configuración antes de ejecutarlo.
+
+### 3.3. `trade3.ts` — Creación de órdenes pendientes LIMIT
+
+Permite colocar órdenes pendientes de compra y venta:
+
+**BUY LIMIT**
+- Establece un precio de entrada inferior al precio de mercado correspondiente.
+- Permite configurar Stop Loss y Take Profit.
+
+**SELL LIMIT**
+- Establece un precio de entrada superior al precio de mercado correspondiente.
+- Permite configurar Stop Loss y Take Profit.
+
+El script envía la solicitud de creación de la orden y espera la confirmación de Exness mediante WebSocket.
+
+**Ejecución:**
+
+```bash
+npx tsx trade3.ts | tee ~/storage/downloads/trade3_output.txt
+```
+
+**Archivo de salida:** `trade3_output.txt`
+
+**Importante:** el resultado `success` confirma que la orden pendiente fue colocada correctamente. No significa que ya se haya ejecutado o convertido en una posición abierta.
+
+---
+
+## 4. UBICACIÓN DE LOS RESULTADOS
+
+Todos los archivos de salida se guardan en:
+
+```bash
+~/storage/downloads/
+```
+
+| Script | Archivo de salida |
+|---|---|
+| balance.ts | balance_output.txt |
+| equity.ts | equity_output.txt |
+| probe.ts | probe_output.txt |
+| positions.ts | positions_output.txt |
+| trade1.ts | trade1_output.txt |
+| trade2.ts | trade2_output.txt |
+| trade3.ts | trade3_output.txt |
+
+El comando `tee` permite visualizar la ejecución en Termux y guardar simultáneamente el resultado en un archivo de texto.
+
+---
+
+## 5. COMANDOS IMPORTANTES
+
+**Detener un script en ejecución:**
+
+```text
+CTRL + C
+```
+
+**Volver a la carpeta del proyecto:**
+
+```bash
+cd ~/storage/downloads/exness-bot
+```
+
+**Consultar los archivos del proyecto:**
+
+```bash
+ls -la
+```
+
+**Consultar los registros de salida:**
+
+```bash
+ls -lh ~/storage/downloads/*_output.txt
+```
+
+---
+
+## 6. ESTADO DE VALIDACIÓN DE LOS SCRIPTS
+
+Los tres scripts de trading fueron ejecutados y probados satisfactoriamente en la cuenta Demo:
+
+- `trade1.ts`: apertura de operaciones a mercado.
+- `trade2.ts`: cierre de posiciones y cancelación de órdenes.
+- `trade3.ts`: creación de órdenes pendientes BUY LIMIT y SELL LIMIT.
+
+**Estado general:** FUNCIONAL — PRUEBAS DEMO EXITOSAS.
+
+**Nota de seguridad:** mantener las pruebas en Demo hasta completar las validaciones. No compartir ni publicar `config.js`, claves API, claves privadas ni credenciales de la cuenta.
