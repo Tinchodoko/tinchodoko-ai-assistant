@@ -1,4 +1,4 @@
-name: Android Debug APK
+name: Android Release APK
 
 on:
   workflow_dispatch:
@@ -6,12 +6,11 @@ on:
     branches: [main]
 
 concurrency:
-  group: android-debug-build
+  group: android-release-build
   cancel-in-progress: false
 
 permissions:
   contents: write
-  actions: read
 
 jobs:
   build:
@@ -19,38 +18,106 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Capture build change
         run: |
           echo "BUILD_NUMBER=$GITHUB_RUN_NUMBER" >> "$GITHUB_ENV"
           echo "BUILD_CHANGE=$(git log -1 --pretty=%s)" >> "$GITHUB_ENV"
+
       - name: Install dependencies
         uses: actions/setup-node@v4
         with:
           node-version: 20
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+
       - name: Install npm packages
         run: npm install
+
       - name: Generate Android project
         run: |
-          node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync('app.json','utf8')); p.expo.version='1.0.'+process.env.BUILD_NUMBER; p.expo.android.versionCode=Number(process.env.BUILD_NUMBER); fs.writeFileSync('app.json', JSON.stringify(p,null,2)+'\n')"
+          node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync('app.json','utf8')); p.expo.version='1.0.'+process.env.BUILD_NUMBER; p.expo.android.versionCode=Number(process.env.BUILD_NUMBER); fs.writeFileSync('app.json', JSON.stringify(p,null,2)+'\\n')"
           CI=1 npx expo prebuild --platform android
+
       - name: Prepare build changelog
         run: |
-          printf '%s\n' "- #V${BUILD_NUMBER} — ${BUILD_CHANGE}" > CHANGELOG.new
+          printf '%s\\n' "- #V${BUILD_NUMBER} — ${BUILD_CHANGE}" > CHANGELOG.new
           cat CHANGELOG.md >> CHANGELOG.new
           mv CHANGELOG.new CHANGELOG.md
-      - name: Generate Android signing fingerprint
+
+      - name: Configure permanent Android release signing
+        env:
+          AIASSISTANT_SIGNING_KEYSTORE_BASE64: ${{ secrets.AIASSISTANT_SIGNING_KEYSTORE_BASE64 }}
+          AIASSISTANT_SIGNING_STORE_PASSWORD: ${{ secrets.AIASSISTANT_SIGNING_STORE_PASSWORD }}
+          AIASSISTANT_SIGNING_KEY_ALIAS: ${{ secrets.AIASSISTANT_SIGNING_KEY_ALIAS }}
+          AIASSISTANT_SIGNING_KEY_PASSWORD: ${{ secrets.AIASSISTANT_SIGNING_KEY_PASSWORD }}
         run: |
-          mkdir -p "$HOME/.android"
-          if [ ! -f "$HOME/.android/debug.keystore" ]; then
-            keytool -genkeypair -v -keystore "$HOME/.android/debug.keystore" -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          set -euo pipefail
+
+          for secret_name in \
+            AIASSISTANT_SIGNING_KEYSTORE_BASE64 \
+            AIASSISTANT_SIGNING_STORE_PASSWORD \
+            AIASSISTANT_SIGNING_KEY_ALIAS \
+            AIASSISTANT_SIGNING_KEY_PASSWORD; do
+            if [ -z "${!secret_name:-}" ]; then
+              echo "::error::Missing required GitHub Actions secret: ${secret_name}"
+              exit 1
+            fi
+          done
+
+          KEYSTORE_PATH="$RUNNER_TEMP/tinchodoko-release.jks"
+          printf '%s' "$AIASSISTANT_SIGNING_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+          test -s "$KEYSTORE_PATH"
+          chmod 600 "$KEYSTORE_PATH"
+
+          SIGNATURE=$(keytool -list -v \
+            -keystore "$KEYSTORE_PATH" \
+            -storepass "$AIASSISTANT_SIGNING_STORE_PASSWORD" \
+            -alias "$AIASSISTANT_SIGNING_KEY_ALIAS" \
+            | awk -F': ' '/SHA256:/{print $2; exit}')
+
+          if [ -z "$SIGNATURE" ]; then
+            echo "::error::Could not read the signing certificate SHA-256 fingerprint."
+            exit 1
           fi
-          SIGNATURE=$(keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey | awk -F': ' '/SHA256:/{print $2; exit}')
           echo "APP_SIGNATURE=$SIGNATURE" >> "$GITHUB_ENV"
+          echo "AIASSISTANT_SIGNING_KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          gradle_file = Path("android/app/build.gradle")
+          source = gradle_file.read_text(encoding="utf-8")
+
+          signing_marker = re.search(r"(?m)^\\s*signingConfigs\\s*\\{", source)
+          if not signing_marker:
+              raise SystemExit("Could not find signingConfigs block in generated android/app/build.gradle")
+
+          release_config = """
+              release {
+                  storeFile file(System.getenv("AIASSISTANT_SIGNING_KEYSTORE_PATH"))
+                  storePassword System.getenv("AIASSISTANT_SIGNING_STORE_PASSWORD")
+                  keyAlias System.getenv("AIASSISTANT_SIGNING_KEY_ALIAS")
+                  keyPassword System.getenv("AIASSISTANT_SIGNING_KEY_PASSWORD")
+              }
+          """
+          insert_at = signing_marker.end()
+          source = source[:insert_at] + release_config + source[insert_at:]
+
+          release_build_type = re.search(r"(?s)(buildTypes\\s*\\{\\s*release\\s*\\{.*?signingConfig\\s+)signingConfigs\\.debug", source)
+          if not release_build_type:
+              raise SystemExit("Could not find the release buildType debug signing assignment to replace")
+
+          source = source[:release_build_type.start()] + release_build_type.group(1) + "signingConfigs.release" + source[release_build_type.end():]
+          gradle_file.write_text(source, encoding="utf-8")
+          print("Permanent release signing configured. Private key and passwords were not printed.")
+          PY
+
       - name: Generate build metadata
         run: |
           python3 - <<'PY'
@@ -60,24 +127,49 @@ jobs:
           content = "export const BUILD_INFO = " + json.dumps({
               "appName": "Tinchodoko AI Assistant",
               "packageName": "com.tinchodoko.aiassistant",
-              "version": "V" + os.environ["BUILD_NUMBER"],
+              "version": "1.0." + os.environ["BUILD_NUMBER"],
               "build": os.environ["BUILD_NUMBER"],
-              "signature": os.environ.get("APP_SIGNATURE", "DEBUG"),
+              "signature": os.environ.get("APP_SIGNATURE", "UNKNOWN"),
               "changelog": changes,
-          }, ensure_ascii=True, indent=2) + ";\n"
+          }, ensure_ascii=True, indent=2) + ";\\n"
           Path("src/buildInfo.ts").write_text(content, encoding="utf-8")
           PY
+
       - name: TypeScript check
         run: npm run typecheck
-      - name: Build debug APK
+
+      - name: Build signed release APK
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon
-      - name: Upload APK artifact
+        env:
+          AIASSISTANT_SIGNING_KEYSTORE_PATH: ${{ env.AIASSISTANT_SIGNING_KEYSTORE_PATH }}
+          AIASSISTANT_SIGNING_STORE_PASSWORD: ${{ secrets.AIASSISTANT_SIGNING_STORE_PASSWORD }}
+          AIASSISTANT_SIGNING_KEY_ALIAS: ${{ secrets.AIASSISTANT_SIGNING_KEY_ALIAS }}
+          AIASSISTANT_SIGNING_KEY_PASSWORD: ${{ secrets.AIASSISTANT_SIGNING_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Verify APK signature
+        run: |
+          set -euo pipefail
+          APK="android/app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -n "$APKSIGNER"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee "$RUNNER_TEMP/apk-signature.txt"
+          EXPECTED="$(printf '%s' "$APP_SIGNATURE" | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')"
+          ACTUAL="$(awk -F': ' '/Signer #1 certificate SHA-256 digest:/{print tolower($2); exit}' "$RUNNER_TEMP/apk-signature.txt" | tr -d ':[:space:]')"
+          if [ -z "$ACTUAL" ] || [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "::error::APK certificate does not match the configured permanent signing key."
+            exit 1
+          fi
+          echo "APK signature verified against the permanent certificate."
+
+      - name: Upload signed APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: tinchodoko-ai-assistant-V${{ github.run_number }}-debug
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: tinchodoko-ai-assistant-V${{ github.run_number }}-release
+          path: android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
+
       - name: Commit successful build changelog
         run: |
           git config user.name "github-actions[bot]"
@@ -85,41 +177,15 @@ jobs:
           git add CHANGELOG.md
           git diff --cached --quiet || git commit -m "chore(build): record #V${BUILD_NUMBER} [skip ci]"
           git push
-      - name: Download V15 APK for release backfill
-        id: download_v15
-        uses: actions/download-artifact@v4
-        continue-on-error: true
-        with:
-          name: tinchodoko-ai-assistant-V15-debug
-          path: previous-v15
-          run-id: 42743594685
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Publish V15 GitHub Release
-        if: steps.download_v15.outcome == 'success'
-        continue-on-error: true
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v15
-          target_commitish: 14845fe519dd86022650b3288a4f92eb3d6a446e
-          name: Tinchodoko AI Assistant V15
-          body: |
-            BUILD V15 — primera compilación Android completada correctamente.
 
-            Cambios: corrección del tipo BufferSource utilizado por Web Crypto en el cliente Exness.
-
-            El APK corresponde a la compilación V15 exitosa de GitHub Actions.
-          files: previous-v15/app-debug.apk
-          draft: false
-          prerelease: false
-          fail_on_unmatched_files: true
-      - name: Publish current GitHub Release
+      - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.BUILD_NUMBER }}
           target_commitish: main
           name: Tinchodoko AI Assistant V${{ env.BUILD_NUMBER }}
           body_path: CHANGELOG.md
-          files: android/app/build/outputs/apk/debug/app-debug.apk
+          files: android/app/build/outputs/apk/release/app-release.apk
           draft: false
           prerelease: false
           fail_on_unmatched_files: true
