@@ -9,6 +9,7 @@ import * as IntentLauncher from 'expo-intent-launcher';
 const PERIOD = 5 * 60 * 1000;
 const RELEASES_URL = 'https://github.com/Tinchodoko/tinchodoko-ai-assistant/releases';
 const LATEST_RELEASE_API = 'https://api.github.com/repos/Tinchodoko/tinchodoko-ai-assistant/releases/latest';
+const UPDATE_MANIFEST_URL = 'https://raw.githubusercontent.com/Tinchodoko/tinchodoko-ai-assistant/main/update.json';
 type Screen = 'connection' | 'profile' | 'app';
 
 function dateText(d: Date | null) {
@@ -100,26 +101,48 @@ export default function App() {
       };
       let release:Release|null = null;
       let primaryError = '';
-      // First try GitHub's canonical latest-stable endpoint.
+      // Primary source: tiny public manifest on raw.githubusercontent.com.
+      // This avoids GitHub API rate limits and the /releases/latest cache path.
       try {
-        const res=await fetch(`${LATEST_RELEASE_API}?_=${Date.now()}`, { headers });
-        if (!res.ok) throw new Error(`GitHub HTTP ${res.status}`);
-        const candidate=await res.json() as Release;
-        const tag=candidate.tag_name || candidate.name || '';
-        const apk=candidate.assets?.find(asset=>asset.name==='app-release.apk' && !!asset.browser_download_url);
-        if (releaseBuildNumber(tag)>0 && !candidate.draft && !candidate.prerelease && apk?.browser_download_url) {
-          release=candidate;
-        } else {
-          primaryError='La respuesta latest no contiene una Release estable con app-release.apk.';
+        const manifestRes=await fetch(`${UPDATE_MANIFEST_URL}?_=${Date.now()}`, { headers });
+        if (!manifestRes.ok) throw new Error(`Manifest HTTP ${manifestRes.status}`);
+        const manifest=await manifestRes.json() as {build?:number;tag?:string;apk_url?:string};
+        const manifestBuild=Number(manifest.build);
+        if (!Number.isSafeInteger(manifestBuild) || manifestBuild<1 || !manifest.apk_url || !/^https:\/\/github\.com\/Tinchodoko\/tinchodoko-ai-assistant\/releases\/download\//.test(manifest.apk_url)) {
+          throw new Error('El manifiesto de actualización no contiene build o APK válido.');
         }
+        release={
+          tag_name:manifest.tag || `v${manifestBuild}`,
+          draft:false,
+          prerelease:false,
+          assets:[{name:'app-release.apk',browser_download_url:manifest.apk_url}],
+        };
       } catch(e) {
         primaryError=e instanceof Error?e.message:String(e);
       }
 
-      // Fallback: enumerate published releases and choose the highest valid stable build.
+      // Fallback 1: GitHub's canonical latest-stable endpoint.
+      if (!release) {
+        try {
+          const res=await fetch(`${LATEST_RELEASE_API}?_=${Date.now()}`, { headers });
+          if (!res.ok) throw new Error(`GitHub HTTP ${res.status}`);
+          const candidate=await res.json() as Release;
+          const tag=candidate.tag_name || candidate.name || '';
+          const apk=candidate.assets?.find(asset=>asset.name==='app-release.apk' && !!asset.browser_download_url);
+          if (releaseBuildNumber(tag)>0 && !candidate.draft && !candidate.prerelease && apk?.browser_download_url) {
+            release=candidate;
+          } else {
+            primaryError='La respuesta latest no contiene una Release estable con app-release.apk.';
+          }
+        } catch(e) {
+          primaryError=`${primaryError}; latest: ${e instanceof Error?e.message:String(e)}`;
+        }
+      }
+
+      // Fallback 2: enumerate releases and choose the highest valid stable build.
       if (!release) {
         const listRes=await fetch(`https://api.github.com/repos/Tinchodoko/tinchodoko-ai-assistant/releases?per_page=30&_=${Date.now()}`, { headers });
-        if (!listRes.ok) throw new Error(`No se pudo consultar Releases (latest: ${primaryError}; listado: HTTP ${listRes.status}).`);
+        if (!listRes.ok) throw new Error(`No se pudo consultar el manifiesto (${primaryError}) ni Releases (HTTP ${listRes.status}).`);
         const releases=await listRes.json() as Release[];
         release=releases
           .filter(item=>!item.draft && !item.prerelease)
