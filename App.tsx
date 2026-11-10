@@ -46,6 +46,8 @@ export default function App() {
   const [secretVisible,setSecretVisible]=useState(false);
   const [status,setStatus]=useState<'offline'|'online'|'connecting'>('offline');
   const [balance,setBalance]=useState<string>('—');
+  const [equity,setEquity]=useState<string>('—');
+  const [usedMargin,setUsedMargin]=useState<string>('—');
   const [accessPoint,setAccessPoint]=useState('');
   const [last,setLast]=useState<Date|null>(null);
   const [busy,setBusy]=useState(false);
@@ -67,7 +69,7 @@ export default function App() {
       // CONNECT validates the signed Exness request and discovers the
       // account Access Point. Balance is not requested during connection.
       const r=await connectToExness(c);
-      setBalance('—'); setAccessPoint(r.accessPoint); setStatus('online');
+      setBalance('—'); setEquity('—'); setUsedMargin('—'); setAccessPoint(r.accessPoint); setStatus('online');
       setLast(null); setScreen('profile');
     } catch(e) {
       setStatus('offline'); Alert.alert('Conexión fallida',e instanceof Error?e.message:String(e));
@@ -80,6 +82,8 @@ export default function App() {
     try {
       const r=await getAccountSnapshot(c,accessPoint);
       setBalance(r.balance ?? 'No disponible en la respuesta');
+      setEquity(r.equity ?? 'No disponible en la respuesta');
+      setUsedMargin(r.usedMargin ?? 'No disponible en la respuesta');
       setStatus('online');
       setLast(new Date());
     } catch(e) {
@@ -237,6 +241,8 @@ export default function App() {
         <Info label="GATEWAY" value={c.gatewayUrl}/>
         <Info label="ACCOUNT" value={c.accountId||'—'}/>
         <Info label="BALANCE" value={balance}/>
+        <Info label="EQUITY" value={equity}/>
+        <Info label="USED MARGIN" value={usedMargin}/>
       </View>
       <Pressable disabled={busy} onPress={refresh} style={[s.refresh,busy&&s.disabled]}>{busy?<ActivityIndicator/>:<Text style={s.refreshText}>↻  CONSULTAR BALANCE</Text>}</Pressable>
       <Text style={s.meta}>ÚLTIMA ACTUALIZACIÓN</Text><Text style={s.time}>{dateText(last)}</Text>
