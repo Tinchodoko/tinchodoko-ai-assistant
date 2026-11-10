@@ -1,3 +1,4 @@
+- #V45 — fix(exness): never treat account id as balance
 - #V44 — fix(exness): robustly extract account balance
 - #V43 — Fix nested Exness account balance parsing
 - #V42 — fix(exness): correct account ID and gateway URL validation regex
