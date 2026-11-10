@@ -1,3 +1,4 @@
+- #V24 — fix(ci): correctly extract v2 signer certificate fingerprint
 - #V17 — fix(ci): correct shell escaping for changelog and build metadata
 # Historial de cambios — Tinchodoko AI Assistant
 
