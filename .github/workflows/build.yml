@@ -94,9 +94,26 @@ jobs:
           gradle_file = Path("android/app/build.gradle")
           source = gradle_file.read_text(encoding="utf-8")
 
-          signing_marker = re.search(r"(?m)^\s*signingConfigs\s*\{", source)
-          if not signing_marker:
-              raise SystemExit("Could not find signingConfigs block in generated android/app/build.gradle")
+          def find_block(text, name, start=0):
+              match = re.search(r"\\b" + re.escape(name) + r"\\s*\\{", text[start:])
+              if not match:
+                  return None
+              block_start = start + match.start()
+              opening = start + match.end() - 1
+              depth = 0
+              for index in range(opening, len(text)):
+                  if text[index] == "{":
+                      depth += 1
+                  elif text[index] == "}":
+                      depth -= 1
+                      if depth == 0:
+                          return block_start, opening, index
+              raise SystemExit(f"Unclosed Gradle block: {name}")
+
+          android_block = find_block(source, "android")
+          if not android_block:
+              raise SystemExit("Could not find android block in generated Gradle file")
+          _, android_open, android_close = android_block
 
           release_config = """
               release {
@@ -106,14 +123,38 @@ jobs:
                   keyPassword System.getenv("AIASSISTANT_SIGNING_KEY_PASSWORD")
               }
           """
-          insert_at = signing_marker.end()
-          source = source[:insert_at] + release_config + source[insert_at:]
 
-          release_build_type = re.search(r"(?s)(buildTypes\s*\{\s*release\s*\{.*?signingConfig\s+)signingConfigs\.debug", source)
-          if not release_build_type:
-              raise SystemExit("Could not find the release buildType debug signing assignment to replace")
+          signing_block = find_block(source, "signingConfigs", android_open)
+          if signing_block and signing_block[0] < android_close:
+              _, signing_open, _ = signing_block
+              source = source[:signing_open + 1] + release_config + source[signing_open + 1:]
+          else:
+              build_types = find_block(source, "buildTypes", android_open)
+              if not build_types or build_types[0] > android_close:
+                  raise SystemExit("Could not find buildTypes block in generated Gradle file")
+              insertion = '    signingConfigs {' + release_config + '    }\\n'
+              source = source[:build_types[0]] + insertion + source[build_types[0]:]
 
-          source = source[:release_build_type.start()] + release_build_type.group(1) + "signingConfigs.release" + source[release_build_type.end():]
+          android_block = find_block(source, "android")
+          _, android_open, android_close = android_block
+          build_types = find_block(source, "buildTypes", android_open)
+          if not build_types or build_types[0] > android_close:
+              raise SystemExit("Could not locate buildTypes block after adding signing config")
+          _, build_types_open, build_types_close = build_types
+          release_block = find_block(source, "release", build_types_open)
+          if not release_block or release_block[0] > build_types_close:
+              raise SystemExit("Could not find release buildType")
+          _, release_open, release_close = release_block
+
+          release_body = source[release_open + 1:release_close]
+          signing_line = re.search(r"(?m)^(\\s*)signingConfig\\s+[^\\n]+", release_body)
+          if signing_line:
+              replacement_line = signing_line.group(1) + "signingConfig signingConfigs.release"
+              release_body = release_body[:signing_line.start()] + replacement_line + release_body[signing_line.end():]
+          else:
+              release_body = "\\n            signingConfig signingConfigs.release" + release_body
+          source = source[:release_open + 1] + release_body + source[release_close:]
+
           gradle_file.write_text(source, encoding="utf-8")
           print("Permanent release signing configured. Private key and passwords were not printed.")
           PY
