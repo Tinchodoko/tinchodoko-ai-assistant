@@ -5,6 +5,10 @@ on:
   push:
     branches: [main]
 
+concurrency:
+  group: android-debug-build
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
@@ -35,7 +39,7 @@ jobs:
           CI=1 npx expo prebuild --platform android
       - name: Record build in CHANGELOG.md
         run: |
-          printf '%s\\n' "- #V${BUILD_NUMBER} — ${BUILD_CHANGE}" > CHANGELOG.new
+          printf '%s\n' "- #V${BUILD_NUMBER} — ${BUILD_CHANGE}" > CHANGELOG.new
           cat CHANGELOG.md >> CHANGELOG.new
           mv CHANGELOG.new CHANGELOG.md
           git config user.name "github-actions[bot]"
