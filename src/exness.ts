@@ -117,9 +117,9 @@ async function getJson<T>(
         /timestamp outside allowed window/i.test(text);
 
       if (timestampRejected && attempt === 0 && Number.isFinite(serverTime)) {
-        // Estimate offset at the request/response midpoint. Date header precision is one second.
-        const requestMidpointAt = requestStartedAt + (responseReceivedAt - requestStartedAt) / 2;
-        serverClockOffsetMs = Math.round(serverTime + 500 - requestMidpointAt);
+        // HTTP Date describes server response time (rounded down to whole seconds).
+        // Estimate clock offset against local response-receive time, not request midpoint.
+        serverClockOffsetMs = Math.round(serverTime + 500 - responseReceivedAt);
         hasServerClockOffset = true;
         continue;
       }
