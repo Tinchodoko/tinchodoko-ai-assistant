@@ -7,9 +7,12 @@ export type Credentials = {
   accountId: string;
 };
 
-export type AccountResult = {
-  balance: string;
+export type ConnectionResult = {
   accessPoint: string;
+};
+
+export type AccountSnapshot = {
+  balance?: string;
   raw: Record<string, unknown>;
 };
 
@@ -146,9 +149,9 @@ async function getJson<T>(
   throw new Error('No se pudo completar la consulta firmada después de sincronizar el timestamp.');
 }
 
-export async function connectAndGetAccount(
+export async function connectToExness(
   c: Credentials,
-): Promise<AccountResult> {
+): Promise<ConnectionResult> {
   if (!c.gatewayUrl.trim()) {
     throw new Error('GATEWAY URL vacío.');
   }
@@ -161,47 +164,53 @@ export async function connectAndGetAccount(
     throw new Error('SECRET vacío.');
   }
 
-  if (!/^\d+$/.test(c.accountId.trim())) {
+  if (!/^\\d+$/.test(c.accountId.trim())) {
     throw new Error('ACCOUNT inválido.');
   }
 
-  const gateway = c.gatewayUrl.trim().replace(/\/$/, '');
+  const gateway = c.gatewayUrl.trim().replace(/\\/$/, '');
   const accountId = c.accountId.trim();
-
   const discoveryPath =
     `/v1/trading/access-point?account_id=${encodeURIComponent(accountId)}`;
 
+  // CONNECT only authenticates the API key and discovers the account's
+  // Access Point. It deliberately does not request or require a balance.
   const discovery = await getJson<{ access_point?: string }>(
     gateway,
     discoveryPath,
     c,
   );
 
-  if (!discovery.access_point) {
+  if (typeof discovery.access_point !== 'string' || !discovery.access_point) {
     throw new Error('Exness no devolvió Access Point.');
   }
 
-  const accessPoint = new URL(discovery.access_point).origin;
-  const accountPath =
-    `/v1/configuration/accounts/${encodeURIComponent(accountId)}/account`;
+  return { accessPoint: new URL(discovery.access_point).origin };
+}
 
+export async function getAccountSnapshot(
+  c: Credentials,
+  accessPoint: string,
+): Promise<AccountSnapshot> {
+  if (!accessPoint.trim()) {
+    throw new Error('No hay Access Point. Conectá la cuenta primero.');
+  }
+
+  const accountPath =
+    `/v1/configuration/accounts/${encodeURIComponent(c.accountId.trim())}/account`;
   const account = await getJson<Record<string, unknown>>(
     accessPoint,
     accountPath,
     c,
   );
 
-  const value =
-    account.balance ??
-    (account.account as { balance?: unknown } | undefined)?.balance;
+  const nested = account.account as { balance?: unknown } | undefined;
+  const value = account.balance ?? nested?.balance;
 
-  if (value === undefined || value === null) {
-    throw new Error('No se encontró balance en la respuesta de Exness.');
-  }
-
+  // A successful account response is still successful even when its balance
+  // is absent or nested differently. Never turn that into a connection error.
   return {
-    balance: String(value),
-    accessPoint,
+    balance: value === undefined || value === null ? undefined : String(value),
     raw: account,
   };
 }
