@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Linking, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { connectToExness, getAccountSnapshot, type Credentials } from './src/exness';
+import { connectToExness, getAccountSnapshot, openExnessAccountStream, type Credentials } from './src/exness';
 import { loadCredentials, saveCredentials } from './src/storage';
 import { BUILD_INFO } from './src/buildInfo';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -51,6 +51,7 @@ export default function App() {
   const [accessPoint,setAccessPoint]=useState('');
   const [last,setLast]=useState<Date|null>(null);
   const [busy,setBusy]=useState(false);
+  const [streamStatus,setStreamStatus]=useState<'off'|'connecting'|'connected'|'disconnected'|'error'>('off');
   const [latestVersion,setLatestVersion]=useState<string|null>(null);
   const [latestBuild,setLatestBuild]=useState<number|null>(null);
   const [latestApkUrl,setLatestApkUrl]=useState<string|null>(null);
@@ -61,6 +62,51 @@ export default function App() {
     loadCredentials().then(x=>x&&setC(x));
     void cleanupInstalledUpdateApks();
   },[]);
+
+  // Mantiene un único flujo firmado por cuenta y se resincroniza al reconectar.
+  useEffect(()=>{
+    if (!accessPoint || !c.apiKey || !c.secret || !c.accountId) {
+      setStreamStatus('off');
+      return;
+    }
+    let cancelled=false;
+    let socket: WebSocket | null=null;
+    let retryTimer: ReturnType<typeof setTimeout> | null=null;
+    let retryDelay=3000;
+    const scheduleReconnect=()=>{
+      if (cancelled || retryTimer) return;
+      retryTimer=setTimeout(()=>{ retryTimer=null; void startStream(); },retryDelay);
+      retryDelay=Math.min(retryDelay*2,30000);
+    };
+    const startStream=async()=>{
+      if (cancelled) return;
+      try {
+        const next=await openExnessAccountStream(c,accessPoint,state=>{
+          if (cancelled) return;
+          if (state.balance !== undefined) setBalance(state.balance);
+          if (state.equity !== undefined) setEquity(state.equity);
+          if (state.usedMargin !== undefined) setUsedMargin(state.usedMargin);
+          setLast(state.at);
+          setStatus('online');
+        },stream=>{
+          if (cancelled) return;
+          setStreamStatus(stream);
+          if (stream==='connected') retryDelay=3000;
+          if (stream==='disconnected' || stream==='error') scheduleReconnect();
+        });
+        if (cancelled) { next.close(); return; }
+        socket=next;
+      } catch {
+        if (!cancelled) { setStreamStatus('error'); scheduleReconnect(); }
+      }
+    };
+    void startStream();
+    return ()=>{
+      cancelled=true;
+      if (retryTimer) clearTimeout(retryTimer);
+      socket?.close();
+    };
+  },[accessPoint,c.apiKey,c.secret,c.accountId]);
 
   async function connect() {
     setBusy(true); setStatus('connecting');
@@ -246,6 +292,7 @@ export default function App() {
       </View>
       <Pressable disabled={busy} onPress={refresh} style={[s.refresh,busy&&s.disabled]}>{busy?<ActivityIndicator/>:<Text style={s.refreshText}>↻  CONSULTAR BALANCE</Text>}</Pressable>
       <Text style={s.meta}>ÚLTIMA ACTUALIZACIÓN</Text><Text style={s.time}>{dateText(last)}</Text>
+      <Text style={streamStatus==='connected'?s.onlineText:s.offlineText}>Flujo en tiempo real: {streamStatus}</Text>
       <Text style={status==='online'?s.onlineText:s.offlineText}>Estado: {status}</Text>
       {!!accessPoint && <Text style={s.ap}>Access Point: {accessPoint}</Text>}
     </ScrollView> : <ScrollView contentContainerStyle={s.content}>
