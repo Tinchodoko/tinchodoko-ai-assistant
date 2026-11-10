@@ -268,19 +268,31 @@ export async function getAccountSnapshot(
     throw new Error('No hay Access Point. Conectá la cuenta primero.');
   }
 
-  const accountPath =
-    `/v1/configuration/accounts/${encodeURIComponent(c.accountId.trim())}/account`;
-  const account = await getJson<Record<string, unknown>>(
+  // IMPORTANT: /v1/configuration/accounts/{account_id}/account returns
+  // account configuration/settings. It does NOT contain the live balance.
+  // Exness exposes the current balance in the trading state snapshot:
+  // /v1/trading/accounts/{account_id}/snapshot -> account_state.balance
+  const snapshotPath =
+    `/v1/trading/accounts/${encodeURIComponent(c.accountId.trim())}/snapshot`;
+
+  const snapshot = await getJson<Record<string, unknown>>(
     accessPoint,
-    accountPath,
+    snapshotPath,
     c,
   );
 
-  // The response may contain nested wrappers (for example data/account).
-  // Resolve the balance recursively instead of relying on one guessed JSON path.
-  // This request remains read-only and does not affect the separate CONNECT flow.
+  const accountState =
+    snapshot.account_state &&
+    typeof snapshot.account_state === 'object'
+      ? snapshot.account_state as Record<string, unknown>
+      : undefined;
+
+  const balance = accountState
+    ? normalizeScalar(accountState.balance)
+    : undefined;
+
   return {
-    balance: findBalanceValue(account),
-    raw: account,
+    balance,
+    raw: snapshot,
   };
 }
