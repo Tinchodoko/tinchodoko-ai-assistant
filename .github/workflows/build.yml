@@ -32,10 +32,10 @@ jobs:
       - name: Generate Android project
         run: |
           node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync('app.json','utf8')); p.expo.version='1.0.'+process.env.BUILD_NUMBER; p.expo.android.versionCode=Number(process.env.BUILD_NUMBER); fs.writeFileSync('app.json', JSON.stringify(p,null,2)+'\\n')"
-          npx expo prebuild --platform android --non-interactive
+          CI=1 npx expo prebuild --platform android
       - name: Record build in CHANGELOG.md
         run: |
-          printf '%s\\n' "#V${BUILD_NUMBER} — ${BUILD_CHANGE}" > CHANGELOG.new
+          printf '%s\\n' "- #V${BUILD_NUMBER} — ${BUILD_CHANGE}" > CHANGELOG.new
           cat CHANGELOG.md >> CHANGELOG.new
           mv CHANGELOG.new CHANGELOG.md
           git config user.name "github-actions[bot]"
@@ -68,7 +68,7 @@ jobs:
               "build": os.environ["BUILD_NUMBER"],
               "signature": os.environ.get("APP_SIGNATURE", "DEBUG"),
               "changelog": changes,
-          }, ensure_ascii=False, indent=2) + ";\\n"
+          }, ensure_ascii=True, indent=2) + ";\\n"
           Path("src/buildInfo.ts").write_text(content, encoding="utf-8")
           PY
       - name: TypeScript check
