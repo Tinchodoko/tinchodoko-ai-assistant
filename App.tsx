@@ -135,7 +135,7 @@ export default function App() {
       const info=await FileSystem.getInfoAsync(download.uri);
       if (!info.exists || (info.size??0)<1024*1024) throw new Error('El APK descargado está incompleto o vacío.');
       const contentUri=await FileSystem.getContentUriAsync(download.uri);
-      Alert.alert('Actualización lista', 'Android abrirá el instalador. Confirma “Actualizar” para instalar la nueva versión.');
+      // Android muestra su propio instalador y solicita confirmación al usuario.
       await IntentLauncher.startActivityAsync('android.intent.action.VIEW',{
         data:contentUri,
         type:'application/vnd.android.package-archive',
