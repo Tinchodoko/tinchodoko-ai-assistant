@@ -39,7 +39,9 @@ function b64url(bytes: Uint8Array): string {
 }
 
 async function sha256Base64Url(data: Uint8Array): Promise<string> {
-  const digest = await globalThis.crypto.subtle.digest('SHA-256', data);
+  // Expo/React Native TS expects an ArrayBuffer-backed BufferSource.
+  const input = new Uint8Array(data);
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', input.buffer as ArrayBuffer);
   return b64url(new Uint8Array(digest));
 }
 
