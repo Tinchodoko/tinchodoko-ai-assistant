@@ -202,19 +202,19 @@ function findBalanceValue(value: unknown, depth = 0): string | undefined {
     return undefined;
   }
 
-  // Some responses can contain a JSON-encoded object inside a string.
+  // A plain string encountered during recursive traversal is NOT assumed
+  // to be a balance: account_id is also commonly a numeric string.
+  // Only parse it when it contains a JSON-encoded object/array.
   if (typeof value === 'string') {
-    const scalar = normalizeScalar(value);
-    if (scalar && /^[-+]?\d+(?:\.\d+)?$/.test(scalar)) {
-      return scalar;
-    }
-
     try {
       const parsed = JSON.parse(value);
-      return parsed === value ? undefined : findBalanceValue(parsed, depth + 1);
+      if (parsed !== value && typeof parsed === 'object' && parsed !== null) {
+        return findBalanceValue(parsed, depth + 1);
+      }
     } catch {
-      return undefined;
+      // Not JSON; ignore it during recursive traversal.
     }
+    return undefined;
   }
 
   if (typeof value !== 'object') {
