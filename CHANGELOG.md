@@ -1,3 +1,4 @@
+- #V30 — fix(updater): correct cached APK filename matching
 - #V28 — debug(exness): report safe timestamp diagnostics on auth errors
 - #V27 — fix(android): let the system installer handle update confirmation
 - #V24 — fix(ci): correctly extract v2 signer certificate fingerprint
