@@ -36,22 +36,18 @@ jobs:
         run: npm install
       - name: Generate Android project
         run: |
-          node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync('app.json','utf8')); p.expo.version='1.0.'+process.env.BUILD_NUMBER; p.expo.android.versionCode=Number(process.env.BUILD_NUMBER); fs.writeFileSync('app.json', JSON.stringify(p,null,2)+'\\n')"
+          node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync('app.json','utf8')); p.expo.version='1.0.'+process.env.BUILD_NUMBER; p.expo.android.versionCode=Number(process.env.BUILD_NUMBER); fs.writeFileSync('app.json', JSON.stringify(p,null,2)+'\n')"
           CI=1 npx expo prebuild --platform android
       - name: Prepare build changelog
         run: |
-          printf '%s\\n' "- #V${BUILD_NUMBER} — ${BUILD_CHANGE}" > CHANGELOG.new
+          printf '%s\n' "- #V${BUILD_NUMBER} — ${BUILD_CHANGE}" > CHANGELOG.new
           cat CHANGELOG.md >> CHANGELOG.new
           mv CHANGELOG.new CHANGELOG.md
       - name: Generate Android signing fingerprint
         run: |
           mkdir -p "$HOME/.android"
           if [ ! -f "$HOME/.android/debug.keystore" ]; then
-            keytool -genkeypair -v \\
-              -keystore "$HOME/.android/debug.keystore" \\
-              -storepass android -keypass android -alias androiddebugkey \\
-              -keyalg RSA -keysize 2048 -validity 10000 \\
-              -dname "CN=Android Debug,O=Android,C=US"
+            keytool -genkeypair -v -keystore "$HOME/.android/debug.keystore" -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           fi
           SIGNATURE=$(keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey | awk -F': ' '/SHA256:/{print $2; exit}')
           echo "APP_SIGNATURE=$SIGNATURE" >> "$GITHUB_ENV"
@@ -68,7 +64,7 @@ jobs:
               "build": os.environ["BUILD_NUMBER"],
               "signature": os.environ.get("APP_SIGNATURE", "DEBUG"),
               "changelog": changes,
-          }, ensure_ascii=True, indent=2) + ";\\n"
+          }, ensure_ascii=True, indent=2) + ";\n"
           Path("src/buildInfo.ts").write_text(content, encoding="utf-8")
           PY
       - name: TypeScript check
