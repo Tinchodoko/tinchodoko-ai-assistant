@@ -1,12 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Linking, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { connectAndGetAccount, type Credentials } from './src/exness';
+import { connectToExness, getAccountSnapshot, type Credentials } from './src/exness';
 import { loadCredentials, saveCredentials } from './src/storage';
 import { BUILD_INFO } from './src/buildInfo';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as IntentLauncher from 'expo-intent-launcher';
 
-const PERIOD = 5 * 60 * 1000;
 const RELEASES_URL = 'https://github.com/Tinchodoko/tinchodoko-ai-assistant/releases';
 const LATEST_RELEASE_API = 'https://api.github.com/repos/Tinchodoko/tinchodoko-ai-assistant/releases/latest';
 const UPDATE_MANIFEST_URL = 'https://raw.githubusercontent.com/Tinchodoko/tinchodoko-ai-assistant/main/update.json';
@@ -49,7 +48,6 @@ export default function App() {
   const [balance,setBalance]=useState<string>('—');
   const [accessPoint,setAccessPoint]=useState('');
   const [last,setLast]=useState<Date|null>(null);
-  const [next,setNext]=useState<Date|null>(null);
   const [busy,setBusy]=useState(false);
   const [latestVersion,setLatestVersion]=useState<string|null>(null);
   const [latestBuild,setLatestBuild]=useState<number|null>(null);
@@ -66,9 +64,11 @@ export default function App() {
     setBusy(true); setStatus('connecting');
     try {
       await saveCredentials(c);
-      const r=await connectAndGetAccount(c);
-      setBalance(r.balance); setAccessPoint(r.accessPoint); setStatus('online');
-      const now=new Date(); setLast(now); setNext(new Date(now.getTime()+PERIOD)); setScreen('profile');
+      // CONNECT validates the signed Exness request and discovers the
+      // account Access Point. Balance is not requested during connection.
+      const r=await connectToExness(c);
+      setBalance('—'); setAccessPoint(r.accessPoint); setStatus('online');
+      setLast(null); setScreen('profile');
     } catch(e) {
       setStatus('offline'); Alert.alert('Conexión fallida',e instanceof Error?e.message:String(e));
     } finally { setBusy(false); }
@@ -78,9 +78,10 @@ export default function App() {
     if(busy) return;
     setBusy(true);
     try {
-      const r=await connectAndGetAccount(c);
-      setBalance(r.balance); setAccessPoint(r.accessPoint); setStatus('online');
-      const now=new Date(); setLast(now); setNext(new Date(now.getTime()+PERIOD));
+      const r=await getAccountSnapshot(c,accessPoint);
+      setBalance(r.balance ?? 'No disponible en la respuesta');
+      setStatus('online');
+      setLast(new Date());
     } catch(e) {
       setStatus('offline'); Alert.alert('Actualización fallida',e instanceof Error?e.message:String(e));
     } finally { setBusy(false); }
@@ -200,12 +201,6 @@ export default function App() {
     }
   }
 
-  useEffect(()=>{
-    if(screen!=='profile') return;
-    const id=setInterval(refresh,PERIOD);
-    return ()=>clearInterval(id);
-  },[screen,c.apiKey,c.secret,c.accountId,c.gatewayUrl]);
-
   const set=(key:keyof Credentials)=>(value:string)=>setC(x=>({...x,[key]:value}));
   const field=(label:string,key:keyof Credentials,secure=false,visible=false,toggle?:()=>void)=>(
     <View style={s.field} key={key}>
@@ -243,9 +238,8 @@ export default function App() {
         <Info label="ACCOUNT" value={c.accountId||'—'}/>
         <Info label="BALANCE" value={balance}/>
       </View>
-      <Pressable disabled={busy} onPress={refresh} style={[s.refresh,busy&&s.disabled]}>{busy?<ActivityIndicator/>:<Text style={s.refreshText}>↻  ACTUALIZAR BALANCE</Text>}</Pressable>
+      <Pressable disabled={busy} onPress={refresh} style={[s.refresh,busy&&s.disabled]}>{busy?<ActivityIndicator/>:<Text style={s.refreshText}>↻  CONSULTAR BALANCE</Text>}</Pressable>
       <Text style={s.meta}>ÚLTIMA ACTUALIZACIÓN</Text><Text style={s.time}>{dateText(last)}</Text>
-      <Text style={s.meta}>PRÓXIMA ACTUALIZACIÓN</Text><Text style={s.time}>{dateText(next)}</Text>
       <Text style={status==='online'?s.onlineText:s.offlineText}>Estado: {status}</Text>
       {!!accessPoint && <Text style={s.ap}>Access Point: {accessPoint}</Text>}
     </ScrollView> : <ScrollView contentContainerStyle={s.content}>
