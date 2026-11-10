@@ -13,6 +13,8 @@ export type ConnectionResult = {
 
 export type AccountSnapshot = {
   balance?: string;
+  equity?: string;
+  usedMargin?: string;
   raw: Record<string, unknown>;
 };
 
@@ -290,9 +292,17 @@ export async function getAccountSnapshot(
   const balance = accountState
     ? normalizeScalar(accountState.balance)
     : undefined;
+  const equity = accountState
+    ? normalizeScalar(accountState.equity)
+    : undefined;
+  const usedMargin = accountState
+    ? normalizeScalar(accountState.used_margin)
+    : undefined;
 
   return {
     balance,
+    equity,
+    usedMargin,
     raw: snapshot,
   };
 }
