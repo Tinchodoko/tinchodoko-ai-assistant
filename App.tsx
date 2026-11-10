@@ -87,32 +87,61 @@ export default function App() {
 
   async function checkUpdate() {
     setCheckingUpdate(true);
+    setLatestVersion(null); setLatestBuild(null); setLatestApkUrl(null);
     try {
-      const res=await fetch(LATEST_RELEASE_API, { headers: { Accept: 'application/vnd.github+json' } });
-      if (res.status === 404) {
-        setLatestVersion(null); setLatestBuild(null); setLatestApkUrl(null);
-        Alert.alert('Actualización', 'No hay releases publicadas todavía.'); return;
-      }
-      if (!res.ok) throw new Error(`GitHub HTTP ${res.status}`);
-      const release=await res.json() as {
+      type Release = {
         tag_name?:string; name?:string; draft?:boolean; prerelease?:boolean;
         assets?:Array<{name?:string;browser_download_url?:string}>;
       };
+      const headers = {
+        Accept: 'application/vnd.github+json',
+        'Cache-Control': 'no-cache',
+        Pragma: 'no-cache',
+      };
+      let release:Release|null = null;
+      let primaryError = '';
+      // First try GitHub's canonical latest-stable endpoint.
+      try {
+        const res=await fetch(`${LATEST_RELEASE_API}?_=${Date.now()}`, { headers });
+        if (!res.ok) throw new Error(`GitHub HTTP ${res.status}`);
+        const candidate=await res.json() as Release;
+        const tag=candidate.tag_name || candidate.name || '';
+        const apk=candidate.assets?.find(asset=>asset.name==='app-release.apk' && !!asset.browser_download_url);
+        if (releaseBuildNumber(tag)>0 && !candidate.draft && !candidate.prerelease && apk?.browser_download_url) {
+          release=candidate;
+        } else {
+          primaryError='La respuesta latest no contiene una Release estable con app-release.apk.';
+        }
+      } catch(e) {
+        primaryError=e instanceof Error?e.message:String(e);
+      }
+
+      // Fallback: enumerate published releases and choose the highest valid stable build.
+      if (!release) {
+        const listRes=await fetch(`https://api.github.com/repos/Tinchodoko/tinchodoko-ai-assistant/releases?per_page=30&_=${Date.now()}`, { headers });
+        if (!listRes.ok) throw new Error(`No se pudo consultar Releases (latest: ${primaryError}; listado: HTTP ${listRes.status}).`);
+        const releases=await listRes.json() as Release[];
+        release=releases
+          .filter(item=>!item.draft && !item.prerelease)
+          .filter(item=>releaseBuildNumber(item.tag_name || item.name || '')>0)
+          .filter(item=>item.assets?.some(asset=>asset.name==='app-release.apk' && !!asset.browser_download_url))
+          .sort((a,b)=>releaseBuildNumber(b.tag_name || b.name || '')-releaseBuildNumber(a.tag_name || a.name || ''))[0] || null;
+      }
+
+      if (!release) throw new Error('GitHub no devolvió ninguna Release estable válida con app-release.apk.');
       const tag=release.tag_name || release.name || '';
       const remoteBuild=releaseBuildNumber(tag);
-      if (!tag || remoteBuild<1 || release.draft || release.prerelease) {
-        throw new Error('GitHub no devolvió una Release estable válida.');
-      }
       const apk=release.assets?.find(asset=>asset.name==='app-release.apk' && !!asset.browser_download_url);
-      if (!apk?.browser_download_url) throw new Error('La última Release no contiene app-release.apk.');
+      if (!apk?.browser_download_url || remoteBuild<1) throw new Error('La Release encontrada no tiene una versión o APK válido.');
       setLatestVersion(tag); setLatestBuild(remoteBuild); setLatestApkUrl(apk.browser_download_url);
       if (remoteBuild > Number(BUILD_INFO.build)) {
-        Alert.alert('Actualización disponible', `Nueva versión: ${tag}. Pulsa ACTUALIZAR APP para descargarla e iniciar el instalador de Android.`);
+        Alert.alert('Actualización disponible', `Versión instalada: V${BUILD_INFO.build}. Nueva versión: ${tag}. Pulsa ACTUALIZAR APP para descargarla e iniciar el instalador de Android.`);
       } else {
-        Alert.alert('Actualización', 'La aplicación ya está actualizada.');
+        Alert.alert('Actualización', `La aplicación ya está actualizada (V${BUILD_INFO.build}). Última Release: ${tag}.`);
       }
     } catch(e) {
-      Alert.alert('Actualización', e instanceof Error?e.message:String(e));
+      setLatestVersion(null); setLatestBuild(null); setLatestApkUrl(null);
+      Alert.alert('No se pudo comprobar', e instanceof Error?e.message:String(e));
     } finally { setCheckingUpdate(false); }
   }
 
