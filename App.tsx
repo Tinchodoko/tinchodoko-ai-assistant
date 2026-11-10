@@ -3,6 +3,8 @@ import { ActivityIndicator, Alert, Image, Linking, Pressable, SafeAreaView, Scro
 import { connectAndGetAccount, type Credentials } from './src/exness';
 import { loadCredentials, saveCredentials } from './src/storage';
 import { BUILD_INFO } from './src/buildInfo';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as IntentLauncher from 'expo-intent-launcher';
 
 const PERIOD = 5 * 60 * 1000;
 const RELEASES_URL = 'https://github.com/Tinchodoko/tinchodoko-ai-assistant/releases';
@@ -15,9 +17,26 @@ function dateText(d: Date | null) {
   return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
-function versionNumber(v:string) {
-  const m=v.replace(/^v/i,'').match(/^(\\d+)(?:\\.(\\d+))?(?:\\.(\\d+))?/);
-  return m ? Number(m[1])*1000000 + Number(m[2]||0)*1000 + Number(m[3]||0) : 0;
+function releaseBuildNumber(tag:string) {
+  const match=tag.trim().match(/^v?(\\d+)$/i);
+  return match ? Number(match[1]) : 0;
+}
+
+async function cleanupInstalledUpdateApks() {
+  const directory=FileSystem.cacheDirectory;
+  if (!directory) return;
+  try {
+    const installedBuild=Number(BUILD_INFO.build);
+    const entries=await FileSystem.readDirectoryAsync(directory);
+    for (const name of entries) {
+      const match=name.match(/^tinchodoko-update-v(\\d+)\\.apk$/i);
+      if (match && Number(match[1]) <= installedBuild) {
+        await FileSystem.deleteAsync(directory+name,{idempotent:true});
+      }
+    }
+  } catch {
+    // Cleanup is best-effort; it must never prevent the app from starting.
+  }
 }
 
 export default function App() {
@@ -32,9 +51,15 @@ export default function App() {
   const [next,setNext]=useState<Date|null>(null);
   const [busy,setBusy]=useState(false);
   const [latestVersion,setLatestVersion]=useState<string|null>(null);
+  const [latestBuild,setLatestBuild]=useState<number|null>(null);
+  const [latestApkUrl,setLatestApkUrl]=useState<string|null>(null);
   const [checkingUpdate,setCheckingUpdate]=useState(false);
+  const [downloadingUpdate,setDownloadingUpdate]=useState(false);
 
-  useEffect(()=>{ loadCredentials().then(x=>x&&setC(x)); },[]);
+  useEffect(()=>{
+    loadCredentials().then(x=>x&&setC(x));
+    void cleanupInstalledUpdateApks();
+  },[]);
 
   async function connect() {
     setBusy(true); setStatus('connecting');
@@ -64,14 +89,25 @@ export default function App() {
     setCheckingUpdate(true);
     try {
       const res=await fetch(LATEST_RELEASE_API, { headers: { Accept: 'application/vnd.github+json' } });
-      if (res.status === 404) { setLatestVersion(null); Alert.alert('Actualización', 'No hay releases publicadas todavía.'); return; }
+      if (res.status === 404) {
+        setLatestVersion(null); setLatestBuild(null); setLatestApkUrl(null);
+        Alert.alert('Actualización', 'No hay releases publicadas todavía.'); return;
+      }
       if (!res.ok) throw new Error(`GitHub HTTP ${res.status}`);
-      const release=await res.json() as { tag_name?:string; name?:string };
+      const release=await res.json() as {
+        tag_name?:string; name?:string; draft?:boolean; prerelease?:boolean;
+        assets?:Array<{name?:string;browser_download_url?:string}>;
+      };
       const tag=release.tag_name || release.name || '';
-      if (!tag) throw new Error('GitHub no devolvió una versión válida.');
-      setLatestVersion(tag);
-      if (versionNumber(tag) > versionNumber(BUILD_INFO.version)) {
-        Alert.alert('Actualización disponible', `Nueva versión: ${tag}`);
+      const remoteBuild=releaseBuildNumber(tag);
+      if (!tag || remoteBuild<1 || release.draft || release.prerelease) {
+        throw new Error('GitHub no devolvió una Release estable válida.');
+      }
+      const apk=release.assets?.find(asset=>asset.name==='app-release.apk' && !!asset.browser_download_url);
+      if (!apk?.browser_download_url) throw new Error('La última Release no contiene app-release.apk.');
+      setLatestVersion(tag); setLatestBuild(remoteBuild); setLatestApkUrl(apk.browser_download_url);
+      if (remoteBuild > Number(BUILD_INFO.build)) {
+        Alert.alert('Actualización disponible', `Nueva versión: ${tag}. Pulsa ACTUALIZAR APP para descargarla e iniciar el instalador de Android.`);
       } else {
         Alert.alert('Actualización', 'La aplicación ya está actualizada.');
       }
@@ -80,8 +116,36 @@ export default function App() {
     } finally { setCheckingUpdate(false); }
   }
 
-  function updateApp() {
-    // Intencionalmente vacío por ahora. La instalación automática se implementará después.
+  async function updateApp() {
+    if (!latestApkUrl || !latestBuild || latestBuild <= Number(BUILD_INFO.build)) {
+      Alert.alert('Actualización', 'Primero busca una actualización disponible.');
+      return;
+    }
+    const directory=FileSystem.cacheDirectory;
+    if (!directory) {
+      Alert.alert('Actualización', 'No se encontró el directorio temporal para descargar el APK.');
+      return;
+    }
+    setDownloadingUpdate(true);
+    const localUri=`${directory}tinchodoko-update-v${latestBuild}.apk`;
+    try {
+      await FileSystem.deleteAsync(localUri,{idempotent:true});
+      const download=await FileSystem.downloadAsync(latestApkUrl,localUri);
+      if (download.status!==200) throw new Error(`No se pudo descargar el APK (HTTP ${download.status}).`);
+      const info=await FileSystem.getInfoAsync(download.uri);
+      if (!info.exists || (info.size??0)<1024*1024) throw new Error('El APK descargado está incompleto o vacío.');
+      const contentUri=await FileSystem.getContentUriAsync(download.uri);
+      Alert.alert('Actualización lista', 'Android abrirá el instalador. Confirma “Actualizar” para instalar la nueva versión.');
+      await IntentLauncher.startActivityAsync('android.intent.action.VIEW',{
+        data:contentUri,
+        type:'application/vnd.android.package-archive',
+        flags:1,
+      });
+    } catch(e) {
+      Alert.alert('No se pudo iniciar la instalación', e instanceof Error?e.message:String(e));
+    } finally {
+      setDownloadingUpdate(false);
+    }
   }
 
   useEffect(()=>{
@@ -141,8 +205,8 @@ export default function App() {
         <Info label="VERSION ACTUAL" value={`V${BUILD_INFO.build}`}/>
         <Info label="ULTIMA VERSION" value={latestVersion || 'No comprobada'}/>
       </View>
-      <Pressable disabled={checkingUpdate} onPress={latestVersion && versionNumber(latestVersion)>versionNumber(BUILD_INFO.version) ? updateApp : checkUpdate} style={[s.button,checkingUpdate&&s.disabled]}>
-        {checkingUpdate ? <ActivityIndicator/> : <Text style={s.buttonText}>{latestVersion && versionNumber(latestVersion)>versionNumber(BUILD_INFO.version) ? 'ACTUALIZAR APP' : 'BUSCAR ACTUALIZACIÓN'}</Text>}
+      <Pressable disabled={checkingUpdate||downloadingUpdate} onPress={latestBuild!==null && latestBuild>Number(BUILD_INFO.build) ? updateApp : checkUpdate} style={[s.button,(checkingUpdate||downloadingUpdate)&&s.disabled]}>
+        {checkingUpdate||downloadingUpdate ? <ActivityIndicator/> : <Text style={s.buttonText}>{downloadingUpdate ? 'DESCARGANDO APK...' : latestBuild!==null && latestBuild>Number(BUILD_INFO.build) ? 'ACTUALIZAR APP' : 'BUSCAR ACTUALIZACIÓN'}</Text>}
       </Pressable>
       <Pressable onPress={()=>Linking.openURL(RELEASES_URL)} style={s.githubButton}>
         <Image source={{uri:'https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png'}} style={s.githubLogo}/>

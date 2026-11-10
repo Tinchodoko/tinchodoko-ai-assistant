@@ -7,7 +7,10 @@
     "userInterfaceStyle": "dark",
     "android": {
       "package": "com.tinchodoko.aiassistant",
-      "versionCode": 1
+      "versionCode": 1,
+      "permissions": [
+        "REQUEST_INSTALL_PACKAGES"
+      ]
     }
   }
 }
