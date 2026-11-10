@@ -188,8 +188,36 @@ export async function connectToExness(
   return { accessPoint: new URL(discovery.access_point).origin };
 }
 
+function normalizeScalar(value: unknown): string | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : undefined;
+  }
+  return undefined;
+}
+
 function findBalanceValue(value: unknown, depth = 0): string | undefined {
-  if (depth > 8 || value === null || typeof value !== 'object') {
+  if (depth > 12 || value === null || value === undefined) {
+    return undefined;
+  }
+
+  // Some responses can contain a JSON-encoded object inside a string.
+  if (typeof value === 'string') {
+    const scalar = normalizeScalar(value);
+    if (scalar && /^[-+]?\d+(?:\.\d+)?$/.test(scalar)) {
+      return scalar;
+    }
+
+    try {
+      const parsed = JSON.parse(value);
+      return parsed === value ? undefined : findBalanceValue(parsed, depth + 1);
+    } catch {
+      return undefined;
+    }
+  }
+
+  if (typeof value !== 'object') {
     return undefined;
   }
 
@@ -203,17 +231,27 @@ function findBalanceValue(value: unknown, depth = 0): string | undefined {
 
   const record = value as Record<string, unknown>;
 
-  // Exness puede envolver los detalles de cuenta en objetos intermedios.
-  // Buscamos la propiedad "balance" sin asumir una ruta fija como
-  // response.account.balance o response.data.account.balance.
+  // First pass: the API's actual account response uses the field name
+  // "balance". Accept numeric/string scalar values and common wrapper
+  // objects such as { amount: ... } without changing the HTTP request.
   for (const [key, candidate] of Object.entries(record)) {
-    if (key.toLowerCase().replace(/[_-]/g, '') === 'balance') {
-      if (typeof candidate === 'string' || typeof candidate === 'number') {
-        return String(candidate);
+    const normalizedKey = key.toLowerCase().replace(/[_-]/g, '');
+    if (normalizedKey === 'balance' || normalizedKey === 'accountbalance') {
+      const scalar = normalizeScalar(candidate);
+      if (scalar !== undefined) return scalar;
+
+      if (candidate && typeof candidate === 'object') {
+        const nested = candidate as Record<string, unknown>;
+        for (const nestedKey of ['amount', 'value', 'balance']) {
+          const nestedScalar = normalizeScalar(nested[nestedKey]);
+          if (nestedScalar !== undefined) return nestedScalar;
+        }
       }
     }
   }
 
+  // Second pass: preserve compatibility with wrapped responses such as
+  // { data: { account: { balance: ... } } }.
   for (const candidate of Object.values(record)) {
     const found = findBalanceValue(candidate, depth + 1);
     if (found !== undefined) return found;
