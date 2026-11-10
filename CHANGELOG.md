@@ -1,3 +1,4 @@
+- #V17 — fix(ci): correct shell escaping for changelog and build metadata
 # Historial de cambios — Tinchodoko AI Assistant
 
 Este registro conserva el historial de builds desde la V0. Solo las builds que completaron la compilación generan un APK publicable como GitHub Release. Las builds fallidas se conservan aquí como historial de desarrollo, pero no tienen APK publicado.
