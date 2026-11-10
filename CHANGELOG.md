@@ -1,3 +1,4 @@
+- #V48 — feat(profile): show equity and used margin
 - #V45 — fix(exness): never treat account id as balance
 - #V44 — fix(exness): robustly extract account balance
 - #V43 — Fix nested Exness account balance parsing
