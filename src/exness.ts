@@ -306,3 +306,82 @@ export async function getAccountSnapshot(
     raw: snapshot,
   };
 }
+
+
+export type AccountStreamEvent = {
+  event_type?: string;
+  event_time?: string;
+  payload?: {
+    account_state?: {
+      balance?: unknown;
+      equity?: unknown;
+      used_margin?: unknown;
+    };
+  };
+};
+
+/**
+ * Opens Exness' signed Server Events WebSocket.
+ * Authentication signs the GET handshake path, never the subscription JSON.
+ * All subscriptions are read-only.
+ */
+export async function openExnessAccountStream(
+  c: Credentials,
+  accessPoint: string,
+  onAccountState: (state: { balance?: string; equity?: string; usedMargin?: string; at: Date }) => void,
+  onStatus?: (status: 'connecting' | 'connected' | 'disconnected' | 'error') => void,
+): Promise<WebSocket> {
+  if (!accessPoint.trim()) throw new Error('No hay Access Point para el flujo en tiempo real.');
+
+  const path = `/v1/server-events/accounts/${encodeURIComponent(c.accountId.trim())}/ws/events`;
+  const signed = await headers(c, path);
+  const wsUrl = accessPoint.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:').replace(/\\/$/, '') + path;
+
+  // React Native supports custom headers in the third WebSocket constructor argument.
+  const NativeWebSocket = WebSocket as unknown as new (
+    url: string,
+    protocols?: string | string[],
+    options?: { headers: Record<string, string> },
+  ) => WebSocket;
+  const ws = new NativeWebSocket(wsUrl, 'exness-ws-protocol', {
+    headers: signed.headers,
+  });
+
+  onStatus?.('connecting');
+  ws.onopen = () => {
+    onStatus?.('connected');
+    ws.send(JSON.stringify({
+      id: 'tinchodoko-account-state',
+      subscribe: { event: 'account_state' },
+    }));
+    ws.send(JSON.stringify({
+      id: 'tinchodoko-transactions',
+      subscribe: { event: 'transactions' },
+    }));
+  };
+
+  ws.onmessage = event => {
+    try {
+      const message = JSON.parse(String(event.data)) as AccountStreamEvent;
+      const state = message.payload?.account_state;
+      if (
+        (message.event_type === 'account_state_event' ||
+          message.event_type === 'trading_state_snapshot' ||
+          message.event_type === 'transaction_event') &&
+        state
+      ) {
+        onAccountState({
+          balance: normalizeScalar(state.balance),
+          equity: normalizeScalar(state.equity),
+          usedMargin: normalizeScalar(state.used_margin),
+          at: message.event_time ? new Date(message.event_time) : new Date(),
+        });
+      }
+    } catch {
+      // Ignore malformed/non-JSON frames; never log credentials or signed headers.
+    }
+  };
+  ws.onerror = () => onStatus?.('error');
+  ws.onclose = () => onStatus?.('disconnected');
+  return ws;
+}
