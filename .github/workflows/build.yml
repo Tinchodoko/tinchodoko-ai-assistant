@@ -196,7 +196,7 @@ jobs:
           test -n "$APKSIGNER"
           "$APKSIGNER" verify --verbose --print-certs "$APK" | tee "$RUNNER_TEMP/apk-signature.txt"
           EXPECTED="$(printf '%s' "$APP_SIGNATURE" | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')"
-          ACTUAL="$(awk -F': ' '/certificate SHA-256 digest:/{print tolower($2); exit}' "$RUNNER_TEMP/apk-signature.txt" | tr -d ':[:space:]')"
+          ACTUAL="$(sed -nE 's/.*certificate SHA-256 digest: ([0-9A-Fa-f:]+).*/\1/p' "$RUNNER_TEMP/apk-signature.txt" | head -n 1 | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')"
           if [ -z "$ACTUAL" ] || [ "$ACTUAL" != "$EXPECTED" ]; then
             echo "::error::APK certificate does not match the configured permanent signing key."
             exit 1
