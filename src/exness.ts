@@ -43,7 +43,12 @@ function b64url(bytes: Uint8Array): string {
 const EMPTY_BODY_SHA256_BASE64URL =
   '47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU';
 
-async function headers(c: Credentials, path: string): Promise<Record<string, string>> {
+type SignedRequest = {
+  headers: Record<string, string>;
+  timestamp: number;
+};
+
+async function headers(c: Credentials, path: string): Promise<SignedRequest> {
   const timestamp = Date.now();
   const bodyHash = EMPTY_BODY_SHA256_BASE64URL;
 
@@ -64,6 +69,8 @@ async function headers(c: Credentials, path: string): Promise<Record<string, str
   );
 
   return {
+    timestamp,
+    headers: {
     'EXN-API-KEY': c.apiKey,
     'EXN-IDEMPOTENCY-KEY': '',
     'EXN-TIMESTAMP': String(timestamp),
@@ -71,6 +78,7 @@ async function headers(c: Credentials, path: string): Promise<Record<string, str
     'EXN-DATA': b64url(data),
     'EXN-SIGN': b64url(signature),
     'Accept': 'application/json',
+    },
   };
 }
 
@@ -79,15 +87,29 @@ async function getJson<T>(
   path: string,
   c: Credentials,
 ): Promise<T> {
+  const signed = await headers(c, path);
   const res = await fetch(host.replace(/\/$/, '') + path, {
     method: 'GET',
-    headers: await headers(c, path),
+    headers: signed.headers,
   });
 
+  const responseReceivedAt = Date.now();
+  const serverDate = res.headers.get('date');
+  const serverTime = serverDate ? Date.parse(serverDate) : Number.NaN;
   const text = await res.text();
 
   if (!res.ok) {
-    throw new Error(`HTTP ${res.status}: ${text}`);
+    const diagnostics = [
+      `timestamp enviado=${signed.timestamp}`,
+      `edad del timestamp al recibir respuesta=${responseReceivedAt - signed.timestamp} ms`,
+      `hora local al recibir respuesta=${responseReceivedAt}`,
+      serverDate ? `fecha del servidor=${serverDate}` : 'fecha del servidor=no disponible',
+      Number.isFinite(serverTime)
+        ? `diferencia servidor-local=${serverTime - responseReceivedAt} ms`
+        : 'diferencia servidor-local=no calculable',
+    ].join(' | ');
+
+    throw new Error(`HTTP ${res.status}: ${text}\nDiagnóstico seguro: ${diagnostics}`);
   }
 
   return JSON.parse(text) as T;
