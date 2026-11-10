@@ -1,3 +1,4 @@
+- #V42 — fix(exness): correct account ID and gateway URL validation regex
 - #V35 — fix(exness): calibrate clock offset from response Date header
 - #V30 — fix(updater): correct cached APK filename matching
 - #V28 — debug(exness): report safe timestamp diagnostics on auth errors
