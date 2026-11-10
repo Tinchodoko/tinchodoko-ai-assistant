@@ -40,12 +40,12 @@ jobs:
 
       - name: Generate Android project
         run: |
-          node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync('app.json','utf8')); p.expo.version='1.0.'+process.env.BUILD_NUMBER; p.expo.android.versionCode=Number(process.env.BUILD_NUMBER); fs.writeFileSync('app.json', JSON.stringify(p,null,2)+'\\n')"
+          node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync('app.json','utf8')); p.expo.version='1.0.'+process.env.BUILD_NUMBER; p.expo.android.versionCode=Number(process.env.BUILD_NUMBER); fs.writeFileSync('app.json', JSON.stringify(p,null,2)+'\n')"
           CI=1 npx expo prebuild --platform android
 
       - name: Prepare build changelog
         run: |
-          printf '%s\\n' "- #V${BUILD_NUMBER} — ${BUILD_CHANGE}" > CHANGELOG.new
+          printf '%s\n' "- #V${BUILD_NUMBER} — ${BUILD_CHANGE}" > CHANGELOG.new
           cat CHANGELOG.md >> CHANGELOG.new
           mv CHANGELOG.new CHANGELOG.md
 
@@ -94,7 +94,7 @@ jobs:
           gradle_file = Path("android/app/build.gradle")
           source = gradle_file.read_text(encoding="utf-8")
 
-          signing_marker = re.search(r"(?m)^\\s*signingConfigs\\s*\\{", source)
+          signing_marker = re.search(r"(?m)^\s*signingConfigs\s*\{", source)
           if not signing_marker:
               raise SystemExit("Could not find signingConfigs block in generated android/app/build.gradle")
 
@@ -109,7 +109,7 @@ jobs:
           insert_at = signing_marker.end()
           source = source[:insert_at] + release_config + source[insert_at:]
 
-          release_build_type = re.search(r"(?s)(buildTypes\\s*\\{\\s*release\\s*\\{.*?signingConfig\\s+)signingConfigs\\.debug", source)
+          release_build_type = re.search(r"(?s)(buildTypes\s*\{\s*release\s*\{.*?signingConfig\s+)signingConfigs\.debug", source)
           if not release_build_type:
               raise SystemExit("Could not find the release buildType debug signing assignment to replace")
 
@@ -131,7 +131,7 @@ jobs:
               "build": os.environ["BUILD_NUMBER"],
               "signature": os.environ.get("APP_SIGNATURE", "UNKNOWN"),
               "changelog": changes,
-          }, ensure_ascii=True, indent=2) + ";\\n"
+          }, ensure_ascii=True, indent=2) + ";\n"
           Path("src/buildInfo.ts").write_text(content, encoding="utf-8")
           PY
 
