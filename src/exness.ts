@@ -164,11 +164,11 @@ export async function connectToExness(
     throw new Error('SECRET vacío.');
   }
 
-  if (!/^\\d+$/.test(c.accountId.trim())) {
+  if (!/^\d+$/.test(c.accountId.trim())) {
     throw new Error('ACCOUNT inválido.');
   }
 
-  const gateway = c.gatewayUrl.trim().replace(/\\/$/, '');
+  const gateway = c.gatewayUrl.trim().replace(/\/$/, '');
   const accountId = c.accountId.trim();
   const discoveryPath =
     `/v1/trading/access-point?account_id=${encodeURIComponent(accountId)}`;
