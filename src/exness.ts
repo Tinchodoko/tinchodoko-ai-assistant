@@ -123,7 +123,9 @@ async function getJson<T>(
         continue;
       }
 
+      const roundTripMs = responseReceivedAt - requestStartedAt;
       const diagnostics = [
+        `tiempo de solicitud hasta respuesta=${roundTripMs} ms`,
         `timestamp enviado=${signed.timestamp}`,
         `edad del timestamp al recibir respuesta=${responseReceivedAt - signed.timestamp} ms`,
         `hora local al recibir respuesta=${responseReceivedAt}`,
