@@ -48,8 +48,13 @@ type SignedRequest = {
   timestamp: number;
 };
 
+// Calibrated from Exness' HTTP Date header after a timestamp-window rejection.
+// HTTP Date is rounded to whole seconds, so the midpoint estimate adds 500 ms.
+let serverClockOffsetMs = 0;
+let hasServerClockOffset = false;
+
 async function headers(c: Credentials, path: string): Promise<SignedRequest> {
-  const timestamp = Date.now();
+  const timestamp = Date.now() + (hasServerClockOffset ? serverClockOffsetMs : 0);
   const bodyHash = EMPTY_BODY_SHA256_BASE64URL;
 
   const payload = JSON.stringify({
@@ -71,13 +76,13 @@ async function headers(c: Credentials, path: string): Promise<SignedRequest> {
   return {
     timestamp,
     headers: {
-    'EXN-API-KEY': c.apiKey,
-    'EXN-IDEMPOTENCY-KEY': '',
-    'EXN-TIMESTAMP': String(timestamp),
-    'EXN-SIGN-VERSION': '1',
-    'EXN-DATA': b64url(data),
-    'EXN-SIGN': b64url(signature),
-    'Accept': 'application/json',
+      'EXN-API-KEY': c.apiKey,
+      'EXN-IDEMPOTENCY-KEY': '',
+      'EXN-TIMESTAMP': String(timestamp),
+      'EXN-SIGN-VERSION': '1',
+      'EXN-DATA': b64url(data),
+      'EXN-SIGN': b64url(signature),
+      'Accept': 'application/json',
     },
   };
 }
@@ -87,32 +92,55 @@ async function getJson<T>(
   path: string,
   c: Credentials,
 ): Promise<T> {
-  const signed = await headers(c, path);
-  const res = await fetch(host.replace(/\/$/, '') + path, {
-    method: 'GET',
-    headers: signed.headers,
-  });
+  const url = host.replace(/\/$/, '') + path;
 
-  const responseReceivedAt = Date.now();
-  const serverDate = res.headers.get('date');
-  const serverTime = serverDate ? Date.parse(serverDate) : Number.NaN;
-  const text = await res.text();
+  // This helper performs read-only GET requests only. A timestamp-window
+  // rejection can therefore be retried once with a newly signed timestamp.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const signed = await headers(c, path);
+    const requestStartedAt = Date.now();
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: signed.headers,
+      // Never forward signed headers through an HTTP redirect.
+      redirect: 'error',
+    });
 
-  if (!res.ok) {
-    const diagnostics = [
-      `timestamp enviado=${signed.timestamp}`,
-      `edad del timestamp al recibir respuesta=${responseReceivedAt - signed.timestamp} ms`,
-      `hora local al recibir respuesta=${responseReceivedAt}`,
-      serverDate ? `fecha del servidor=${serverDate}` : 'fecha del servidor=no disponible',
-      Number.isFinite(serverTime)
-        ? `diferencia servidor-local=${serverTime - responseReceivedAt} ms`
-        : 'diferencia servidor-local=no calculable',
-    ].join(' | ');
+    const responseReceivedAt = Date.now();
+    const serverDate = res.headers.get('date');
+    const serverTime = serverDate ? Date.parse(serverDate) : Number.NaN;
+    const text = await res.text();
 
-    throw new Error(`HTTP ${res.status}: ${text}\nDiagnóstico seguro: ${diagnostics}`);
+    if (!res.ok) {
+      const timestampRejected =
+        res.status === 401 &&
+        /timestamp outside allowed window/i.test(text);
+
+      if (timestampRejected && attempt === 0 && Number.isFinite(serverTime)) {
+        // Estimate server clock offset. Date header precision is one second.
+        serverClockOffsetMs = Math.round(serverTime + 500 - responseReceivedAt);
+        hasServerClockOffset = true;
+        continue;
+      }
+
+      const diagnostics = [
+        `timestamp enviado=${signed.timestamp}`,
+        `edad del timestamp al recibir respuesta=${responseReceivedAt - signed.timestamp} ms`,
+        `hora local al recibir respuesta=${responseReceivedAt}`,
+        serverDate ? `fecha del servidor=${serverDate}` : 'fecha del servidor=no disponible',
+        Number.isFinite(serverTime)
+          ? `diferencia servidor-local (Date HTTP, precisión 1 s)=${serverTime - responseReceivedAt} ms`
+          : 'diferencia servidor-local=no calculable',
+        `desfase aplicado=${hasServerClockOffset ? serverClockOffsetMs : 0} ms`,
+      ].join(' | ');
+
+      throw new Error(`HTTP ${res.status}: ${text}\\nDiagnóstico seguro: ${diagnostics}`);
+    }
+
+    return JSON.parse(text) as T;
   }
 
-  return JSON.parse(text) as T;
+  throw new Error('No se pudo completar la consulta firmada después de sincronizar el timestamp.');
 }
 
 export async function connectAndGetAccount(
