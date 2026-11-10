@@ -11,6 +11,7 @@ concurrency:
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
   build:
@@ -37,24 +38,19 @@ jobs:
         run: |
           node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync('app.json','utf8')); p.expo.version='1.0.'+process.env.BUILD_NUMBER; p.expo.android.versionCode=Number(process.env.BUILD_NUMBER); fs.writeFileSync('app.json', JSON.stringify(p,null,2)+'\\n')"
           CI=1 npx expo prebuild --platform android
-      - name: Record build in CHANGELOG.md
+      - name: Prepare build changelog
         run: |
-          printf '%s\n' "- #V${BUILD_NUMBER} — ${BUILD_CHANGE}" > CHANGELOG.new
+          printf '%s\\n' "- #V${BUILD_NUMBER} — ${BUILD_CHANGE}" > CHANGELOG.new
           cat CHANGELOG.md >> CHANGELOG.new
           mv CHANGELOG.new CHANGELOG.md
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add CHANGELOG.md
-          git diff --cached --quiet || git commit -m "chore(build): record #V${BUILD_NUMBER} [skip ci]"
-          git push
       - name: Generate Android signing fingerprint
         run: |
           mkdir -p "$HOME/.android"
           if [ ! -f "$HOME/.android/debug.keystore" ]; then
-            keytool -genkeypair -v \
-              -keystore "$HOME/.android/debug.keystore" \
-              -storepass android -keypass android -alias androiddebugkey \
-              -keyalg RSA -keysize 2048 -validity 10000 \
+            keytool -genkeypair -v \\
+              -keystore "$HOME/.android/debug.keystore" \\
+              -storepass android -keypass android -alias androiddebugkey \\
+              -keyalg RSA -keysize 2048 -validity 10000 \\
               -dname "CN=Android Debug,O=Android,C=US"
           fi
           SIGNATURE=$(keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey | awk -F': ' '/SHA256:/{print $2; exit}')
@@ -72,7 +68,7 @@ jobs:
               "build": os.environ["BUILD_NUMBER"],
               "signature": os.environ.get("APP_SIGNATURE", "DEBUG"),
               "changelog": changes,
-          }, ensure_ascii=True, indent=2) + ";\n"
+          }, ensure_ascii=True, indent=2) + ";\\n"
           Path("src/buildInfo.ts").write_text(content, encoding="utf-8")
           PY
       - name: TypeScript check
@@ -80,9 +76,54 @@ jobs:
       - name: Build debug APK
         working-directory: android
         run: ./gradlew assembleDebug --no-daemon
-      - name: Upload APK
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: tinchodoko-ai-assistant-V${{ github.run_number }}-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+      - name: Commit successful build changelog
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git diff --cached --quiet || git commit -m "chore(build): record #V${BUILD_NUMBER} [skip ci]"
+          git push
+      - name: Download V15 APK for release backfill
+        id: download_v15
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: tinchodoko-ai-assistant-V15-debug
+          path: previous-v15
+          run-id: 42743594685
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish V15 GitHub Release
+        if: steps.download_v15.outcome == 'success'
+        continue-on-error: true
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v15
+          target_commitish: 14845fe519dd86022650b3288a4f92eb3d6a446e
+          name: Tinchodoko AI Assistant V15
+          body: |
+            BUILD V15 — primera compilación Android completada correctamente.
+
+            Cambios: corrección del tipo BufferSource utilizado por Web Crypto en el cliente Exness.
+
+            El APK corresponde a la compilación V15 exitosa de GitHub Actions.
+          files: previous-v15/app-debug.apk
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: true
+      - name: Publish current GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.BUILD_NUMBER }}
+          target_commitish: main
+          name: Tinchodoko AI Assistant V${{ env.BUILD_NUMBER }}
+          body_path: CHANGELOG.md
+          files: android/app/build/outputs/apk/debug/app-debug.apk
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: true
