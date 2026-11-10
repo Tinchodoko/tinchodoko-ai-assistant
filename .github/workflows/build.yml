@@ -221,7 +221,7 @@ jobs:
               "tag": f"v{build}",
               "apk_url": f"https://github.com/Tinchodoko/tinchodoko-ai-assistant/releases/download/v{build}/app-release.apk"
           }
-          Path("update.json").write_text(json.dumps(manifest, indent=2) + "\\n", encoding="utf-8")
+          Path("update.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
           PY
 
       - name: Commit successful build changelog
