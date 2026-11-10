@@ -18,7 +18,7 @@ function dateText(d: Date | null) {
 }
 
 function releaseBuildNumber(tag:string) {
-  const match=tag.trim().match(/^v?(\\d+)$/i);
+  const match=tag.trim().match(/^v?(\d+)$/i);
   return match ? Number(match[1]) : 0;
 }
 
@@ -29,7 +29,7 @@ async function cleanupInstalledUpdateApks() {
     const installedBuild=Number(BUILD_INFO.build);
     const entries=await FileSystem.readDirectoryAsync(directory);
     for (const name of entries) {
-      const match=name.match(/^tinchodoko-update-v(\\d+)\\.apk$/i);
+      const match=name.match(/^tinchodoko-update-v(\d+)\\.apk$/i);
       if (match && Number(match[1]) <= installedBuild) {
         await FileSystem.deleteAsync(directory+name,{idempotent:true});
       }
