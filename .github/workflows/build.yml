@@ -95,7 +95,7 @@ jobs:
           source = gradle_file.read_text(encoding="utf-8")
 
           def find_block(text, name, start=0):
-              match = re.search(r"\\b" + re.escape(name) + r"\\s*\\{", text[start:])
+              match = re.search(r"\b" + re.escape(name) + r"\s*\{", text[start:])
               if not match:
                   return None
               block_start = start + match.start()
@@ -132,7 +132,7 @@ jobs:
               build_types = find_block(source, "buildTypes", android_open)
               if not build_types or build_types[0] > android_close:
                   raise SystemExit("Could not find buildTypes block in generated Gradle file")
-              insertion = '    signingConfigs {' + release_config + '    }\\n'
+              insertion = '    signingConfigs {' + release_config + '    }\n'
               source = source[:build_types[0]] + insertion + source[build_types[0]:]
 
           android_block = find_block(source, "android")
@@ -147,12 +147,12 @@ jobs:
           _, release_open, release_close = release_block
 
           release_body = source[release_open + 1:release_close]
-          signing_line = re.search(r"(?m)^(\\s*)signingConfig\\s+[^\\n]+", release_body)
+          signing_line = re.search(r"(?m)^(\s*)signingConfig\s+[^\n]+", release_body)
           if signing_line:
               replacement_line = signing_line.group(1) + "signingConfig signingConfigs.release"
               release_body = release_body[:signing_line.start()] + replacement_line + release_body[signing_line.end():]
           else:
-              release_body = "\\n            signingConfig signingConfigs.release" + release_body
+              release_body = "\n            signingConfig signingConfigs.release" + release_body
           source = source[:release_open + 1] + release_body + source[release_close:]
 
           gradle_file.write_text(source, encoding="utf-8")
