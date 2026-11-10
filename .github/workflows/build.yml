@@ -72,7 +72,7 @@ jobs:
               "build": os.environ["BUILD_NUMBER"],
               "signature": os.environ.get("APP_SIGNATURE", "DEBUG"),
               "changelog": changes,
-          }, ensure_ascii=True, indent=2) + ";\\n"
+          }, ensure_ascii=True, indent=2) + ";\n"
           Path("src/buildInfo.ts").write_text(content, encoding="utf-8")
           PY
       - name: TypeScript check
