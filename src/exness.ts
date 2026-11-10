@@ -188,6 +188,40 @@ export async function connectToExness(
   return { accessPoint: new URL(discovery.access_point).origin };
 }
 
+function findBalanceValue(value: unknown, depth = 0): string | undefined {
+  if (depth > 8 || value === null || typeof value !== 'object') {
+    return undefined;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = findBalanceValue(item, depth + 1);
+      if (found !== undefined) return found;
+    }
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+
+  // Exness puede envolver los detalles de cuenta en objetos intermedios.
+  // Buscamos la propiedad "balance" sin asumir una ruta fija como
+  // response.account.balance o response.data.account.balance.
+  for (const [key, candidate] of Object.entries(record)) {
+    if (key.toLowerCase().replace(/[_-]/g, '') === 'balance') {
+      if (typeof candidate === 'string' || typeof candidate === 'number') {
+        return String(candidate);
+      }
+    }
+  }
+
+  for (const candidate of Object.values(record)) {
+    const found = findBalanceValue(candidate, depth + 1);
+    if (found !== undefined) return found;
+  }
+
+  return undefined;
+}
+
 export async function getAccountSnapshot(
   c: Credentials,
   accessPoint: string,
@@ -204,13 +238,11 @@ export async function getAccountSnapshot(
     c,
   );
 
-  const nested = account.account as { balance?: unknown } | undefined;
-  const value = account.balance ?? nested?.balance;
-
-  // A successful account response is still successful even when its balance
-  // is absent or nested differently. Never turn that into a connection error.
+  // The response may contain nested wrappers (for example data/account).
+  // Resolve the balance recursively instead of relying on one guessed JSON path.
+  // This request remains read-only and does not affect the separate CONNECT flow.
   return {
-    balance: value === undefined || value === null ? undefined : String(value),
+    balance: findBalanceValue(account),
     raw: account,
   };
 }
