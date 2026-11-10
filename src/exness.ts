@@ -38,16 +38,14 @@ function b64url(bytes: Uint8Array): string {
     .replace(/=+$/g, '');
 }
 
-async function sha256Base64Url(data: Uint8Array): Promise<string> {
-  // Expo/React Native TS expects an ArrayBuffer-backed BufferSource.
-  const input = new Uint8Array(data);
-  const digest = await globalThis.crypto.subtle.digest('SHA-256', input.buffer as ArrayBuffer);
-  return b64url(new Uint8Array(digest));
-}
+// SHA-256 Base64URL del cuerpo vacío; coincide con el cálculo de balance.ts.
+// Para GET no hay body, así que no hace falta usar una API criptográfica del navegador.
+const EMPTY_BODY_SHA256_BASE64URL =
+  '47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU';
 
 async function headers(c: Credentials, path: string): Promise<Record<string, string>> {
   const timestamp = Date.now();
-  const bodyHash = await sha256Base64Url(new Uint8Array(0));
+  const bodyHash = EMPTY_BODY_SHA256_BASE64URL;
 
   const payload = JSON.stringify({
     api_key: c.apiKey,
