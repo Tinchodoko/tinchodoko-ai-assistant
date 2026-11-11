@@ -308,6 +308,132 @@ export async function getAccountSnapshot(
 }
 
 
+export type TradingHistoryData = {
+  positions: Record<string, unknown>[];
+  activeOrders: Record<string, unknown>[];
+  pastOrders: Record<string, unknown>[];
+  deals: Record<string, unknown>[];
+};
+
+type HistoryPage = {
+  items?: Array<Record<string, unknown>>;
+  next_cursor?: string;
+  has_more?: boolean;
+};
+
+type HistoryLimit = {
+  api_operation_id?: string;
+  limits?: { history_age_days?: number; history_range_days?: number };
+};
+
+function asRecords(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is Record<string, unknown> =>
+        !!item && typeof item === 'object' && !Array.isArray(item))
+    : [];
+}
+
+async function fetchHistoryPages(
+  host: string,
+  c: Credentials,
+  endpoint: 'orders' | 'deals',
+  from: Date,
+  to: Date,
+): Promise<Record<string, unknown>[]> {
+  const result: Record<string, unknown>[] = [];
+  let cursor: string | undefined;
+  do {
+    const params = cursor
+      ? new URLSearchParams({ cursor, limit: '200' })
+      : new URLSearchParams({ from: from.toISOString(), to: to.toISOString(), limit: '200' });
+    const path = `/v1/history/accounts/${encodeURIComponent(c.accountId.trim())}/${endpoint}?${params.toString()}`;
+    const page = await getJson<HistoryPage>(host, path, c);
+    result.push(...(page.items ?? []));
+    cursor = page.next_cursor;
+  } while (cursor);
+  return result;
+}
+
+/**
+ * Read-only history loader. Current open positions and pending orders come
+ * from the same trading snapshot used by positions.ts. Closed orders/deals
+ * are fetched only within the account-specific history limits returned by Exness.
+ */
+export async function getTradingHistory(
+  c: Credentials,
+  accessPoint: string,
+): Promise<TradingHistoryData> {
+  if (!accessPoint.trim()) throw new Error('No hay Access Point. Conectá la cuenta primero.');
+
+  const accountId = encodeURIComponent(c.accountId.trim());
+  const [snapshot, limitsResponse] = await Promise.all([
+    getJson<Record<string, unknown>>(
+      accessPoint,
+      `/v1/trading/accounts/${accountId}/snapshot`,
+      c,
+    ),
+    getJson<{ limits?: { rest?: { methods?: HistoryLimit[] } } }>(
+      accessPoint,
+      `/v1/configuration/accounts/${accountId}/limits`,
+      c,
+    ),
+  ]);
+
+  const methods = limitsResponse.limits?.rest?.methods ?? [];
+  const ordersLimits = methods.find(item => item.api_operation_id === 'getOrdersHistory')?.limits;
+  const dealsLimits = methods.find(item => item.api_operation_id === 'getDealsHistory')?.limits;
+  const ageDays = Math.min(
+    ordersLimits?.history_age_days ?? 0,
+    dealsLimits?.history_age_days ?? 0,
+  );
+  const rangeDays = Math.min(
+    ordersLimits?.history_range_days ?? 0,
+    dealsLimits?.history_range_days ?? 0,
+  );
+
+  if (!Number.isFinite(ageDays) || ageDays < 1 || !Number.isFinite(rangeDays) || rangeDays < 1) {
+    throw new Error('Exness no informó los límites de antigüedad y rango del historial. No se enviaron consultas históricas.');
+  }
+
+  const now = new Date();
+  const start = new Date(now.getTime() - ageDays * 24 * 60 * 60 * 1000);
+  const maxRangeMs = rangeDays * 24 * 60 * 60 * 1000;
+  const pastOrders: Record<string, unknown>[] = [];
+  const deals: Record<string, unknown>[] = [];
+
+  for (let cursor = start.getTime(); cursor < now.getTime();) {
+    const next = Math.min(cursor + maxRangeMs, now.getTime());
+    const from = new Date(cursor);
+    const to = new Date(next);
+    const [ordersPage, dealsPage] = await Promise.all([
+      fetchHistoryPages(accessPoint, c, 'orders', from, to),
+      fetchHistoryPages(accessPoint, c, 'deals', from, to),
+    ]);
+    pastOrders.push(...ordersPage);
+    deals.push(...dealsPage);
+    cursor = next;
+  }
+
+  const payload = snapshot.payload && typeof snapshot.payload === 'object'
+    ? snapshot.payload as Record<string, unknown>
+    : snapshot;
+  const positions = asRecords(payload.positions ?? snapshot.positions);
+  const orders = asRecords(payload.orders ?? snapshot.orders);
+  return {
+    positions,
+    activeOrders: orders.filter(order => String(order.order_type ?? '').toLowerCase() !== 'sltp'),
+    pastOrders,
+    deals: deals.filter(item => {
+      const deal = item.deal && typeof item.deal === 'object'
+        ? item.deal as Record<string, unknown>
+        : item;
+      const type = String(deal.type ?? '').toLowerCase();
+      return type === 'open' || type === 'close';
+    }),
+  };
+}
+
+
 export type AccountStreamEvent = {
   event_type?: string;
   event_time?: string;
