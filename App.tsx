@@ -343,7 +343,7 @@ export default function App() {
             onStartShouldSetResponder={()=>true}
             onMoveShouldSetResponder={()=>true}
             onResponderGrant={e=>setSliderFromLocation(e.nativeEvent.locationX,sliderWidth)}
-            onResponderMove={e=>setSliderFromLocation(e.nativeEvent.locationX,e.nativeEvent.layoutMeasurement.width)}
+            onResponderMove={e=>setSliderFromLocation(e.nativeEvent.locationX,sliderWidth)}
           >
             <View style={s.sliderRail}/>
             <View style={[s.sliderFill,{width:sliderThumbPosition-9}]}/>
