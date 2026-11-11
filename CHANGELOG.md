@@ -1,3 +1,4 @@
+- #V89 — fix(exness): send mutation idempotency key in signed headers
 - #V82 — fix(history): sign positions WebSocket with current device timestamp
 - #V78 — fix(exness): calibrate timestamp per response and retry rate limits
 - #V77 — fix(exness): calibrate clock from HTTP Date uncertainty interval
