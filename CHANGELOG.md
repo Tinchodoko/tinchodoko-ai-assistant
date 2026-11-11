@@ -1,3 +1,4 @@
+- #V73 — fix(history): hide SLTP helper orders from pending list
 - #V67 — fix(profile): make last update follow selected refresh interval
 - #V66 — fix(profile): stabilize interval slider and persist saved interval
 - #V65 — fix(sync): pass explicit manual refresh flag to button
