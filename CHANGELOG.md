@@ -1,3 +1,4 @@
+- #V60 — fix(ui): stabilize interval slider touch tracking, thumb alignment and drag area
 - #V57 — fix(ui): add interval refresh styles
 - #V48 — feat(profile): show equity and used margin
 - #V45 — fix(exness): never treat account id as balance
