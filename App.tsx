@@ -56,6 +56,7 @@ export default function App() {
   const [intervalUnit,setIntervalUnit]=useState<'seconds'|'minutes'>('seconds');
   const [intervalValue,setIntervalValue]=useState(5);
   const [intervalMenu,setIntervalMenu]=useState(false);
+  const [sliderWidth,setSliderWidth]=useState(1);
   const [latestVersion,setLatestVersion]=useState<string|null>(null);
   const [latestBuild,setLatestBuild]=useState<number|null>(null);
   const [latestApkUrl,setLatestApkUrl]=useState<string|null>(null);
@@ -138,6 +139,8 @@ export default function App() {
   const intervalLabel = intervalUnit==='seconds'
     ? `${String(intervalValue).padStart(2,'0')}S`
     : `${intervalValue}M`;
+
+  const pnlValue = (() => { const b=Number(balance); const e=Number(equity); if (!Number.isFinite(b)||!Number.isFinite(e)) return null; return e-b; })();
 
   function setSliderFromLocation(locationX:number, width:number) {
     if (width <= 0) return;
@@ -312,7 +315,7 @@ export default function App() {
         <Info label="ACCOUNT" value={c.accountId||'—'}/>
         <Info label="BALANCE" value={balance}/>
         <Info label="EQUITY" value={equity}/> 
-      <Info label="GANANCIA / PÉRDIDA" value={(() => { const b=Number(balance); const e=Number(equity); if (!Number.isFinite(b)||!Number.isFinite(e)) return '—'; const v=e-b; return `${v>=0?'+':''}${v.toFixed(2)}`; })()}/>
+      <Info label="GANANCIA / PÉRDIDA" value={pnlValue===null?'—':`${pnlValue>=0?'+':''}${pnlValue.toFixed(2)}`} valueStyle={pnlValue===null?undefined:pnlValue>=0?s.pnlPositive:s.pnlNegative}/>
         <Info label="USED MARGIN" value={usedMargin}/>
       </View>
       <Pressable disabled={busy} onPress={refresh} style={[s.refresh,busy&&s.disabled]}>{busy?<ActivityIndicator/>:<Text style={s.refreshText}>↻  CONSULTAR BALANCE</Text>}</Pressable>
@@ -333,13 +336,16 @@ export default function App() {
         </View>}
         <View style={s.sliderRow}>
           <Text style={s.sliderMin}>{intervalUnit==='seconds'?'05S':'1M'}</Text>
-          <Pressable
+          <View
             style={s.sliderTrack}
-            onPress={e=>setSliderFromLocation(e.nativeEvent.locationX, e.nativeEvent.target ? 1 : 1)}
+            onLayout={e=>setSliderWidth(e.nativeEvent.layout.width)}
+            onStartShouldSetResponder={()=>true}
+            onResponderGrant={e=>setSliderFromLocation(e.nativeEvent.locationX,sliderWidth)}
+            onResponderMove={e=>setSliderFromLocation(e.nativeEvent.locationX,sliderWidth)}
           >
             <View style={[s.sliderFill,{width:`${((intervalValue-minInterval)/(maxInterval-minInterval))*100}%`}]}/>
             <View style={[s.sliderThumb,{left:`${((intervalValue-minInterval)/(maxInterval-minInterval))*100}%`}]}/>
-          </Pressable>
+          </View>
           <Text style={s.sliderMax}>{intervalLabel}</Text>
         </View>
         <Text style={s.intervalValue}>{intervalLabel} · {autoRefresh?'activo':'desactivado'}</Text>
@@ -374,8 +380,8 @@ export default function App() {
   </SafeAreaView>;
 }
 
-function Info({label,value}:{label:string,value:string}) {
-  return <View style={s.info}><Text style={s.infoLabel}>{label}</Text><Text style={s.infoValue}>{value}</Text></View>;
+function Info({label,value,valueStyle}:{label:string,value:string,valueStyle?:object}) {
+  return <View style={s.info}><Text style={s.infoLabel}>{label}</Text><Text style={[s.infoValue,valueStyle]}>{value}</Text></View>;
 }
 
 const s=StyleSheet.create({
@@ -386,7 +392,7 @@ const s=StyleSheet.create({
  row:{flexDirection:'row',backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:10},input:{flex:1,color:'#fff',padding:13,minHeight:48},eye:{width:48,alignItems:'center',justifyContent:'center'},
  button:{minHeight:50,borderRadius:10,backgroundColor:'#fff',alignItems:'center',justifyContent:'center'},buttonText:{color:'#0b0e13',fontWeight:'900'},disabled:{opacity:.5},
  onlineText:{color:'#28d17c',textAlign:'center',fontWeight:'800'},offlineText:{color:'#e05252',textAlign:'center',fontWeight:'800'},
- card:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:14,padding:17,gap:17},info:{gap:5},infoLabel:{color:'#8f98a8',fontSize:11,fontWeight:'900'},infoValue:{color:'#fff',fontSize:15,fontWeight:'600'},
+ card:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:14,padding:17,gap:17},info:{gap:5},infoLabel:{color:'#8f98a8',fontSize:11,fontWeight:'900'},infoValue:{color:'#fff',fontSize:15,fontWeight:'600'},pnlPositive:{color:'#28d17c',fontWeight:'900'},pnlNegative:{color:'#e05252',fontWeight:'900'},
  refresh:{minHeight:48,borderRadius:10,borderWidth:1,borderColor:'#3b4350',alignItems:'center',justifyContent:'center'},refreshText:{color:'#fff',fontWeight:'900'},
  meta:{color:'#8f98a8',fontSize:11,fontWeight:'900'},time:{color:'#fff',fontWeight:'600',marginTop:-9},ap:{color:'#707988',fontSize:11},
  githubButton:{minHeight:54,borderRadius:12,borderWidth:1,borderColor:'#3b4350',paddingHorizontal:16,flexDirection:'row',alignItems:'center',gap:12},githubLogo:{width:24,height:24},githubText:{color:'#fff',fontWeight:'900',flex:1},githubVersion:{color:'#9da6b5',fontWeight:'800'},change:{color:'#dce1e9',fontSize:13,lineHeight:20}
