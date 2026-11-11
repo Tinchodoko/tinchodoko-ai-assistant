@@ -59,14 +59,29 @@ type SignedRequest = {
 let serverClockOffsetMs = 0;
 let hasServerClockOffset = false;
 
-function buildSignedHeadersAtTimestamp(c: Credentials, path: string, timestamp: number): SignedRequest {
-  const bodyHash = EMPTY_BODY_SHA256_BASE64URL;
+async function awaitSha256(bytes: Uint8Array): Promise<Uint8Array> {
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return new Uint8Array(digest);
+}
+
+async function buildSignedHeadersAtTimestamp(
+  c: Credentials,
+  path: string,
+  timestamp: number,
+  method: string = 'GET',
+  body: string = '',
+  idempotencyKey: string = '',
+): Promise<SignedRequest> {
+  const bodyBytes = new TextEncoder().encode(body);
+  const bodyHash = body
+    ? b64url(new Uint8Array(awaitSha256(bodyBytes)))
+    : EMPTY_BODY_SHA256_BASE64URL;
   const payload = JSON.stringify({
     api_key: c.apiKey,
-    idempotency_key: '',
+    idempotency_key: idempotencyKey,
     timestamp,
     sign_version: 1,
-    method: 'GET',
+    method,
     path,
     body_hash: bodyHash,
   });
@@ -173,6 +188,91 @@ async function getJson<T>(
   }
 
   throw new Error('No se pudo completar la consulta firmada después de sincronizar el timestamp con Exness.');
+}
+
+async function requestJson<T>(
+  host: string,
+  path: string,
+  c: Credentials,
+  method: 'PATCH' | 'DELETE',
+  bodyObject?: Record<string, unknown>,
+): Promise<T> {
+  const url = host.replace(/\/$/, '') + path;
+  const body = bodyObject ? JSON.stringify(bodyObject) : '';
+  const idempotencyKey = `tinchodoko-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const timestamp = Date.now() + (hasServerClockOffset ? serverClockOffsetMs : 0);
+    const signed = await buildSignedHeadersAtTimestamp(c, path, timestamp, method, body, idempotencyKey);
+    const requestStartedAt = Date.now();
+    const res = await fetch(url, {
+      method,
+      headers: {
+        ...signed.headers,
+        'Content-Type': 'application/json',
+      },
+      body: body || undefined,
+      redirect: 'error',
+    });
+    const responseReceivedAt = Date.now();
+    const serverDate = res.headers.get('date');
+    const serverTime = serverDate ? Date.parse(serverDate) : Number.NaN;
+    const text = await res.text();
+
+    if (res.ok) return (text ? JSON.parse(text) : {}) as T;
+
+    const timestampRejected =
+      (res.status === 401 && /timestamp outside allowed window/i.test(text)) ||
+      (res.status === 400 && /REQUEST_INVALID_TIME_RANGE|code["\\s:]*3004/i.test(text));
+
+    if (timestampRejected && Number.isFinite(serverTime) && attempt < 2) {
+      const midpoint = requestStartedAt + (responseReceivedAt - requestStartedAt) / 2;
+      serverClockOffsetMs = Math.round(serverTime - midpoint);
+      hasServerClockOffset = true;
+      continue;
+    }
+
+    throw new Error(`HTTP ${res.status}: ${text}`);
+  }
+
+  throw new Error('No se pudo completar la operación de trading.');
+}
+
+export async function modifyActiveOrder(
+  c: Credentials,
+  accessPoint: string,
+  orderId: string,
+  changes: { price?: string; stop_loss_price?: string | null; take_profit_price?: string | null },
+): Promise<{ operation_id?: string; status?: string }> {
+  const path = `/v1/trading/accounts/${encodeURIComponent(c.accountId.trim())}/orders/${encodeURIComponent(orderId)}`;
+  return requestJson(accessPoint, path, c, 'PATCH', changes);
+}
+
+export async function cancelActiveOrder(
+  c: Credentials,
+  accessPoint: string,
+  orderId: string,
+): Promise<{ operation_id?: string; status?: string }> {
+  const path = `/v1/trading/accounts/${encodeURIComponent(c.accountId.trim())}/orders/${encodeURIComponent(orderId)}`;
+  return requestJson(accessPoint, path, c, 'DELETE');
+}
+
+export async function closePosition(
+  c: Credentials,
+  accessPoint: string,
+  positionId: string,
+): Promise<{ operation_id?: string; status?: string }> {
+  const path = `/v1/trading/accounts/${encodeURIComponent(c.accountId.trim())}/positions/${encodeURIComponent(positionId)}`;
+  return requestJson(accessPoint, path, c, 'DELETE');
+}
+
+function extractFloatingPnl(item: Record<string, unknown>): number | null {
+  for (const key of ['profit', 'pnl', 'floating_profit', 'floating_pnl', 'profit_loss']) {
+    const value = item[key];
+    const n = typeof value === 'number' ? value : Number(typeof value === 'string' ? value : NaN);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
 }
 
 export async function connectToExness(
@@ -341,7 +441,7 @@ async function getLiveTradingState(
   const path = `/v1/server-events/accounts/${encodeURIComponent(c.accountId.trim())}/ws/events`;
   // Match the proven positions.ts implementation: the WebSocket handshake
   // uses the phone's current timestamp directly, without REST clock offset.
-  const signed = buildSignedHeadersAtTimestamp(c, path, Date.now());
+  const signed = await buildSignedHeadersAtTimestamp(c, path, Date.now());
   const wsUrl = accessPoint.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:').replace(/\/$/, '') + path;
 
   return await new Promise((resolve, reject) => {
@@ -394,6 +494,10 @@ async function getLiveTradingState(
       if (!settled) fail(new Error('Exness cerró el flujo de posiciones antes de entregar el snapshot.'));
     };
   });
+}
+
+export function getFloatingPnl(item: Record<string, unknown>): number | null {
+  return extractFloatingPnl(item);
 }
 
 export type TradingHistoryData = {
