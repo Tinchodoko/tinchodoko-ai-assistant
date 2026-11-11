@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Linking, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View, type TextStyle } from 'react-native';
-import { connectToExness, getAccountSnapshot, openExnessAccountStream, type Credentials } from './src/exness';
+import { connectToExness, getAccountSnapshot, getTradingHistory, openExnessAccountStream, type Credentials, type TradingHistoryData } from './src/exness';
 import { loadCredentials, saveCredentials } from './src/storage';
 import { BUILD_INFO } from './src/buildInfo';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -10,7 +10,7 @@ import * as SecureStore from 'expo-secure-store';
 const RELEASES_URL = 'https://github.com/Tinchodoko/tinchodoko-ai-assistant/releases';
 const LATEST_RELEASE_API = 'https://api.github.com/repos/Tinchodoko/tinchodoko-ai-assistant/releases/latest';
 const UPDATE_MANIFEST_URL = 'https://raw.githubusercontent.com/Tinchodoko/tinchodoko-ai-assistant/main/update.json';
-type Screen = 'connection' | 'profile' | 'app';
+type Screen = 'connection' | 'profile' | 'history' | 'app';
 
 function dateText(d: Date | null) {
   if (!d) return '--/--/---- --:--:--';
@@ -67,6 +67,12 @@ export default function App() {
   const [latestApkUrl,setLatestApkUrl]=useState<string|null>(null);
   const [checkingUpdate,setCheckingUpdate]=useState(false);
   const [downloadingUpdate,setDownloadingUpdate]=useState(false);
+  const [historyData,setHistoryData]=useState<TradingHistoryData|null>(null);
+  const [historyMode,setHistoryMode]=useState<'active'|'past'>('active');
+  const [historyPair,setHistoryPair]=useState('');
+  const [historyMenuOpen,setHistoryMenuOpen]=useState(false);
+  const [historyLoading,setHistoryLoading]=useState(false);
+  const [historyError,setHistoryError]=useState('');
 
   useEffect(()=>{
     loadCredentials().then(x=>x&&setC(x));
@@ -199,6 +205,27 @@ export default function App() {
     } finally { setBusy(false); }
   }
 
+
+  async function loadHistory() {
+    if (!accessPoint || !c.apiKey || !c.secret || !c.accountId) { setHistoryError('Primero conectá tu cuenta de Exness desde CONEXIÓN.'); return; }
+    setHistoryLoading(true); setHistoryError('');
+    try {
+      const data=await getTradingHistory(c,accessPoint); setHistoryData(data);
+      const symbols=Array.from(new Set([...data.positions.map(x=>String(x.instrument??'')),...data.activeOrders.map(x=>String(x.instrument??'')),...data.pastOrders.map(x=>{const o=x.order&&typeof x.order==='object'?x.order as Record<string,unknown>:x;return String(o.instrument??'');}),...data.deals.map(x=>{const d=x.deal&&typeof x.deal==='object'?x.deal as Record<string,unknown>:x;return String(d.instrument??'');})].filter(x=>x&&x!=='undefined')));
+      setHistoryPair(current=>current&&symbols.includes(current)?current:symbols[0]||'');
+    } catch(e) { setHistoryError(e instanceof Error?e.message:String(e)); } finally { setHistoryLoading(false); }
+  }
+  function openHistory() { setScreen('history'); if (!historyData&&!historyLoading) void loadHistory(); }
+  function historyValue(item:Record<string,unknown>,key:string,fallback='—') { const value=item[key]; return value===undefined||value===null||value===''?fallback:String(value); }
+  function historyDate(item:Record<string,unknown>,...keys:string[]) {
+    for(const key of keys){const raw=item[key];if(typeof raw==='string'||typeof raw==='number'){const d=new Date(raw);if(!Number.isNaN(d.getTime()))return d.toLocaleString('es-AR',{timeZone:'America/Argentina/Buenos_Aires'});}}
+    return 'Fecha no disponible';
+  }
+  const historySymbols=historyData?Array.from(new Set([...historyData.positions.map(x=>String(x.instrument??'')),...historyData.activeOrders.map(x=>String(x.instrument??'')),...historyData.pastOrders.map(x=>{const o=x.order&&typeof x.order==='object'?x.order as Record<string,unknown>:x;return String(o.instrument??'');}),...historyData.deals.map(x=>{const d=x.deal&&typeof x.deal==='object'?x.deal as Record<string,unknown>:x;return String(d.instrument??'');})].filter(x=>x&&x!=='undefined'))).sort():[];
+  const selectedActivePositions=(historyData?.positions??[]).filter(x=>!historyPair||x.instrument===historyPair);
+  const selectedActiveOrders=(historyData?.activeOrders??[]).filter(x=>!historyPair||x.instrument===historyPair);
+  const selectedPastOrders=(historyData?.pastOrders??[]).filter(x=>{const o=x.order&&typeof x.order==='object'?x.order as Record<string,unknown>:x;return !historyPair||o.instrument===historyPair;});
+
   async function checkUpdate() {
     setCheckingUpdate(true);
     setLatestVersion(null); setLatestBuild(null); setLatestApkUrl(null);
@@ -330,6 +357,7 @@ export default function App() {
     <View style={s.tabs}>
       <Pressable onPress={()=>setScreen('connection')} style={[s.tab,screen==='connection'&&s.active]}><Text style={s.tabText}>CONEXIÓN</Text></Pressable>
       <Pressable onPress={()=>setScreen('profile')} style={[s.tab,screen==='profile'&&s.active]}><Text style={s.tabText}>PROFILE</Text></Pressable>
+      <Pressable onPress={openHistory} style={[s.tab,screen==='history'&&s.active]}><Text style={s.tabText}>HISTORIAL</Text></Pressable>
       <Pressable onPress={()=>setScreen('app')} style={[s.tab,screen==='app'&&s.active]}><Text style={s.tabText}>APP</Text></Pressable>
     </View>
 
@@ -396,6 +424,43 @@ export default function App() {
       <Text style={!autoRefresh?s.offlineText:streamStatus==='connected'?s.onlineText:s.offlineText}>Sincronización automática: {autoRefresh?streamStatus:'detenida'}</Text>
       <Text style={status==='online'?s.onlineText:s.offlineText}>Estado: {status}</Text>
       {!!accessPoint && <Text style={s.ap}>Access Point: {accessPoint}</Text>}
+    </ScrollView> : screen==='history' ? <ScrollView contentContainerStyle={s.content}>
+      <Text style={s.h1}>HISTORIAL</Text><Text style={s.sub}>Consultá las posiciones activas, órdenes pendientes y operaciones pasadas de tu cuenta.</Text>
+      <Text style={s.label}>SELECCIONE SU PAR</Text>
+      <Pressable onPress={()=>setHistoryMenuOpen(v=>!v)} style={s.select}><Text style={s.selectText}>{historyPair||'Seleccione un par'}</Text><Text style={s.selectArrow}>{historyMenuOpen?'▲':'▼'}</Text></Pressable>
+      {historyMenuOpen&&<View style={s.menu}>{historySymbols.length===0?<Text style={s.menuEmpty}>No hay pares registrados.</Text>:historySymbols.map(symbol=><Pressable key={symbol} onPress={()=>{setHistoryPair(symbol);setHistoryMenuOpen(false);}} style={s.menuItem}><Text style={s.menuText}>{symbol}</Text></Pressable>)}</View>}
+      <View style={s.historyModes}>
+        <Pressable onPress={()=>setHistoryMode('active')} style={[s.historyMode,historyMode==='active'&&s.historyModeSelected]}><Text style={[s.historyModeText,historyMode==='active'&&s.historyModeTextSelected]}>ACTIVAS</Text></Pressable>
+        <Pressable onPress={()=>setHistoryMode('past')} style={[s.historyMode,historyMode==='past'&&s.historyModeSelected]}><Text style={[s.historyModeText,historyMode==='past'&&s.historyModeTextSelected]}>PASADAS</Text></Pressable>
+      </View>
+      <Pressable disabled={historyLoading} onPress={loadHistory} style={[s.refresh,historyLoading&&s.disabled]}>{historyLoading?<ActivityIndicator/>:<Text style={s.refreshText}>↻  ACTUALIZAR HISTORIAL</Text>}</Pressable>
+      {historyLoading&&<ActivityIndicator color="#fff"/>}{!!historyError&&<Text style={s.offlineText}>{historyError}</Text>}
+      {!historyLoading&&!historyError&&!historyData&&<Text style={s.emptyHistory}>Conectá tu cuenta para consultar el historial.</Text>}
+      {!!historyData&&historyMode==='active'&&<>
+        <Text style={s.historySection}>POSICIONES ABIERTAS ({selectedActivePositions.length})</Text>
+        {selectedActivePositions.length===0?<Text style={s.emptyHistory}>No hay posiciones abiertas para este par.</Text>:selectedActivePositions.map((item,index)=>{
+          const buy=String(item.direction??'').toLowerCase()==='buy'; const sltp=historyData.activeOrders.find(o=>String(o.position_id??'')===String(item.position_id??'')&&String(o.order_type??'').toLowerCase()==='sltp');
+          return <View key={String(item.position_id??index)} style={s.historyCard}>
+            <View style={s.historyCardHeader}><Text style={s.historyPair}>{historyValue(item,'instrument')}</Text><Text style={buy?s.pnlPositive:s.pnlNegative}>{buy?'BUY':'SELL'}</Text></View>
+            <Info label="ID POSICIÓN" value={historyValue(item,'position_id')}/><Info label="VOLUMEN" value={historyValue(item,'volume')}/><Info label="PRECIO DE APERTURA" value={historyValue(item,'open_price')}/><Info label="ESTADO" value={historyValue(item,'state')}/><Info label="STOP LOSS" value={sltp?historyValue(sltp,'stop_loss_price'):'—'}/><Info label="TAKE PROFIT" value={sltp?historyValue(sltp,'take_profit_price'):'—'}/><Info label="APERTURA" value={historyDate(item,'create_time')}/>
+          </View>;
+        })}
+        <Text style={s.historySection}>ÓRDENES PENDIENTES ({selectedActiveOrders.length})</Text>
+        {selectedActiveOrders.length===0?<Text style={s.emptyHistory}>No hay órdenes pendientes para este par.</Text>:selectedActiveOrders.map((item,index)=><View key={String(item.order_id??index)} style={s.historyCard}>
+          <View style={s.historyCardHeader}><Text style={s.historyPair}>{historyValue(item,'instrument')}</Text><Text style={s.pendingText}>PENDIENTE</Text></View>
+          <Info label="ID ORDEN" value={historyValue(item,'order_id')}/><Info label="TIPO" value={historyValue(item,'order_type')}/><Info label="DIRECCIÓN" value={historyValue(item,'direction')}/><Info label="VOLUMEN" value={historyValue(item,'volume')}/><Info label="PRECIO" value={historyValue(item,'price')}/><Info label="CREADA" value={historyDate(item,'create_time')}/>
+        </View>)}
+      </>}
+      {!!historyData&&historyMode==='past'&&<>
+        <Text style={s.historySection}>ÓRDENES FINALIZADAS ({selectedPastOrders.length})</Text>
+        {selectedPastOrders.length===0?<Text style={s.emptyHistory}>No hay órdenes pasadas para este par en el período permitido por Exness.</Text>:[...selectedPastOrders].reverse().map((item,index)=>{
+          const order=item.order&&typeof item.order==='object'?item.order as Record<string,unknown>:item; const state=String(order.state??order.order_state??'').toUpperCase();
+          return <View key={String(order.order_id??index)} style={s.historyCard}>
+            <View style={s.historyCardHeader}><Text style={s.historyPair}>{historyValue(order,'instrument')}</Text><Text style={state==='FILLED'?s.pnlPositive:s.pendingText}>{state||'FINALIZADA'}</Text></View>
+            <Info label="ID ORDEN" value={historyValue(order,'order_id')}/><Info label="DIRECCIÓN" value={historyValue(order,'direction')}/><Info label="VOLUMEN" value={historyValue(order,'volume')}/><Info label="PRECIO" value={historyValue(order,'price')}/><Info label="MOTIVO" value={historyValue(order,'reason')}/><Info label="FECHA" value={historyDate(item,'event_time')}/>
+          </View>;
+        })}
+      </>}
     </ScrollView> : <ScrollView contentContainerStyle={s.content}>
       <Text style={s.h1}>APP</Text>
       <View style={s.card}>
@@ -439,4 +504,5 @@ const s=StyleSheet.create({
  githubButton:{minHeight:54,borderRadius:12,borderWidth:1,borderColor:'#3b4350',paddingHorizontal:16,flexDirection:'row',alignItems:'center',gap:12},githubLogo:{width:24,height:24},githubText:{color:'#fff',fontWeight:'900',flex:1},githubVersion:{color:'#9da6b5',fontWeight:'800'},change:{color:'#dce1e9',fontSize:13,lineHeight:20},
  saveIntervalButton:{minHeight:46,borderRadius:10,borderWidth:1,borderColor:'#3b4350',alignItems:'center',justifyContent:'center',backgroundColor:'#151a22'},saveIntervalText:{color:'#fff',fontWeight:'900',fontSize:12},
  intervalCard:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:14,padding:17,gap:12},intervalHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},clockButton:{width:40,height:40,borderRadius:20,alignItems:'center',justifyContent:'center'},clockOn:{color:'#28d17c',fontSize:25,fontWeight:'900'},clockOff:{color:'#e05252',fontSize:22,fontWeight:'900'},intervalTitle:{color:'#fff',fontSize:14,fontWeight:'800'},select:{minHeight:44,borderWidth:1,borderColor:'#3b4350',borderRadius:9,paddingHorizontal:12,flexDirection:'row',alignItems:'center',justifyContent:'space-between',backgroundColor:'#0f131a'},selectText:{color:'#fff',fontWeight:'700'},selectArrow:{color:'#9da6b5',fontSize:12},menu:{borderWidth:1,borderColor:'#3b4350',borderRadius:9,backgroundColor:'#0f131a',overflow:'hidden'},menuItem:{paddingHorizontal:13,paddingVertical:12},menuText:{color:'#fff',fontWeight:'700'},sliderRow:{flexDirection:'row',alignItems:'center',gap:8},sliderMin:{color:'#9da6b5',fontSize:11,fontWeight:'800'},sliderMax:{color:'#9da6b5',fontSize:11,fontWeight:'800'},sliderTrack:{flex:1,height:32,borderRadius:16,backgroundColor:'transparent',position:'relative',justifyContent:'center'},sliderEnabled:{opacity:1},sliderDisabled:{opacity:0.4},sliderRail:{position:'absolute',left:9,right:9,top:13,height:6,borderRadius:3,backgroundColor:'#303744'},sliderFill:{position:'absolute',left:9,top:13,height:6,borderRadius:3,backgroundColor:'#fff'},sliderThumb:{position:'absolute',top:7,width:18,height:18,borderRadius:9,backgroundColor:'#fff',marginLeft:-9},intervalValue:{color:'#9da6b5',fontSize:11,fontWeight:'700'}
+  historyModes:{flexDirection:'row',gap:10},historyMode:{flex:1,minHeight:48,borderWidth:1,borderColor:'#3b4350',borderRadius:10,alignItems:'center',justifyContent:'center',backgroundColor:'#151a22'},historyModeSelected:{backgroundColor:'#fff',borderColor:'#fff'},historyModeText:{color:'#dce1e9',fontWeight:'900'},historyModeTextSelected:{color:'#0b0e13'},historySection:{color:'#fff',fontSize:13,fontWeight:'900',marginTop:5},historyCard:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:13,padding:15,gap:12},historyCardHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},historyPair:{color:'#fff',fontSize:17,fontWeight:'900'},pendingText:{color:'#f0b429',fontWeight:'900'},emptyHistory:{color:'#9da6b5',textAlign:'center',paddingVertical:18},menuEmpty:{color:'#9da6b5',padding:13}
 });
