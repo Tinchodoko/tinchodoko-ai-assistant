@@ -332,6 +332,68 @@ export async function getAccountSnapshot(
 }
 
 
+export type TradingHistoryMode = 'active' | 'past';
+
+async function getLiveTradingState(
+  c: Credentials,
+  accessPoint: string,
+): Promise<{ positions: Record<string, unknown>[]; activeOrders: Record<string, unknown>[] }> {
+  const path = `/v1/server-events/accounts/${encodeURIComponent(c.accountId.trim())}/ws/events`;
+  const signed = await headers(c, path);
+  const wsUrl = accessPoint.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:').replace(/\/$/, '') + path;
+
+  return await new Promise((resolve, reject) => {
+    const ws = new (WebSocket as unknown as {
+      new (url: string, protocols?: string | string[], options?: { headers: Record<string, string> }): WebSocket;
+    })(wsUrl, 'exness-ws-protocol', { headers: signed.headers });
+
+    let settled = false;
+    const finish = (result: { positions: Record<string, unknown>[]; activeOrders: Record<string, unknown>[] }) => {
+      if (settled) return;
+      settled = true;
+      try { ws.close(); } catch {}
+      resolve(result);
+    };
+    const fail = (error: unknown) => {
+      if (settled) return;
+      settled = true;
+      try { ws.close(); } catch {}
+      reject(error instanceof Error ? error : new Error(String(error)));
+    };
+    const timeout = setTimeout(() => fail(new Error('Tiempo agotado esperando el snapshot de posiciones de Exness.')), 15000);
+
+    ws.onopen = () => {
+      ws.send(JSON.stringify({
+        id: 'tinchodoko-history-positions',
+        subscribe: { event: 'transactions' },
+      }));
+    };
+    ws.onmessage = event => {
+      try {
+        const message = JSON.parse(String(event.data)) as Record<string, unknown>;
+        if (message.event_type !== 'trading_state_snapshot') return;
+        const payload = message.payload && typeof message.payload === 'object'
+          ? message.payload as Record<string, unknown>
+          : {};
+        const positions = asRecords(payload.positions);
+        const orders = asRecords(payload.orders);
+        clearTimeout(timeout);
+        finish({ positions, activeOrders: orders });
+      } catch {
+        // Ignore non-JSON or unrelated frames until the trading snapshot arrives.
+      }
+    };
+    ws.onerror = () => {
+      clearTimeout(timeout);
+      fail(new Error('No se pudo abrir el flujo de posiciones de Exness.'));
+    };
+    ws.onclose = () => {
+      clearTimeout(timeout);
+      if (!settled) fail(new Error('Exness cerró el flujo de posiciones antes de entregar el snapshot.'));
+    };
+  });
+}
+
 export type TradingHistoryData = {
   positions: Record<string, unknown>[];
   activeOrders: Record<string, unknown>[];
@@ -386,8 +448,21 @@ async function fetchHistoryPages(
 export async function getTradingHistory(
   c: Credentials,
   accessPoint: string,
+  mode: TradingHistoryMode = 'active',
 ): Promise<TradingHistoryData> {
   if (!accessPoint.trim()) throw new Error('No hay Access Point. Conectá la cuenta primero.');
+
+  // ACTIVAS: use the same signed WebSocket snapshot proven by positions.ts.
+  // This avoids the stricter REST timestamp window used by history endpoints.
+  if (mode === 'active') {
+    const live = await getLiveTradingState(c, accessPoint);
+    return {
+      positions: live.positions,
+      activeOrders: live.activeOrders,
+      pastOrders: [],
+      deals: [],
+    };
+  }
 
   const accountId = encodeURIComponent(c.accountId.trim());
   const [snapshot, limitsResponse] = await Promise.all([
