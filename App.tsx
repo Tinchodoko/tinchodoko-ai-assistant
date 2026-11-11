@@ -52,6 +52,10 @@ export default function App() {
   const [last,setLast]=useState<Date|null>(null);
   const [busy,setBusy]=useState(false);
   const [streamStatus,setStreamStatus]=useState<'off'|'connecting'|'connected'|'disconnected'|'error'>('off');
+  const [autoRefresh,setAutoRefresh]=useState(true);
+  const [intervalUnit,setIntervalUnit]=useState<'seconds'|'minutes'>('seconds');
+  const [intervalValue,setIntervalValue]=useState(5);
+  const [intervalMenu,setIntervalMenu]=useState(false);
   const [latestVersion,setLatestVersion]=useState<string|null>(null);
   const [latestBuild,setLatestBuild]=useState<number|null>(null);
   const [latestApkUrl,setLatestApkUrl]=useState<string|null>(null);
@@ -108,6 +112,13 @@ export default function App() {
     };
   },[accessPoint,c.apiKey,c.secret,c.accountId]);
 
+  useEffect(()=>{
+    if (!accessPoint || !autoRefresh) return;
+    const intervalMs = (intervalUnit==='seconds' ? intervalValue : intervalValue*60) * 1000;
+    const timer = setInterval(()=>{ void refresh(); }, intervalMs);
+    return ()=>clearInterval(timer);
+  },[accessPoint,autoRefresh,intervalUnit,intervalValue]);
+
   async function connect() {
     setBusy(true); setStatus('connecting');
     try {
@@ -120,6 +131,19 @@ export default function App() {
     } catch(e) {
       setStatus('offline'); Alert.alert('Conexión fallida',e instanceof Error?e.message:String(e));
     } finally { setBusy(false); }
+  }
+
+  const minInterval = intervalUnit==='seconds' ? 5 : 1;
+  const maxInterval = intervalUnit==='seconds' ? 60 : 10;
+  const intervalLabel = intervalUnit==='seconds'
+    ? `${String(intervalValue).padStart(2,'0')}S`
+    : `${intervalValue}M`;
+
+  function setSliderFromLocation(locationX:number, width:number) {
+    if (width <= 0) return;
+    const ratio=Math.max(0,Math.min(1,locationX/width));
+    const next=Math.round(minInterval + ratio*(maxInterval-minInterval));
+    setIntervalValue(next);
   }
 
   async function refresh() {
@@ -287,10 +311,40 @@ export default function App() {
         <Info label="GATEWAY" value={c.gatewayUrl}/>
         <Info label="ACCOUNT" value={c.accountId||'—'}/>
         <Info label="BALANCE" value={balance}/>
-        <Info label="EQUITY" value={equity}/>
+        <Info label="EQUITY" value={equity}/> 
+      <Info label="GANANCIA / PÉRDIDA" value={(() => { const b=Number(balance); const e=Number(equity); if (!Number.isFinite(b)||!Number.isFinite(e)) return '—'; const v=e-b; return `${v>=0?'+':''}${v.toFixed(2)}`; })()}/>
         <Info label="USED MARGIN" value={usedMargin}/>
       </View>
       <Pressable disabled={busy} onPress={refresh} style={[s.refresh,busy&&s.disabled]}>{busy?<ActivityIndicator/>:<Text style={s.refreshText}>↻  CONSULTAR BALANCE</Text>}</Pressable>
+      <View style={s.intervalCard}>
+        <View style={s.intervalHeader}>
+          <Text style={s.meta}>AUTORREFRESCO</Text>
+          <Pressable onPress={()=>setAutoRefresh(x=>!x)} style={s.clockButton}>
+            <Text style={autoRefresh?s.clockOn:s.clockOff}>{autoRefresh?'◷':'✕'}</Text>
+          </Pressable>
+        </View>
+        <Text style={s.intervalTitle}>Coloca el intervalo</Text>
+        <Pressable onPress={()=>setIntervalMenu(x=>!x)} style={s.select}>
+          <Text style={s.selectText}>{intervalValue} {intervalUnit}</Text><Text style={s.selectArrow}>{intervalMenu?'▲':'▼'}</Text>
+        </Pressable>
+        {intervalMenu && <View style={s.menu}>
+          <Pressable onPress={()=>{setIntervalUnit('seconds');setIntervalValue(Math.min(intervalValue,60));setIntervalMenu(false);}} style={s.menuItem}><Text style={s.menuText}>seconds</Text></Pressable>
+          <Pressable onPress={()=>{setIntervalUnit('minutes');setIntervalValue(Math.min(Math.max(intervalValue,1),10));setIntervalMenu(false);}} style={s.menuItem}><Text style={s.menuText}>minutes</Text></Pressable>
+        </View>}
+        <View style={s.sliderRow}>
+          <Text style={s.sliderMin}>{intervalUnit==='seconds'?'05S':'1M'}</Text>
+          <Pressable
+            style={s.sliderTrack}
+            onPress={e=>setSliderFromLocation(e.nativeEvent.locationX, e.nativeEvent.target ? 1 : 1)}
+          >
+            <View style={[s.sliderFill,{width:`${((intervalValue-minInterval)/(maxInterval-minInterval))*100}%`}]}/>
+            <View style={[s.sliderThumb,{left:`${((intervalValue-minInterval)/(maxInterval-minInterval))*100}%`}]}/>
+          </Pressable>
+          <Text style={s.sliderMax}>{intervalLabel}</Text>
+        </View>
+        <Text style={s.intervalValue}>{intervalLabel} · {autoRefresh?'activo':'desactivado'}</Text>
+      </View>
+
       <Text style={s.meta}>ÚLTIMA ACTUALIZACIÓN</Text><Text style={s.time}>{dateText(last)}</Text>
       <Text style={streamStatus==='connected'?s.onlineText:s.offlineText}>Flujo en tiempo real: {streamStatus}</Text>
       <Text style={status==='online'?s.onlineText:s.offlineText}>Estado: {status}</Text>
