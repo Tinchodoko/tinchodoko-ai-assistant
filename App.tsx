@@ -5,6 +5,7 @@ import { loadCredentials, saveCredentials } from './src/storage';
 import { BUILD_INFO } from './src/buildInfo';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as IntentLauncher from 'expo-intent-launcher';
+import * as SecureStore from 'expo-secure-store';
 
 const RELEASES_URL = 'https://github.com/Tinchodoko/tinchodoko-ai-assistant/releases';
 const LATEST_RELEASE_API = 'https://api.github.com/repos/Tinchodoko/tinchodoko-ai-assistant/releases/latest';
@@ -58,6 +59,9 @@ export default function App() {
   const [intervalValue,setIntervalValue]=useState(5);
   const [intervalMenu,setIntervalMenu]=useState(false);
   const [sliderWidth,setSliderWidth]=useState(1);
+  const [sliderLeft,setSliderLeft]=useState(0);
+  const sliderTrackRef=useRef<View>(null);
+  const [savingInterval,setSavingInterval]=useState(false);
   const [latestVersion,setLatestVersion]=useState<string|null>(null);
   const [latestBuild,setLatestBuild]=useState<number|null>(null);
   const [latestApkUrl,setLatestApkUrl]=useState<string|null>(null);
@@ -66,6 +70,20 @@ export default function App() {
 
   useEffect(()=>{
     loadCredentials().then(x=>x&&setC(x));
+    SecureStore.getItemAsync('tinchodoko.profile.refreshInterval').then(raw=>{
+      if (!raw) return;
+      try {
+        const saved=JSON.parse(raw) as {unit?:'seconds'|'minutes';value?:number};
+        if ((saved.unit==='seconds'||saved.unit==='minutes') && Number.isInteger(saved.value)) {
+          const min=saved.unit==='seconds'?5:1;
+          const max=saved.unit==='seconds'?60:10;
+          if (saved.value!>=min && saved.value!<=max) {
+            setIntervalUnit(saved.unit);
+            setIntervalValue(saved.value!);
+          }
+        }
+      } catch { /* Ignore invalid saved interval and keep 5 seconds. */ }
+    }).catch(()=>{});
     void cleanupInstalledUpdateApks();
   },[]);
 
@@ -143,13 +161,24 @@ export default function App() {
 
   const pnlValue = (() => { const b=Number(balance); const e=Number(equity); if (!Number.isFinite(b)||!Number.isFinite(e)) return null; return e-b; })();
 
-  function setSliderFromLocation(locationX:number, width:number) {
+  function setSliderFromLocation(pageX:number, width:number) {
     const usableWidth = Math.max(1, width - 18);
-    const ratio = Math.max(0, Math.min(1, (locationX - 9) / usableWidth));
+    const localX=pageX-sliderLeft;
+    const ratio = Math.max(0, Math.min(1, (localX - 9) / usableWidth));
     const next = Math.round(minInterval + ratio * (maxInterval - minInterval));
     setIntervalValue(next);
   }
   const sliderThumbPosition = 9 + ((intervalValue - minInterval) / (maxInterval - minInterval)) * Math.max(1, sliderWidth - 18);
+
+  async function saveSelectedInterval() {
+    setSavingInterval(true);
+    try {
+      await SecureStore.setItemAsync('tinchodoko.profile.refreshInterval',JSON.stringify({unit:intervalUnit,value:intervalValue}));
+      Alert.alert('Intervalo guardado',`El intervalo predeterminado ahora es ${intervalLabel}.`);
+    } catch(e) {
+      Alert.alert('No se pudo guardar el intervalo',e instanceof Error?e.message:String(e));
+    } finally { setSavingInterval(false); }
+  }
 
   async function refresh(automatic=false) {
     if (automatic && !autoRefreshRef.current) return;
@@ -342,12 +371,13 @@ export default function App() {
         <View style={s.sliderRow}>
           <Text style={s.sliderMin}>{intervalUnit==='seconds'?'05S':'1M'}</Text>
           <View
+            ref={sliderTrackRef}
             style={[s.sliderTrack,!autoRefresh?s.sliderEnabled:s.sliderDisabled]}
-            onLayout={e=>setSliderWidth(e.nativeEvent.layout.width)}
+            onLayout={e=>{setSliderWidth(e.nativeEvent.layout.width);sliderTrackRef.current?.measureInWindow(x=>setSliderLeft(x));}}
             onStartShouldSetResponder={()=>!autoRefresh}
             onMoveShouldSetResponder={()=>!autoRefresh}
-            onResponderGrant={e=>setSliderFromLocation(e.nativeEvent.locationX,sliderWidth)}
-            onResponderMove={e=>setSliderFromLocation(e.nativeEvent.locationX,sliderWidth)}
+            onResponderGrant={e=>setSliderFromLocation(e.nativeEvent.pageX,sliderWidth)}
+            onResponderMove={e=>setSliderFromLocation(e.nativeEvent.pageX,sliderWidth)}
           >
             <View style={s.sliderRail}/>
             <View style={[s.sliderFill,{width:sliderThumbPosition-9}]}/>
@@ -357,6 +387,9 @@ export default function App() {
         </View>
         <Text style={s.intervalValue}>Seleccionado: {intervalLabel} · {autoRefresh?'activo':'desactivado'}</Text>
       </View>
+      <Pressable disabled={savingInterval} onPress={saveSelectedInterval} style={[s.saveIntervalButton,savingInterval&&s.disabled]}>
+        {savingInterval?<ActivityIndicator/>:<Text style={s.saveIntervalText}>GUARDAR INTERVALO</Text>}
+      </Pressable>
 
       <Text style={s.meta}>ÚLTIMA ACTUALIZACIÓN</Text><Text style={s.time}>{dateText(last)}</Text>
       <Text style={!autoRefresh?s.offlineText:streamStatus==='connected'?s.onlineText:s.offlineText}>Sincronización automática: {autoRefresh?streamStatus:'detenida'}</Text>
@@ -403,5 +436,6 @@ const s=StyleSheet.create({
  refresh:{minHeight:48,borderRadius:10,borderWidth:1,borderColor:'#3b4350',alignItems:'center',justifyContent:'center'},refreshText:{color:'#fff',fontWeight:'900'},
  meta:{color:'#8f98a8',fontSize:11,fontWeight:'900'},time:{color:'#fff',fontWeight:'600',marginTop:-9},ap:{color:'#707988',fontSize:11},
  githubButton:{minHeight:54,borderRadius:12,borderWidth:1,borderColor:'#3b4350',paddingHorizontal:16,flexDirection:'row',alignItems:'center',gap:12},githubLogo:{width:24,height:24},githubText:{color:'#fff',fontWeight:'900',flex:1},githubVersion:{color:'#9da6b5',fontWeight:'800'},change:{color:'#dce1e9',fontSize:13,lineHeight:20},
+ saveIntervalButton:{minHeight:46,borderRadius:10,borderWidth:1,borderColor:'#3b4350',alignItems:'center',justifyContent:'center',backgroundColor:'#151a22'},saveIntervalText:{color:'#fff',fontWeight:'900',fontSize:12},
  intervalCard:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:14,padding:17,gap:12},intervalHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},clockButton:{width:40,height:40,borderRadius:20,alignItems:'center',justifyContent:'center'},clockOn:{color:'#28d17c',fontSize:25,fontWeight:'900'},clockOff:{color:'#e05252',fontSize:22,fontWeight:'900'},intervalTitle:{color:'#fff',fontSize:14,fontWeight:'800'},select:{minHeight:44,borderWidth:1,borderColor:'#3b4350',borderRadius:9,paddingHorizontal:12,flexDirection:'row',alignItems:'center',justifyContent:'space-between',backgroundColor:'#0f131a'},selectText:{color:'#fff',fontWeight:'700'},selectArrow:{color:'#9da6b5',fontSize:12},menu:{borderWidth:1,borderColor:'#3b4350',borderRadius:9,backgroundColor:'#0f131a',overflow:'hidden'},menuItem:{paddingHorizontal:13,paddingVertical:12},menuText:{color:'#fff',fontWeight:'700'},sliderRow:{flexDirection:'row',alignItems:'center',gap:8},sliderMin:{color:'#9da6b5',fontSize:11,fontWeight:'800'},sliderMax:{color:'#9da6b5',fontSize:11,fontWeight:'800'},sliderTrack:{flex:1,height:32,borderRadius:16,backgroundColor:'transparent',position:'relative',justifyContent:'center'},sliderEnabled:{opacity:1},sliderDisabled:{opacity:0.4},sliderRail:{position:'absolute',left:9,right:9,top:13,height:6,borderRadius:3,backgroundColor:'#303744'},sliderFill:{position:'absolute',left:9,top:13,height:6,borderRadius:3,backgroundColor:'#fff'},sliderThumb:{position:'absolute',top:7,width:18,height:18,borderRadius:9,backgroundColor:'#fff',marginLeft:-9},intervalValue:{color:'#9da6b5',fontSize:11,fontWeight:'700'}
 });
