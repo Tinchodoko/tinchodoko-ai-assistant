@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Linking, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View, type TextStyle } from 'react-native';
-import { connectToExness, getAccountSnapshot, getTradingHistory, openExnessAccountStream, type Credentials, type TradingHistoryData } from './src/exness';
+import { connectToExness, getAccountSnapshot, getTradingHistory, openExnessAccountStream, modifyActiveOrder, cancelActiveOrder, closePosition, getFloatingPnl, type Credentials, type TradingHistoryData } from './src/exness';
 import { loadCredentials, saveCredentials } from './src/storage';
 import { BUILD_INFO } from './src/buildInfo';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -11,6 +11,16 @@ const RELEASES_URL = 'https://github.com/Tinchodoko/tinchodoko-ai-assistant/rele
 const LATEST_RELEASE_API = 'https://api.github.com/repos/Tinchodoko/tinchodoko-ai-assistant/releases/latest';
 const UPDATE_MANIFEST_URL = 'https://raw.githubusercontent.com/Tinchodoko/tinchodoko-ai-assistant/main/update.json';
 type Screen = 'connection' | 'profile' | 'history' | 'app';
+type TradeAction = {
+  kind: 'edit' | 'close';
+  target: 'position' | 'order';
+  targetId: string;
+  field?: 'stop_loss_price' | 'take_profit_price';
+  previous?: string;
+  value?: string;
+  instrument?: string;
+  pnl?: number | null;
+};
 
 function dateText(d: Date | null) {
   if (!d) return '--/--/---- --:--:--';
@@ -73,6 +83,9 @@ export default function App() {
   const [historyMenuOpen,setHistoryMenuOpen]=useState(false);
   const [historyLoading,setHistoryLoading]=useState(false);
   const [historyError,setHistoryError]=useState('');
+  const [tradeAction,setTradeAction]=useState<TradeAction|null>(null);
+  const [tradeConfirm,setTradeConfirm]=useState<TradeAction|null>(null);
+  const [tradeBusy,setTradeBusy]=useState(false);
 
   useEffect(()=>{
     loadCredentials().then(x=>x&&setC(x));
@@ -228,6 +241,47 @@ export default function App() {
   const selectedActivePositions=(historyData?.positions??[]).filter(x=>!historyPair||x.instrument===historyPair);
   const selectedActiveOrders=(historyData?.activeOrders??[]).filter(x=>String(x.order_type??'').toLowerCase()!=='sltp'&&(!historyPair||x.instrument===historyPair));
   const selectedPastOrders=(historyData?.pastOrders??[]).filter(x=>{const o=x.order&&typeof x.order==='object'?x.order as Record<string,unknown>:x;return !historyPair||o.instrument===historyPair;});
+  function beginEdit(target:'position'|'order', targetId:string, field:'stop_loss_price'|'take_profit_price', previous:string, instrument:string) {
+    setTradeAction({kind:'edit',target,targetId,field,previous,instrument,value:previous==='—'?'':previous});
+  }
+  function beginClose(target:'position'|'order', targetId:string, instrument:string, pnl:number|null) {
+    setTradeConfirm({kind:'close',target,targetId,instrument,pnl});
+  }
+  function confirmEditInput() {
+    if (!tradeAction || tradeAction.kind!=='edit') return;
+    const value=(tradeAction.value??'').trim();
+    if (!value || !/^[+]?(?:0*[1-9][0-9]*)(?:\.[0-9]+)?$/.test(value)) {
+      Alert.alert('Valor inválido','Ingresá un precio válido mayor que 0.');
+      return;
+    }
+    setTradeConfirm({...tradeAction,value});
+    setTradeAction(null);
+  }
+  async function executeTradeAction() {
+    if (!tradeConfirm) return;
+    setTradeBusy(true);
+    try {
+      if (tradeConfirm.kind==='edit') {
+        if (!tradeConfirm.field || !tradeConfirm.value) throw new Error('Falta el valor de modificación.');
+        await modifyActiveOrder(c,accessPoint,tradeConfirm.targetId,{[tradeConfirm.field]:tradeConfirm.value});
+        setTradeConfirm(null);
+        Alert.alert('Solicitud enviada','Exness aceptó la modificación. El resultado final se actualizará en el próximo snapshot.');
+      } else if (tradeConfirm.target==='position') {
+        await closePosition(c,accessPoint,tradeConfirm.targetId);
+        setTradeConfirm(null);
+        Alert.alert('Solicitud enviada','Exness aceptó el cierre de la posición. El resultado final se actualizará en el próximo snapshot.');
+      } else {
+        await cancelActiveOrder(c,accessPoint,tradeConfirm.targetId);
+        setTradeConfirm(null);
+        Alert.alert('Solicitud enviada','Exness aceptó la cancelación de la orden pendiente. El resultado final se actualizará en el próximo snapshot.');
+      }
+      void loadHistory('active');
+    } catch(e) {
+      Alert.alert('Operación fallida',e instanceof Error?e.message:String(e));
+    } finally {
+      setTradeBusy(false);
+    }
+  }
 
   async function checkUpdate() {
     setCheckingUpdate(true);
@@ -355,6 +409,30 @@ export default function App() {
     </View>
   );
 
+  const renderTradeModals = () => <>
+    {tradeAction?.kind==='edit' && <View style={s.modalBackdrop}>
+      <View style={s.modalCard}>
+        <Text style={s.modalTitle}>Modificar {tradeAction.field==='take_profit_price'?'TP':'SL'}</Text>
+        <Text style={s.modalSub}>{tradeAction.instrument||'Instrumento'} · {tradeAction.targetId}</Text>
+        <Text style={s.modalLabel}>NUEVO VALOR</Text>
+        <TextInput autoFocus keyboardType="decimal-pad" value={tradeAction.value??''} onChangeText={value=>setTradeAction(x=>x?{...x,value}:x)} style={s.modalInput} placeholder="Ej. 1.08500" placeholderTextColor="#6f7785"/>
+        <View style={s.modalButtons}><Pressable onPress={()=>setTradeAction(null)} style={s.modalCancel}><Text style={s.modalCancelText}>CANCELAR</Text></Pressable><Pressable onPress={confirmEditInput} style={s.modalConfirm}><Text style={s.modalConfirmText}>CONFIRMAR</Text></Pressable></View>
+      </View>
+    </View>}
+    {tradeConfirm && <View style={s.modalBackdrop}>
+      <View style={s.modalCard}>
+        {tradeConfirm.kind==='edit' ? <>
+          <Text style={s.modalTitle}>Confirmar modificación</Text>
+          <Text style={s.modalSub}>Se modificará el {tradeConfirm.field==='take_profit_price'?'TP':'SL'} de</Text>
+          <Text style={s.modalBig}>{tradeConfirm.previous||'No disponible'} → {tradeConfirm.value}</Text>
+        </> : <>
+          <Text style={s.modalTitle}>Cerrar la orden {tradeConfirm.targetId}</Text>
+          <Text style={s.modalSub}>PNL actual: {tradeConfirm.target==='position' && tradeConfirm.pnl!==null && tradeConfirm.pnl!==undefined ? `${tradeConfirm.pnl>=0?'+':''}${tradeConfirm.pnl.toFixed(2)}` : 'No disponible'}</Text>
+        </>}
+        <View style={s.modalButtons}><Pressable disabled={tradeBusy} onPress={()=>setTradeConfirm(null)} style={s.modalCancel}><Text style={s.modalCancelText}>CANCELAR</Text></Pressable><Pressable disabled={tradeBusy} onPress={()=>void executeTradeAction()} style={[s.modalConfirm,tradeBusy&&s.disabled]}>{tradeBusy?<ActivityIndicator color="#0b0e13"/>:<Text style={s.modalConfirmText}>CONFIRMAR</Text>}</Pressable></View>
+      </View>
+    </View>}
+  </>
   return <SafeAreaView style={s.safe}>
     <View style={s.header}><Text style={s.title}>Tinchodoko AI Assistant</Text><View style={[s.dot,status==='online'?s.green:status==='connecting'?s.yellow:s.red]}/></View>
     <View style={s.tabs}>
@@ -445,13 +523,21 @@ export default function App() {
           const buy=String(item.direction??'').toLowerCase()==='buy'; const sltp=historyData.activeOrders.find(o=>String(o.position_id??'')===String(item.position_id??'')&&String(o.order_type??'').toLowerCase()==='sltp');
           return <View key={String(item.position_id??index)} style={s.historyCard}>
             <View style={s.historyCardHeader}><Text style={s.historyPair}>{historyValue(item,'instrument')}</Text><Text style={buy?s.pnlPositive:s.pnlNegative}>{buy?'BUY':'SELL'}</Text></View>
-            <Info label="ID POSICIÓN" value={historyValue(item,'position_id')}/><Info label="VOLUMEN" value={historyValue(item,'volume')}/><Info label="PRECIO DE APERTURA" value={historyValue(item,'open_price')}/><Info label="ESTADO" value={historyValue(item,'state')}/><Info label="STOP LOSS" value={sltp?historyValue(sltp,'stop_loss_price'):'—'}/><Info label="TAKE PROFIT" value={sltp?historyValue(sltp,'take_profit_price'):'—'}/><Info label="APERTURA" value={historyDate(item,'create_time')}/>
+            <Info label="ID POSICIÓN" value={historyValue(item,'position_id')}/><Info label="VOLUMEN" value={historyValue(item,'volume')}/><Info label="PRECIO DE APERTURA" value={historyValue(item,'open_price')}/><Info label="PNL FLOTANTE" value={getFloatingPnl(item)===null?'—':`${getFloatingPnl(item)!>=0?'+':''}${getFloatingPnl(item)!.toFixed(2)}`} valueStyle={getFloatingPnl(item)===null?undefined:getFloatingPnl(item)!>=0?s.pnlPositive:s.pnlNegative}/><Info label="ESTADO" value={historyValue(item,'state')}/>
+            <View style={s.editableRow}><Text style={s.infoLabel}>STOP LOSS</Text><View style={s.editableValue}><Text style={s.infoValue}>{sltp?historyValue(sltp,'stop_loss_price'):'—'}</Text>{sltp&&<Pressable onPress={()=>beginEdit('position',String(sltp.order_id??''),'stop_loss_price',historyValue(sltp,'stop_loss_price'),String(item.instrument??''))}><Text style={s.pencil}>✎</Text></Pressable>}</View></View>
+            <View style={s.editableRow}><Text style={s.infoLabel}>TAKE PROFIT</Text><View style={s.editableValue}><Text style={s.infoValue}>{sltp?historyValue(sltp,'take_profit_price'):'—'}</Text>{sltp&&<Pressable onPress={()=>beginEdit('position',String(sltp.order_id??''),'take_profit_price',historyValue(sltp,'take_profit_price'),String(item.instrument??''))}><Text style={s.pencil}>✎</Text></Pressable>}</View></View>
+            <Info label="APERTURA" value={historyDate(item,'create_time')}/>
+            <View style={s.cardActionRow}><Pressable onPress={()=>beginClose('position',String(item.position_id??''),String(item.instrument??''),getFloatingPnl(item))} style={s.closeButton}><Text style={s.closeButtonText}>✕</Text></Pressable></View>
           </View>;
         })}
         <Text style={s.historySection}>ÓRDENES PENDIENTES ({selectedActiveOrders.length})</Text>
         {selectedActiveOrders.length===0?<Text style={s.emptyHistory}>No hay órdenes pendientes para este par.</Text>:selectedActiveOrders.map((item,index)=><View key={String(item.order_id??index)} style={s.historyCard}>
           <View style={s.historyCardHeader}><Text style={s.historyPair}>{historyValue(item,'instrument')}</Text><Text style={s.pendingText}>PENDIENTE</Text></View>
-          <Info label="ID ORDEN" value={historyValue(item,'order_id')}/><Info label="TIPO" value={historyValue(item,'order_type')}/><Info label="DIRECCIÓN" value={historyValue(item,'direction')}/><Info label="VOLUMEN" value={historyValue(item,'volume')}/><Info label="PRECIO" value={historyValue(item,'price')}/><Info label="CREADA" value={historyDate(item,'create_time')}/>
+          <Info label="ID ORDEN" value={historyValue(item,'order_id')}/><Info label="TIPO" value={historyValue(item,'order_type')}/><Info label="DIRECCIÓN" value={historyValue(item,'direction')}/><Info label="VOLUMEN" value={historyValue(item,'volume')}/><Info label="PRECIO" value={historyValue(item,'price')}/>
+          <View style={s.editableRow}><Text style={s.infoLabel}>STOP LOSS</Text><View style={s.editableValue}><Text style={s.infoValue}>{historyValue(item,'stop_loss_price')}</Text><Pressable onPress={()=>beginEdit('order',String(item.order_id??''),'stop_loss_price',historyValue(item,'stop_loss_price'),String(item.instrument??''))}><Text style={s.pencil}>✎</Text></Pressable></View></View>
+          <View style={s.editableRow}><Text style={s.infoLabel}>TAKE PROFIT</Text><View style={s.editableValue}><Text style={s.infoValue}>{historyValue(item,'take_profit_price')}</Text><Pressable onPress={()=>beginEdit('order',String(item.order_id??''),'take_profit_price',historyValue(item,'take_profit_price'),String(item.instrument??''))}><Text style={s.pencil}>✎</Text></Pressable></View></View>
+          <Info label="CREADA" value={historyDate(item,'create_time')}/>
+          <View style={s.cardActionRow}><Pressable onPress={()=>beginClose('order',String(item.order_id??''),String(item.instrument??''),null)} style={s.closeButton}><Text style={s.closeButtonText}>✕</Text></Pressable></View>
         </View>)}
       </>}
       {!!historyData&&historyMode==='past'&&<>
@@ -507,5 +593,6 @@ const s=StyleSheet.create({
  githubButton:{minHeight:54,borderRadius:12,borderWidth:1,borderColor:'#3b4350',paddingHorizontal:16,flexDirection:'row',alignItems:'center',gap:12},githubLogo:{width:24,height:24},githubText:{color:'#fff',fontWeight:'900',flex:1},githubVersion:{color:'#9da6b5',fontWeight:'800'},change:{color:'#dce1e9',fontSize:13,lineHeight:20},
  saveIntervalButton:{minHeight:46,borderRadius:10,borderWidth:1,borderColor:'#3b4350',alignItems:'center',justifyContent:'center',backgroundColor:'#151a22'},saveIntervalText:{color:'#fff',fontWeight:'900',fontSize:12},
  intervalCard:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:14,padding:17,gap:12},intervalHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},clockButton:{width:40,height:40,borderRadius:20,alignItems:'center',justifyContent:'center'},clockOn:{color:'#28d17c',fontSize:25,fontWeight:'900'},clockOff:{color:'#e05252',fontSize:22,fontWeight:'900'},intervalTitle:{color:'#fff',fontSize:14,fontWeight:'800'},select:{minHeight:44,borderWidth:1,borderColor:'#3b4350',borderRadius:9,paddingHorizontal:12,flexDirection:'row',alignItems:'center',justifyContent:'space-between',backgroundColor:'#0f131a'},selectText:{color:'#fff',fontWeight:'700'},selectArrow:{color:'#9da6b5',fontSize:12},menu:{borderWidth:1,borderColor:'#3b4350',borderRadius:9,backgroundColor:'#0f131a',overflow:'hidden'},menuItem:{paddingHorizontal:13,paddingVertical:12},menuText:{color:'#fff',fontWeight:'700'},sliderRow:{flexDirection:'row',alignItems:'center',gap:8},sliderMin:{color:'#9da6b5',fontSize:11,fontWeight:'800'},sliderMax:{color:'#9da6b5',fontSize:11,fontWeight:'800'},sliderTrack:{flex:1,height:32,borderRadius:16,backgroundColor:'transparent',position:'relative',justifyContent:'center'},sliderEnabled:{opacity:1},sliderDisabled:{opacity:0.4},sliderRail:{position:'absolute',left:9,right:9,top:13,height:6,borderRadius:3,backgroundColor:'#303744'},sliderFill:{position:'absolute',left:9,top:13,height:6,borderRadius:3,backgroundColor:'#fff'},sliderThumb:{position:'absolute',top:7,width:18,height:18,borderRadius:9,backgroundColor:'#fff',marginLeft:-9},intervalValue:{color:'#9da6b5',fontSize:11,fontWeight:'700'},
+  modalBackdrop:{position:'absolute',top:0,left:0,right:0,bottom:0,zIndex:100,backgroundColor:'rgba(0,0,0,0.72)',alignItems:'center',justifyContent:'center',padding:22},modalCard:{width:'100%',backgroundColor:'#151a22',borderWidth:1,borderColor:'#3b4350',borderRadius:15,padding:18,gap:12},modalTitle:{color:'#fff',fontSize:18,fontWeight:'900'},modalSub:{color:'#9da6b5',lineHeight:20},modalLabel:{color:'#8f98a8',fontSize:11,fontWeight:'900'},modalBig:{color:'#fff',fontSize:16,fontWeight:'900'},modalInput:{color:'#fff',backgroundColor:'#0f131a',borderWidth:1,borderColor:'#3b4350',borderRadius:9,padding:13,fontSize:16},modalButtons:{flexDirection:'row',gap:10,marginTop:5},modalCancel:{flex:1,minHeight:46,borderRadius:9,borderWidth:1,borderColor:'#3b4350',alignItems:'center',justifyContent:'center'},modalCancelText:{color:'#dce1e9',fontWeight:'900'},modalConfirm:{flex:1,minHeight:46,borderRadius:9,backgroundColor:'#fff',alignItems:'center',justifyContent:'center'},modalConfirmText:{color:'#0b0e13',fontWeight:'900'},editableRow:{gap:5},editableValue:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},pencil:{color:'#fff',fontSize:19,fontWeight:'900',paddingHorizontal:8},cardActionRow:{alignItems:'flex-end',marginTop:2},closeButton:{width:34,height:34,borderRadius:17,borderWidth:1,borderColor:'#3b4350',alignItems:'center',justifyContent:'center'},closeButtonText:{color:'#e05252',fontSize:16,fontWeight:'900'},
   historyModes:{flexDirection:'row',gap:10},historyMode:{flex:1,minHeight:48,borderWidth:1,borderColor:'#3b4350',borderRadius:10,alignItems:'center',justifyContent:'center',backgroundColor:'#151a22'},historyModeSelected:{backgroundColor:'#fff',borderColor:'#fff'},historyModeText:{color:'#dce1e9',fontWeight:'900'},historyModeTextSelected:{color:'#0b0e13'},historySection:{color:'#fff',fontSize:13,fontWeight:'900',marginTop:5},historyCard:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:13,padding:15,gap:12},historyCardHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},historyPair:{color:'#fff',fontSize:17,fontWeight:'900'},pendingText:{color:'#f0b429',fontWeight:'900'},emptyHistory:{color:'#9da6b5',textAlign:'center',paddingVertical:18},menuEmpty:{color:'#9da6b5',padding:13}
 });
