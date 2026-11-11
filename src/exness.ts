@@ -127,9 +127,13 @@ async function getJson<T>(
         // Exness' HTTP Date is rounded to whole seconds. Estimate the offset
         // from the server time to the local response time, then compensate
         // only for the next freshly signed request.
-        serverClockOffsetMs = Math.round(
-          serverTime + 500 - responseReceivedAt,
-        );
+        // Estimate the server clock at the moment the request was sent.
+        // The HTTP Date header is rounded to whole seconds, so using the
+        // request/response midpoint avoids systematically adding ~500 ms.
+        const requestMidpoint = requestStartedAt + (
+          responseReceivedAt - requestStartedAt
+        ) / 2;
+        serverClockOffsetMs = Math.round(serverTime - requestMidpoint);
         hasServerClockOffset = true;
         continue;
       }
