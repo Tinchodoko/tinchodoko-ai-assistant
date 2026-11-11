@@ -143,11 +143,12 @@ export default function App() {
   const pnlValue = (() => { const b=Number(balance); const e=Number(equity); if (!Number.isFinite(b)||!Number.isFinite(e)) return null; return e-b; })();
 
   function setSliderFromLocation(locationX:number, width:number) {
-    if (width <= 0) return;
-    const ratio=Math.max(0,Math.min(1,locationX/width));
-    const next=Math.round(minInterval + ratio*(maxInterval-minInterval));
+    const usableWidth = Math.max(1, width - 18);
+    const ratio = Math.max(0, Math.min(1, (locationX - 9) / usableWidth));
+    const next = Math.round(minInterval + ratio * (maxInterval - minInterval));
     setIntervalValue(next);
   }
+  const sliderThumbPosition = 9 + ((intervalValue - minInterval) / (maxInterval - minInterval)) * Math.max(1, sliderWidth - 18);
 
   async function refresh() {
     if(busy) return;
@@ -340,8 +341,9 @@ export default function App() {
             style={s.sliderTrack}
             onLayout={e=>setSliderWidth(e.nativeEvent.layout.width)}
             onStartShouldSetResponder={()=>true}
-            onResponderGrant={e=>setSliderFromLocation(e.nativeEvent.locationX,sliderWidth)}
-            onResponderMove={e=>setSliderFromLocation(e.nativeEvent.locationX,sliderWidth)}
+            onMoveShouldSetResponder={()=>true}
+            onResponderGrant={e=>setSliderFromLocation(e.nativeEvent.locationX,e.nativeEvent.layoutMeasurement.width)}
+            onResponderMove={e=>setSliderFromLocation(e.nativeEvent.locationX,e.nativeEvent.layoutMeasurement.width)}
           >
             <View style={[s.sliderFill,{width:`${((intervalValue-minInterval)/(maxInterval-minInterval))*100}%`}]}/>
             <View style={[s.sliderThumb,{left:`${((intervalValue-minInterval)/(maxInterval-minInterval))*100}%`}]}/>
@@ -396,5 +398,5 @@ const s=StyleSheet.create({
  refresh:{minHeight:48,borderRadius:10,borderWidth:1,borderColor:'#3b4350',alignItems:'center',justifyContent:'center'},refreshText:{color:'#fff',fontWeight:'900'},
  meta:{color:'#8f98a8',fontSize:11,fontWeight:'900'},time:{color:'#fff',fontWeight:'600',marginTop:-9},ap:{color:'#707988',fontSize:11},
  githubButton:{minHeight:54,borderRadius:12,borderWidth:1,borderColor:'#3b4350',paddingHorizontal:16,flexDirection:'row',alignItems:'center',gap:12},githubLogo:{width:24,height:24},githubText:{color:'#fff',fontWeight:'900',flex:1},githubVersion:{color:'#9da6b5',fontWeight:'800'},change:{color:'#dce1e9',fontSize:13,lineHeight:20},
- intervalCard:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:14,padding:17,gap:12},intervalHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},clockButton:{width:40,height:40,borderRadius:20,alignItems:'center',justifyContent:'center'},clockOn:{color:'#28d17c',fontSize:25,fontWeight:'900'},clockOff:{color:'#e05252',fontSize:22,fontWeight:'900'},intervalTitle:{color:'#fff',fontSize:14,fontWeight:'800'},select:{minHeight:44,borderWidth:1,borderColor:'#3b4350',borderRadius:9,paddingHorizontal:12,flexDirection:'row',alignItems:'center',justifyContent:'space-between',backgroundColor:'#0f131a'},selectText:{color:'#fff',fontWeight:'700'},selectArrow:{color:'#9da6b5',fontSize:12},menu:{borderWidth:1,borderColor:'#3b4350',borderRadius:9,backgroundColor:'#0f131a',overflow:'hidden'},menuItem:{paddingHorizontal:13,paddingVertical:12},menuText:{color:'#fff',fontWeight:'700'},sliderRow:{flexDirection:'row',alignItems:'center',gap:8},sliderMin:{color:'#9da6b5',fontSize:11,fontWeight:'800'},sliderMax:{color:'#9da6b5',fontSize:11,fontWeight:'800'},sliderTrack:{flex:1,height:6,borderRadius:3,backgroundColor:'#303744',position:'relative',justifyContent:'center'},sliderFill:{height:6,borderRadius:3,backgroundColor:'#fff'},sliderThumb:{position:'absolute',top:-6,width:18,height:18,borderRadius:9,backgroundColor:'#fff',marginLeft:-9},intervalValue:{color:'#9da6b5',fontSize:11,fontWeight:'700'}
+ intervalCard:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:14,padding:17,gap:12},intervalHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},clockButton:{width:40,height:40,borderRadius:20,alignItems:'center',justifyContent:'center'},clockOn:{color:'#28d17c',fontSize:25,fontWeight:'900'},clockOff:{color:'#e05252',fontSize:22,fontWeight:'900'},intervalTitle:{color:'#fff',fontSize:14,fontWeight:'800'},select:{minHeight:44,borderWidth:1,borderColor:'#3b4350',borderRadius:9,paddingHorizontal:12,flexDirection:'row',alignItems:'center',justifyContent:'space-between',backgroundColor:'#0f131a'},selectText:{color:'#fff',fontWeight:'700'},selectArrow:{color:'#9da6b5',fontSize:12},menu:{borderWidth:1,borderColor:'#3b4350',borderRadius:9,backgroundColor:'#0f131a',overflow:'hidden'},menuItem:{paddingHorizontal:13,paddingVertical:12},menuText:{color:'#fff',fontWeight:'700'},sliderRow:{flexDirection:'row',alignItems:'center',gap:8},sliderMin:{color:'#9da6b5',fontSize:11,fontWeight:'800'},sliderMax:{color:'#9da6b5',fontSize:11,fontWeight:'800'},sliderTrack:{flex:1,height:32,borderRadius:16,backgroundColor:'transparent',position:'relative',justifyContent:'center'},sliderRail:{position:'absolute',left:9,right:9,top:13,height:6,borderRadius:3,backgroundColor:'#303744'},sliderFill:{position:'absolute',left:9,top:13,height:6,borderRadius:3,backgroundColor:'#fff'},sliderThumb:{position:'absolute',top:7,width:18,height:18,borderRadius:9,backgroundColor:'#fff',marginLeft:-9},intervalValue:{color:'#9da6b5',fontSize:11,fontWeight:'700'}
 });
