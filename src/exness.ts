@@ -58,6 +58,8 @@ type SignedRequest = {
 // the least-biased estimate of the server clock at request time.
 let serverClockOffsetMs = 0;
 let hasServerClockOffset = false;
+let serverClockOffsetMinMs: number | null = null;
+let serverClockOffsetMaxMs: number | null = null;
 
 async function headers(c: Credentials, path: string): Promise<SignedRequest> {
   const timestamp = Date.now() + (hasServerClockOffset ? serverClockOffsetMs : 0);
@@ -128,13 +130,34 @@ async function getJson<T>(
           /REQUEST_INVALID_TIME_RANGE|code["\\s:]*3004/i.test(text));
 
       if (timestampRejected && Number.isFinite(serverTime) && attempt < 2) {
-        // HTTP Date is rounded to whole seconds. Estimate the server clock
-        // at the request midpoint, rather than at response receipt. This
-        // removes the previous systematic +500 ms bias.
-        const requestMidpoint = requestStartedAt + (
-          responseReceivedAt - requestStartedAt
-        ) / 2;
-        serverClockOffsetMs = Math.round(serverTime - requestMidpoint);
+        // HTTP Date is truncated to whole seconds, not rounded. A single
+        // sample therefore gives an interval of possible clock offsets:
+        // [Date - responseTime, Date + 999 ms - responseTime].
+        // Intersect successive intervals instead of treating the Date value
+        // as an exact instant. This avoids large errors when a retry happens
+        // near the end of a second.
+        const sampleMin = serverTime - responseReceivedAt;
+        const sampleMax = sampleMin + 999;
+        const nextMin = serverClockOffsetMinMs === null
+          ? sampleMin
+          : Math.max(serverClockOffsetMinMs, sampleMin);
+        const nextMax = serverClockOffsetMaxMs === null
+          ? sampleMax
+          : Math.min(serverClockOffsetMaxMs, sampleMax);
+
+        if (nextMin <= nextMax) {
+          serverClockOffsetMinMs = nextMin;
+          serverClockOffsetMaxMs = nextMax;
+        } else {
+          // If samples cannot overlap (e.g. server clock stepped), restart
+          // calibration from the newest valid server response.
+          serverClockOffsetMinMs = sampleMin;
+          serverClockOffsetMaxMs = sampleMax;
+        }
+
+        serverClockOffsetMs = Math.round(
+          (serverClockOffsetMinMs + serverClockOffsetMaxMs) / 2,
+        );
         hasServerClockOffset = true;
         continue;
       }
