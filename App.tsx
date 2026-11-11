@@ -206,16 +206,19 @@ export default function App() {
   }
 
 
-  async function loadHistory() {
+  async function loadHistory(mode: 'active'|'past' = historyMode) {
     if (!accessPoint || !c.apiKey || !c.secret || !c.accountId) { setHistoryError('Primero conectá tu cuenta de Exness desde CONEXIÓN.'); return; }
     setHistoryLoading(true); setHistoryError('');
     try {
-      const data=await getTradingHistory(c,accessPoint); setHistoryData(data);
+      const data=await getTradingHistory(c,accessPoint,mode); setHistoryData(data);
       const symbols=Array.from(new Set([...data.positions.map(x=>String(x.instrument??'')),...data.activeOrders.map(x=>String(x.instrument??'')),...data.pastOrders.map(x=>{const o=x.order&&typeof x.order==='object'?x.order as Record<string,unknown>:x;return String(o.instrument??'');}),...data.deals.map(x=>{const d=x.deal&&typeof x.deal==='object'?x.deal as Record<string,unknown>:x;return String(d.instrument??'');})].filter(x=>x&&x!=='undefined')));
       setHistoryPair(current=>current&&symbols.includes(current)?current:symbols[0]||'');
     } catch(e) { setHistoryError(e instanceof Error?e.message:String(e)); } finally { setHistoryLoading(false); }
   }
-  function openHistory() { setScreen('history'); if (!historyData&&!historyLoading) void loadHistory(); }
+  function openHistory() {
+    setScreen('history');
+    if (!historyData && !historyLoading) void loadHistory('active');
+  }
   function historyValue(item:Record<string,unknown>,key:string,fallback='—') { const value=item[key]; return value===undefined||value===null||value===''?fallback:String(value); }
   function historyDate(item:Record<string,unknown>,...keys:string[]) {
     for(const key of keys){const raw=item[key];if(typeof raw==='string'||typeof raw==='number'){const d=new Date(raw);if(!Number.isNaN(d.getTime()))return d.toLocaleString('es-AR',{timeZone:'America/Argentina/Buenos_Aires'});}}
