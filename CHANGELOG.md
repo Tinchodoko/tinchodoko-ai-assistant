@@ -1,3 +1,4 @@
+- #V82 — fix(history): sign positions WebSocket with current device timestamp
 - #V78 — fix(exness): calibrate timestamp per response and retry rate limits
 - #V77 — fix(exness): calibrate clock from HTTP Date uncertainty interval
 - #V76 — fix(exness): robustly resync timestamp after invalid time range
