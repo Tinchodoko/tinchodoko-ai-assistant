@@ -323,7 +323,7 @@ export default function App() {
       <Info label="GANANCIA / PÉRDIDA" value={pnlValue===null?'—':`${pnlValue>=0?'+':''}${pnlValue.toFixed(2)}`} valueStyle={pnlValue===null?undefined:pnlValue>=0?s.pnlPositive:s.pnlNegative}/>
         <Info label="USED MARGIN" value={usedMargin}/>
       </View>
-      <Pressable disabled={busy} onPress={refresh} style={[s.refresh,busy&&s.disabled]}>{busy?<ActivityIndicator/>:<Text style={s.refreshText}>↻  CONSULTAR BALANCE</Text>}</Pressable>
+      <Pressable disabled={busy} onPress={()=>refresh(false)} style={[s.refresh,busy&&s.disabled]}>{busy?<ActivityIndicator/>:<Text style={s.refreshText}>↻  CONSULTAR BALANCE</Text>}</Pressable>
       <View style={s.intervalCard}>
         <View style={s.intervalHeader}>
           <Text style={s.meta}>AUTORREFRESCO</Text>
