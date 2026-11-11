@@ -433,10 +433,10 @@ export default function App() {
       <Pressable onPress={()=>setHistoryMenuOpen(v=>!v)} style={s.select}><Text style={s.selectText}>{historyPair||'Seleccione un par'}</Text><Text style={s.selectArrow}>{historyMenuOpen?'▲':'▼'}</Text></Pressable>
       {historyMenuOpen&&<View style={s.menu}>{historySymbols.length===0?<Text style={s.menuEmpty}>No hay pares registrados.</Text>:historySymbols.map(symbol=><Pressable key={symbol} onPress={()=>{setHistoryPair(symbol);setHistoryMenuOpen(false);}} style={s.menuItem}><Text style={s.menuText}>{symbol}</Text></Pressable>)}</View>}
       <View style={s.historyModes}>
-        <Pressable onPress={()=>setHistoryMode('active')} style={[s.historyMode,historyMode==='active'&&s.historyModeSelected]}><Text style={[s.historyModeText,historyMode==='active'&&s.historyModeTextSelected]}>ACTIVAS</Text></Pressable>
-        <Pressable onPress={()=>setHistoryMode('past')} style={[s.historyMode,historyMode==='past'&&s.historyModeSelected]}><Text style={[s.historyModeText,historyMode==='past'&&s.historyModeTextSelected]}>PASADAS</Text></Pressable>
+        <Pressable onPress={()=>{setHistoryMode('active');setHistoryData(null);setHistoryPair('');void loadHistory('active');}} style={[s.historyMode,historyMode==='active'&&s.historyModeSelected]}><Text style={[s.historyModeText,historyMode==='active'&&s.historyModeTextSelected]}>ACTIVAS</Text></Pressable>
+        <Pressable onPress={()=>{setHistoryMode('past');setHistoryData(null);setHistoryPair('');void loadHistory('past');}} style={[s.historyMode,historyMode==='past'&&s.historyModeSelected]}><Text style={[s.historyModeText,historyMode==='past'&&s.historyModeTextSelected]}>PASADAS</Text></Pressable>
       </View>
-      <Pressable disabled={historyLoading} onPress={loadHistory} style={[s.refresh,historyLoading&&s.disabled]}>{historyLoading?<ActivityIndicator/>:<Text style={s.refreshText}>↻  ACTUALIZAR HISTORIAL</Text>}</Pressable>
+      <Pressable disabled={historyLoading} onPress={()=>void loadHistory(historyMode)} style={[s.refresh,historyLoading&&s.disabled]}>{historyLoading?<ActivityIndicator/>:<Text style={s.refreshText}>↻  ACTUALIZAR HISTORIAL</Text>}</Pressable>
       {historyLoading&&<ActivityIndicator color="#fff"/>}{!!historyError&&<Text style={s.offlineText}>{historyError}</Text>}
       {!historyLoading&&!historyError&&!historyData&&<Text style={s.emptyHistory}>Conectá tu cuenta para consultar el historial.</Text>}
       {!!historyData&&historyMode==='active'&&<>
