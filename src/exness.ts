@@ -58,8 +58,6 @@ type SignedRequest = {
 // the least-biased estimate of the server clock at request time.
 let serverClockOffsetMs = 0;
 let hasServerClockOffset = false;
-let serverClockOffsetMinMs: number | null = null;
-let serverClockOffsetMaxMs: number | null = null;
 
 async function headers(c: Credentials, path: string): Promise<SignedRequest> {
   const timestamp = Date.now() + (hasServerClockOffset ? serverClockOffsetMs : 0);
@@ -107,7 +105,7 @@ async function getJson<T>(
   // recalibrating against the server's HTTP Date header. Multiple retries are
   // intentionally allowed because HTTP Date is rounded to whole seconds and
   // one sample can sit near a rounding boundary.
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < 4; attempt++) {
     const signed = await headers(c, path);
     const requestStartedAt = Date.now();
     const res = await fetch(url, {
@@ -129,36 +127,29 @@ async function getJson<T>(
         (res.status === 400 &&
           /REQUEST_INVALID_TIME_RANGE|code["\\s:]*3004/i.test(text));
 
-      if (timestampRejected && Number.isFinite(serverTime) && attempt < 2) {
-        // HTTP Date is truncated to whole seconds, not rounded. A single
-        // sample therefore gives an interval of possible clock offsets:
-        // [Date - responseTime, Date + 999 ms - responseTime].
-        // Intersect successive intervals instead of treating the Date value
-        // as an exact instant. This avoids large errors when a retry happens
-        // near the end of a second.
-        const sampleMin = serverTime - responseReceivedAt;
-        const sampleMax = sampleMin + 999;
-        const nextMin = serverClockOffsetMinMs === null
-          ? sampleMin
-          : Math.max(serverClockOffsetMinMs, sampleMin);
-        const nextMax = serverClockOffsetMaxMs === null
-          ? sampleMax
-          : Math.min(serverClockOffsetMaxMs, sampleMax);
-
-        if (nextMin <= nextMax) {
-          serverClockOffsetMinMs = nextMin;
-          serverClockOffsetMaxMs = nextMax;
-        } else {
-          // If samples cannot overlap (e.g. server clock stepped), restart
-          // calibration from the newest valid server response.
-          serverClockOffsetMinMs = sampleMin;
-          serverClockOffsetMaxMs = sampleMax;
-        }
-
-        serverClockOffsetMs = Math.round(
-          (serverClockOffsetMinMs + serverClockOffsetMaxMs) / 2,
-        );
+      if (timestampRejected && Number.isFinite(serverTime) && attempt < 3) {
+        // Exness' HTTP Date has whole-second precision. Use the server Date
+        // observed at response time and compensate by half the round trip so
+        // the calibrated offset represents the clock at the moment the
+        // request was signed. Never accumulate old Date samples: doing so can
+        // combine adjacent seconds and produce an invalid ~2 s offset.
+        const requestMidpoint = requestStartedAt + (
+          responseReceivedAt - requestStartedAt
+        ) / 2;
+        serverClockOffsetMs = Math.round(serverTime - requestMidpoint);
         hasServerClockOffset = true;
+        continue;
+      }
+
+      if (res.status === 429 && attempt < 3) {
+        const retryAfterHeader = res.headers.get('retry-after');
+        const retryAfterSeconds = retryAfterHeader
+          ? Number(retryAfterHeader)
+          : Number.NaN;
+        const delayMs = Number.isFinite(retryAfterSeconds)
+          ? Math.max(250, Math.min(retryAfterSeconds * 1000, 10000))
+          : 1500 * (attempt + 1);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
         continue;
       }
 
