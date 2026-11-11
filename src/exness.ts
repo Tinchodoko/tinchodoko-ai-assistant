@@ -131,7 +131,7 @@ function buildSignedHeadersAtTimestamp(
     timestamp,
     headers: {
       'EXN-API-KEY': c.apiKey,
-      'EXN-IDEMPOTENCY-KEY': '',
+      'EXN-IDEMPOTENCY-KEY': idempotencyKey,
       'EXN-TIMESTAMP': String(timestamp),
       'EXN-SIGN-VERSION': '1',
       'EXN-DATA': b64url(data),
