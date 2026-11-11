@@ -118,13 +118,18 @@ async function getJson<T>(
 
     if (!res.ok) {
       const timestampRejected =
-        res.status === 401 &&
-        /timestamp outside allowed window/i.test(text);
+        (res.status === 401 &&
+          /timestamp outside allowed window/i.test(text)) ||
+        (res.status === 400 &&
+          /REQUEST_INVALID_TIME_RANGE|code["\\s:]*3004/i.test(text));
 
       if (timestampRejected && attempt === 0 && Number.isFinite(serverTime)) {
-        // HTTP Date describes server response time (rounded down to whole seconds).
-        // Estimate clock offset against local response-receive time, not request midpoint.
-        serverClockOffsetMs = Math.round(serverTime + 500 - responseReceivedAt);
+        // Exness' HTTP Date is rounded to whole seconds. Estimate the offset
+        // from the server time to the local response time, then compensate
+        // only for the next freshly signed request.
+        serverClockOffsetMs = Math.round(
+          serverTime + 500 - responseReceivedAt,
+        );
         hasServerClockOffset = true;
         continue;
       }
