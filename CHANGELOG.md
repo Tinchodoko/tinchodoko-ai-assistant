@@ -1,3 +1,4 @@
+- #V77 — fix(exness): calibrate clock from HTTP Date uncertainty interval
 - #V76 — fix(exness): robustly resync timestamp after invalid time range
 - #V75 — fix(exness): calibrate timestamp offset at request midpoint
 - #V74 — fix(exness): handle invalid time range timestamp errors
