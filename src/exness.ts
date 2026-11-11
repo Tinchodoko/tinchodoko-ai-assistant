@@ -54,7 +54,8 @@ type SignedRequest = {
 };
 
 // Calibrated from Exness' HTTP Date header after a timestamp-window rejection.
-// HTTP Date is rounded to whole seconds, so the midpoint estimate adds 500 ms.
+// HTTP Date has whole-second precision, so the request/response midpoint is
+// the least-biased estimate of the server clock at request time.
 let serverClockOffsetMs = 0;
 let hasServerClockOffset = false;
 
@@ -100,8 +101,11 @@ async function getJson<T>(
   const url = host.replace(/\/$/, '') + path;
 
   // This helper performs read-only GET requests only. A timestamp-window
-  // rejection can therefore be retried once with a newly signed timestamp.
-  for (let attempt = 0; attempt < 2; attempt++) {
+  // rejection can therefore be retried with a newly signed timestamp after
+  // recalibrating against the server's HTTP Date header. Multiple retries are
+  // intentionally allowed because HTTP Date is rounded to whole seconds and
+  // one sample can sit near a rounding boundary.
+  for (let attempt = 0; attempt < 3; attempt++) {
     const signed = await headers(c, path);
     const requestStartedAt = Date.now();
     const res = await fetch(url, {
@@ -123,13 +127,10 @@ async function getJson<T>(
         (res.status === 400 &&
           /REQUEST_INVALID_TIME_RANGE|code["\\s:]*3004/i.test(text));
 
-      if (timestampRejected && attempt === 0 && Number.isFinite(serverTime)) {
-        // Exness' HTTP Date is rounded to whole seconds. Estimate the offset
-        // from the server time to the local response time, then compensate
-        // only for the next freshly signed request.
-        // Estimate the server clock at the moment the request was sent.
-        // The HTTP Date header is rounded to whole seconds, so using the
-        // request/response midpoint avoids systematically adding ~500 ms.
+      if (timestampRejected && Number.isFinite(serverTime) && attempt < 2) {
+        // HTTP Date is rounded to whole seconds. Estimate the server clock
+        // at the request midpoint, rather than at response receipt. This
+        // removes the previous systematic +500 ms bias.
         const requestMidpoint = requestStartedAt + (
           responseReceivedAt - requestStartedAt
         ) / 2;
@@ -157,7 +158,7 @@ async function getJson<T>(
     return JSON.parse(text) as T;
   }
 
-  throw new Error('No se pudo completar la consulta firmada después de sincronizar el timestamp.');
+  throw new Error('No se pudo completar la consulta firmada después de sincronizar el timestamp con Exness.');
 }
 
 export async function connectToExness(
