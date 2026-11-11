@@ -1,339 +1,382 @@
-import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Linking, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { connectToExness, getAccountSnapshot, openExnessAccountStream, type Credentials } from './src/exness';
-import { loadCredentials, saveCredentials } from './src/storage';
-import { BUILD_INFO } from './src/buildInfo';
-import * as FileSystem from 'expo-file-system/legacy';
-import * as IntentLauncher from 'expo-intent-launcher';
+import { ed25519 } from '@noble/curves/ed25519';
 
-const RELEASES_URL = 'https://github.com/Tinchodoko/tinchodoko-ai-assistant/releases';
-const LATEST_RELEASE_API = 'https://api.github.com/repos/Tinchodoko/tinchodoko-ai-assistant/releases/latest';
-const UPDATE_MANIFEST_URL = 'https://raw.githubusercontent.com/Tinchodoko/tinchodoko-ai-assistant/main/update.json';
-type Screen = 'connection' | 'profile' | 'app';
+export type Credentials = {
+  gatewayUrl: string;
+  apiKey: string;
+  secret: string;
+  accountId: string;
+};
 
-function dateText(d: Date | null) {
-  if (!d) return '--/--/---- --:--:--';
-  const p = (n:number) => String(n).padStart(2,'0');
-  return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+export type ConnectionResult = {
+  accessPoint: string;
+};
+
+export type AccountSnapshot = {
+  balance?: string;
+  equity?: string;
+  usedMargin?: string;
+  raw: Record<string, unknown>;
+};
+
+function hexToBytes(hex: string): Uint8Array {
+  const s = hex.trim();
+  if (!/^[0-9a-fA-F]{128}$/.test(s)) {
+    throw new Error('SECRET inválido: se esperan 128 caracteres hex.');
+  }
+
+  const out = new Uint8Array(64);
+  for (let i = 0; i < 64; i++) {
+    out[i] = parseInt(s.slice(i * 2, i * 2 + 2), 16);
+  }
+  return out;
 }
 
-function releaseBuildNumber(tag:string) {
-  const match=tag.trim().match(/^v?(\d+)$/i);
-  return match ? Number(match[1]) : 0;
+function b64url(bytes: Uint8Array): string {
+  let binary = '';
+  bytes.forEach(b => {
+    binary += String.fromCharCode(b);
+  });
+
+  return btoa(binary)
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '');
 }
 
-async function cleanupInstalledUpdateApks() {
-  const directory=FileSystem.cacheDirectory;
-  if (!directory) return;
-  try {
-    const installedBuild=Number(BUILD_INFO.build);
-    const entries=await FileSystem.readDirectoryAsync(directory);
-    for (const name of entries) {
-      const match=name.match(/^tinchodoko-update-v(\d+)\.apk$/i);
-      if (match && Number(match[1]) <= installedBuild) {
-        await FileSystem.deleteAsync(directory+name,{idempotent:true});
-      }
-    }
-  } catch {
-    // Cleanup is best-effort; it must never prevent the app from starting.
-  }
-}
+// SHA-256 Base64URL del cuerpo vacío; coincide con el cálculo de balance.ts.
+// Para GET no hay body, así que no hace falta usar una API criptográfica del navegador.
+const EMPTY_BODY_SHA256_BASE64URL =
+  '47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU';
 
-export default function App() {
-  const [screen,setScreen]=useState<Screen>('connection');
-  const [c,setC]=useState<Credentials>({gatewayUrl:'https://api.exness.com',apiKey:'',secret:'',accountId:''});
-  const [apiVisible,setApiVisible]=useState(false);
-  const [secretVisible,setSecretVisible]=useState(false);
-  const [status,setStatus]=useState<'offline'|'online'|'connecting'>('offline');
-  const [balance,setBalance]=useState<string>('—');
-  const [equity,setEquity]=useState<string>('—');
-  const [usedMargin,setUsedMargin]=useState<string>('—');
-  const [accessPoint,setAccessPoint]=useState('');
-  const [last,setLast]=useState<Date|null>(null);
-  const [busy,setBusy]=useState(false);
-  const [streamStatus,setStreamStatus]=useState<'off'|'connecting'|'connected'|'disconnected'|'error'>('off');
-  const [latestVersion,setLatestVersion]=useState<string|null>(null);
-  const [latestBuild,setLatestBuild]=useState<number|null>(null);
-  const [latestApkUrl,setLatestApkUrl]=useState<string|null>(null);
-  const [checkingUpdate,setCheckingUpdate]=useState(false);
-  const [downloadingUpdate,setDownloadingUpdate]=useState(false);
+type SignedRequest = {
+  headers: Record<string, string>;
+  timestamp: number;
+};
 
-  useEffect(()=>{
-    loadCredentials().then(x=>x&&setC(x));
-    void cleanupInstalledUpdateApks();
-  },[]);
+// Calibrated from Exness' HTTP Date header after a timestamp-window rejection.
+// HTTP Date is rounded to whole seconds, so the midpoint estimate adds 500 ms.
+let serverClockOffsetMs = 0;
+let hasServerClockOffset = false;
 
-  // Mantiene un único flujo firmado por cuenta y se resincroniza al reconectar.
-  useEffect(()=>{
-    if (!accessPoint || !c.apiKey || !c.secret || !c.accountId) {
-      setStreamStatus('off');
-      return;
-    }
-    let cancelled=false;
-    let socket: WebSocket | null=null;
-    let retryTimer: ReturnType<typeof setTimeout> | null=null;
-    let retryDelay=3000;
-    const scheduleReconnect=()=>{
-      if (cancelled || retryTimer) return;
-      retryTimer=setTimeout(()=>{ retryTimer=null; void startStream(); },retryDelay);
-      retryDelay=Math.min(retryDelay*2,30000);
-    };
-    const startStream=async()=>{
-      if (cancelled) return;
-      try {
-        const next=await openExnessAccountStream(c,accessPoint,state=>{
-          if (cancelled) return;
-          if (state.balance !== undefined) setBalance(state.balance);
-          if (state.equity !== undefined) setEquity(state.equity);
-          if (state.usedMargin !== undefined) setUsedMargin(state.usedMargin);
-          setLast(state.at);
-          setStatus('online');
-        },stream=>{
-          if (cancelled) return;
-          setStreamStatus(stream);
-          if (stream==='connected') retryDelay=3000;
-          if (stream==='disconnected' || stream==='error') scheduleReconnect();
-        });
-        if (cancelled) { next.close(); return; }
-        socket=next;
-      } catch {
-        if (!cancelled) { setStreamStatus('error'); scheduleReconnect(); }
-      }
-    };
-    void startStream();
-    return ()=>{
-      cancelled=true;
-      if (retryTimer) clearTimeout(retryTimer);
-      socket?.close();
-    };
-  },[accessPoint,c.apiKey,c.secret,c.accountId]);
+async function headers(c: Credentials, path: string): Promise<SignedRequest> {
+  const timestamp = Date.now() + (hasServerClockOffset ? serverClockOffsetMs : 0);
+  const bodyHash = EMPTY_BODY_SHA256_BASE64URL;
 
-  async function connect() {
-    setBusy(true); setStatus('connecting');
-    try {
-      await saveCredentials(c);
-      // CONNECT validates the signed Exness request and discovers the
-      // account Access Point. Balance is not requested during connection.
-      const r=await connectToExness(c);
-      setBalance('—'); setEquity('—'); setUsedMargin('—'); setAccessPoint(r.accessPoint); setStatus('online');
-      setLast(null); setScreen('profile');
-    } catch(e) {
-      setStatus('offline'); Alert.alert('Conexión fallida',e instanceof Error?e.message:String(e));
-    } finally { setBusy(false); }
-  }
+  const payload = JSON.stringify({
+    api_key: c.apiKey,
+    idempotency_key: '',
+    timestamp,
+    sign_version: 1,
+    method: 'GET',
+    path,
+    body_hash: bodyHash,
+  });
 
-  async function refresh() {
-    if(busy) return;
-    setBusy(true);
-    try {
-      const r=await getAccountSnapshot(c,accessPoint);
-      setBalance(r.balance ?? 'No disponible en la respuesta');
-      setEquity(r.equity ?? 'No disponible en la respuesta');
-      setUsedMargin(r.usedMargin ?? 'No disponible en la respuesta');
-      setStatus('online');
-      setLast(new Date());
-    } catch(e) {
-      setStatus('offline'); Alert.alert('Actualización fallida',e instanceof Error?e.message:String(e));
-    } finally { setBusy(false); }
-  }
-
-  async function checkUpdate() {
-    setCheckingUpdate(true);
-    setLatestVersion(null); setLatestBuild(null); setLatestApkUrl(null);
-    try {
-      type Release = {
-        tag_name?:string; name?:string; draft?:boolean; prerelease?:boolean;
-        assets?:Array<{name?:string;browser_download_url?:string}>;
-      };
-      const headers = {
-        Accept: 'application/vnd.github+json',
-        'Cache-Control': 'no-cache',
-        Pragma: 'no-cache',
-      };
-      let release:Release|null = null;
-      let primaryError = '';
-      // Primary source: tiny public manifest on raw.githubusercontent.com.
-      // This avoids GitHub API rate limits and the /releases/latest cache path.
-      try {
-        const manifestRes=await fetch(`${UPDATE_MANIFEST_URL}?_=${Date.now()}`, { headers });
-        if (!manifestRes.ok) throw new Error(`Manifest HTTP ${manifestRes.status}`);
-        const manifest=await manifestRes.json() as {build?:number;tag?:string;apk_url?:string};
-        const manifestBuild=Number(manifest.build);
-        if (!Number.isSafeInteger(manifestBuild) || manifestBuild<1 || !manifest.apk_url || !/^https:\/\/github\.com\/Tinchodoko\/tinchodoko-ai-assistant\/releases\/download\//.test(manifest.apk_url)) {
-          throw new Error('El manifiesto de actualización no contiene build o APK válido.');
-        }
-        release={
-          tag_name:manifest.tag || `v${manifestBuild}`,
-          draft:false,
-          prerelease:false,
-          assets:[{name:'app-release.apk',browser_download_url:manifest.apk_url}],
-        };
-      } catch(e) {
-        primaryError=e instanceof Error?e.message:String(e);
-      }
-
-      // Fallback 1: GitHub's canonical latest-stable endpoint.
-      if (!release) {
-        try {
-          const res=await fetch(`${LATEST_RELEASE_API}?_=${Date.now()}`, { headers });
-          if (!res.ok) throw new Error(`GitHub HTTP ${res.status}`);
-          const candidate=await res.json() as Release;
-          const tag=candidate.tag_name || candidate.name || '';
-          const apk=candidate.assets?.find(asset=>asset.name==='app-release.apk' && !!asset.browser_download_url);
-          if (releaseBuildNumber(tag)>0 && !candidate.draft && !candidate.prerelease && apk?.browser_download_url) {
-            release=candidate;
-          } else {
-            primaryError='La respuesta latest no contiene una Release estable con app-release.apk.';
-          }
-        } catch(e) {
-          primaryError=`${primaryError}; latest: ${e instanceof Error?e.message:String(e)}`;
-        }
-      }
-
-      // Fallback 2: enumerate releases and choose the highest valid stable build.
-      if (!release) {
-        const listRes=await fetch(`https://api.github.com/repos/Tinchodoko/tinchodoko-ai-assistant/releases?per_page=30&_=${Date.now()}`, { headers });
-        if (!listRes.ok) throw new Error(`No se pudo consultar el manifiesto (${primaryError}) ni Releases (HTTP ${listRes.status}).`);
-        const releases=await listRes.json() as Release[];
-        release=releases
-          .filter(item=>!item.draft && !item.prerelease)
-          .filter(item=>releaseBuildNumber(item.tag_name || item.name || '')>0)
-          .filter(item=>item.assets?.some(asset=>asset.name==='app-release.apk' && !!asset.browser_download_url))
-          .sort((a,b)=>releaseBuildNumber(b.tag_name || b.name || '')-releaseBuildNumber(a.tag_name || a.name || ''))[0] || null;
-      }
-
-      if (!release) throw new Error('GitHub no devolvió ninguna Release estable válida con app-release.apk.');
-      const tag=release.tag_name || release.name || '';
-      const remoteBuild=releaseBuildNumber(tag);
-      const apk=release.assets?.find(asset=>asset.name==='app-release.apk' && !!asset.browser_download_url);
-      if (!apk?.browser_download_url || remoteBuild<1) throw new Error('La Release encontrada no tiene una versión o APK válido.');
-      setLatestVersion(tag); setLatestBuild(remoteBuild); setLatestApkUrl(apk.browser_download_url);
-      if (remoteBuild > Number(BUILD_INFO.build)) {
-        Alert.alert('Actualización disponible', `Versión instalada: V${BUILD_INFO.build}. Nueva versión: ${tag}. Pulsa ACTUALIZAR APP para descargarla e iniciar el instalador de Android.`);
-      } else {
-        Alert.alert('Actualización', `La aplicación ya está actualizada (V${BUILD_INFO.build}). Última Release: ${tag}.`);
-      }
-    } catch(e) {
-      setLatestVersion(null); setLatestBuild(null); setLatestApkUrl(null);
-      Alert.alert('No se pudo comprobar', e instanceof Error?e.message:String(e));
-    } finally { setCheckingUpdate(false); }
-  }
-
-  async function updateApp() {
-    if (!latestApkUrl || !latestBuild || latestBuild <= Number(BUILD_INFO.build)) {
-      Alert.alert('Actualización', 'Primero busca una actualización disponible.');
-      return;
-    }
-    const directory=FileSystem.cacheDirectory;
-    if (!directory) {
-      Alert.alert('Actualización', 'No se encontró el directorio temporal para descargar el APK.');
-      return;
-    }
-    setDownloadingUpdate(true);
-    const localUri=`${directory}tinchodoko-update-v${latestBuild}.apk`;
-    try {
-      await FileSystem.deleteAsync(localUri,{idempotent:true});
-      const download=await FileSystem.downloadAsync(latestApkUrl,localUri);
-      if (download.status!==200) throw new Error(`No se pudo descargar el APK (HTTP ${download.status}).`);
-      const info=await FileSystem.getInfoAsync(download.uri);
-      if (!info.exists || (info.size??0)<1024*1024) throw new Error('El APK descargado está incompleto o vacío.');
-      const contentUri=await FileSystem.getContentUriAsync(download.uri);
-      // Android muestra su propio instalador y solicita confirmación al usuario.
-      await IntentLauncher.startActivityAsync('android.intent.action.VIEW',{
-        data:contentUri,
-        type:'application/vnd.android.package-archive',
-        flags:1,
-      });
-    } catch(e) {
-      Alert.alert('No se pudo iniciar la instalación', e instanceof Error?e.message:String(e));
-    } finally {
-      setDownloadingUpdate(false);
-    }
-  }
-
-  const set=(key:keyof Credentials)=>(value:string)=>setC(x=>({...x,[key]:value}));
-  const field=(label:string,key:keyof Credentials,secure=false,visible=false,toggle?:()=>void)=>(
-    <View style={s.field} key={key}>
-      <Text style={s.label}>{label}</Text>
-      <View style={s.row}>
-        <TextInput style={s.input} value={c[key]} onChangeText={set(key)} autoCapitalize="none" autoCorrect={false}
-          secureTextEntry={secure&&!visible} placeholder={label} placeholderTextColor="#6f7785"/>
-        {secure && <Pressable style={s.eye} onPress={toggle}><Text>{visible?'🙈':'👁️'}</Text></Pressable>}
-      </View>
-    </View>
+  const data = new TextEncoder().encode(payload);
+  const signature = ed25519.sign(
+    data,
+    hexToBytes(c.secret).slice(0, 32),
   );
 
-  return <SafeAreaView style={s.safe}>
-    <View style={s.header}><Text style={s.title}>Tinchodoko AI Assistant</Text><View style={[s.dot,status==='online'?s.green:status==='connecting'?s.yellow:s.red]}/></View>
-    <View style={s.tabs}>
-      <Pressable onPress={()=>setScreen('connection')} style={[s.tab,screen==='connection'&&s.active]}><Text style={s.tabText}>CONEXIÓN</Text></Pressable>
-      <Pressable onPress={()=>setScreen('profile')} style={[s.tab,screen==='profile'&&s.active]}><Text style={s.tabText}>PROFILE</Text></Pressable>
-      <Pressable onPress={()=>setScreen('app')} style={[s.tab,screen==='app'&&s.active]}><Text style={s.tabText}>APP</Text></Pressable>
-    </View>
-
-    {screen==='connection' ? <ScrollView contentContainerStyle={s.content}>
-      <Text style={s.h1}>Conexión</Text><Text style={s.sub}>Credenciales para conexión con Exness.</Text>
-      {field('GATEWAY URL','gatewayUrl')}
-      {field('API KEY','apiKey',true,apiVisible,()=>setApiVisible(!apiVisible))}
-      {field('SECRET','secret',true,secretVisible,()=>setSecretVisible(!secretVisible))}
-      {field('ACCOUNT','accountId')}
-      <Pressable disabled={busy} onPress={connect} style={[s.button,busy&&s.disabled]}>{busy?<ActivityIndicator/>:<Text style={s.buttonText}>CONECTAR</Text>}</Pressable>
-      <Text style={status==='online'?s.onlineText:s.offlineText}>Estado: {status}</Text>
-    </ScrollView> : screen==='profile' ? <ScrollView contentContainerStyle={s.content}>
-      <Text style={s.h1}>PROFILE</Text>
-      <View style={s.card}>
-        <Info label="APIKEY" value={c.apiKey?'••••••••••••':'—'}/>
-        <Info label="SECRET" value={c.secret?'••••••••••••':'—'}/>
-        <Info label="GATEWAY" value={c.gatewayUrl}/>
-        <Info label="ACCOUNT" value={c.accountId||'—'}/>
-        <Info label="BALANCE" value={balance}/>
-        <Info label="EQUITY" value={equity}/>
-        <Info label="USED MARGIN" value={usedMargin}/>
-      </View>
-      <Pressable disabled={busy} onPress={refresh} style={[s.refresh,busy&&s.disabled]}>{busy?<ActivityIndicator/>:<Text style={s.refreshText}>↻  CONSULTAR BALANCE</Text>}</Pressable>
-      <Text style={s.meta}>ÚLTIMA ACTUALIZACIÓN</Text><Text style={s.time}>{dateText(last)}</Text>
-      <Text style={streamStatus==='connected'?s.onlineText:s.offlineText}>Flujo en tiempo real: {streamStatus}</Text>
-      <Text style={status==='online'?s.onlineText:s.offlineText}>Estado: {status}</Text>
-      {!!accessPoint && <Text style={s.ap}>Access Point: {accessPoint}</Text>}
-    </ScrollView> : <ScrollView contentContainerStyle={s.content}>
-      <Text style={s.h1}>APP</Text>
-      <View style={s.card}>
-        <Info label="NOMBRE DE APP" value={BUILD_INFO.appName}/>
-        <Info label="NOMBRE DE PAQUETE" value={BUILD_INFO.packageName}/>
-        <Info label="FIRMA DE APP" value={BUILD_INFO.signature}/>
-        <Info label="VERSION ACTUAL" value={`V${BUILD_INFO.build}`}/>
-        <Info label="ULTIMA VERSION" value={latestVersion || 'No comprobada'}/>
-      </View>
-      <Pressable disabled={checkingUpdate||downloadingUpdate} onPress={latestBuild!==null && latestBuild>Number(BUILD_INFO.build) ? updateApp : checkUpdate} style={[s.button,(checkingUpdate||downloadingUpdate)&&s.disabled]}>
-        {checkingUpdate||downloadingUpdate ? <ActivityIndicator/> : <Text style={s.buttonText}>{downloadingUpdate ? 'DESCARGANDO APK...' : latestBuild!==null && latestBuild>Number(BUILD_INFO.build) ? 'ACTUALIZAR APP' : 'BUSCAR ACTUALIZACIÓN'}</Text>}
-      </Pressable>
-      <Pressable onPress={()=>Linking.openURL(RELEASES_URL)} style={s.githubButton}>
-        <Image source={{uri:'https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png'}} style={s.githubLogo}/>
-        <Text style={s.githubText}>GITHUB</Text>
-        <Text style={s.githubVersion}>V{BUILD_INFO.build}</Text>
-      </Pressable>
-      <Text style={s.meta}>REGISTRO DE CAMBIOS</Text>
-      <View style={s.card}>
-        {(BUILD_INFO.changelog.length ? BUILD_INFO.changelog : ['#V0 — Historial inicial']).map((entry,i)=><Text key={i} style={s.change}>{entry}</Text>)}
-      </View>
-    </ScrollView>}
-  </SafeAreaView>;
+  return {
+    timestamp,
+    headers: {
+      'EXN-API-KEY': c.apiKey,
+      'EXN-IDEMPOTENCY-KEY': '',
+      'EXN-TIMESTAMP': String(timestamp),
+      'EXN-SIGN-VERSION': '1',
+      'EXN-DATA': b64url(data),
+      'EXN-SIGN': b64url(signature),
+      'Accept': 'application/json',
+    },
+  };
 }
 
-function Info({label,value}:{label:string,value:string}) {
-  return <View style={s.info}><Text style={s.infoLabel}>{label}</Text><Text style={s.infoValue}>{value}</Text></View>;
+async function getJson<T>(
+  host: string,
+  path: string,
+  c: Credentials,
+): Promise<T> {
+  const url = host.replace(/\/$/, '') + path;
+
+  // This helper performs read-only GET requests only. A timestamp-window
+  // rejection can therefore be retried once with a newly signed timestamp.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const signed = await headers(c, path);
+    const requestStartedAt = Date.now();
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: signed.headers,
+      // Never forward signed headers through an HTTP redirect.
+      redirect: 'error',
+    });
+
+    const responseReceivedAt = Date.now();
+    const serverDate = res.headers.get('date');
+    const serverTime = serverDate ? Date.parse(serverDate) : Number.NaN;
+    const text = await res.text();
+
+    if (!res.ok) {
+      const timestampRejected =
+        res.status === 401 &&
+        /timestamp outside allowed window/i.test(text);
+
+      if (timestampRejected && attempt === 0 && Number.isFinite(serverTime)) {
+        // HTTP Date describes server response time (rounded down to whole seconds).
+        // Estimate clock offset against local response-receive time, not request midpoint.
+        serverClockOffsetMs = Math.round(serverTime + 500 - responseReceivedAt);
+        hasServerClockOffset = true;
+        continue;
+      }
+
+      const roundTripMs = responseReceivedAt - requestStartedAt;
+      const diagnostics = [
+        `tiempo de solicitud hasta respuesta=${roundTripMs} ms`,
+        `timestamp enviado=${signed.timestamp}`,
+        `edad del timestamp al recibir respuesta=${responseReceivedAt - signed.timestamp} ms`,
+        `hora local al recibir respuesta=${responseReceivedAt}`,
+        serverDate ? `fecha del servidor=${serverDate}` : 'fecha del servidor=no disponible',
+        Number.isFinite(serverTime)
+          ? `diferencia servidor-local (Date HTTP, precisión 1 s)=${serverTime - responseReceivedAt} ms`
+          : 'diferencia servidor-local=no calculable',
+        `desfase aplicado=${hasServerClockOffset ? serverClockOffsetMs : 0} ms`,
+      ].join(' | ');
+
+      throw new Error(`HTTP ${res.status}: ${text}\\nDiagnóstico seguro: ${diagnostics}`);
+    }
+
+    return JSON.parse(text) as T;
+  }
+
+  throw new Error('No se pudo completar la consulta firmada después de sincronizar el timestamp.');
 }
 
-const s=StyleSheet.create({
- safe:{flex:1,backgroundColor:'#0b0e13'},header:{height:68,paddingHorizontal:20,flexDirection:'row',alignItems:'center',justifyContent:'space-between',borderBottomWidth:1,borderBottomColor:'#252b35'},
- title:{color:'#fff',fontSize:18,fontWeight:'800'},dot:{width:12,height:12,borderRadius:6},green:{backgroundColor:'#28d17c'},yellow:{backgroundColor:'#f0b429'},red:{backgroundColor:'#e05252'},
- tabs:{flexDirection:'row',borderBottomWidth:1,borderBottomColor:'#252b35'},tab:{flex:1,padding:15,alignItems:'center'},active:{borderBottomWidth:2,borderBottomColor:'#fff'},tabText:{color:'#dce1e9',fontWeight:'800'},
- content:{padding:22,gap:15},h1:{color:'#fff',fontSize:26,fontWeight:'900'},sub:{color:'#9da6b5',lineHeight:21},field:{gap:7},label:{color:'#c8ced8',fontSize:12,fontWeight:'800'},
- row:{flexDirection:'row',backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:10},input:{flex:1,color:'#fff',padding:13,minHeight:48},eye:{width:48,alignItems:'center',justifyContent:'center'},
- button:{minHeight:50,borderRadius:10,backgroundColor:'#fff',alignItems:'center',justifyContent:'center'},buttonText:{color:'#0b0e13',fontWeight:'900'},disabled:{opacity:.5},
- onlineText:{color:'#28d17c',textAlign:'center',fontWeight:'800'},offlineText:{color:'#e05252',textAlign:'center',fontWeight:'800'},
- card:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:14,padding:17,gap:17},info:{gap:5},infoLabel:{color:'#8f98a8',fontSize:11,fontWeight:'900'},infoValue:{color:'#fff',fontSize:15,fontWeight:'600'},
- refresh:{minHeight:48,borderRadius:10,borderWidth:1,borderColor:'#3b4350',alignItems:'center',justifyContent:'center'},refreshText:{color:'#fff',fontWeight:'900'},
- meta:{color:'#8f98a8',fontSize:11,fontWeight:'900'},time:{color:'#fff',fontWeight:'600',marginTop:-9},ap:{color:'#707988',fontSize:11},
- githubButton:{minHeight:54,borderRadius:12,borderWidth:1,borderColor:'#3b4350',paddingHorizontal:16,flexDirection:'row',alignItems:'center',gap:12},githubLogo:{width:24,height:24},githubText:{color:'#fff',fontWeight:'900',flex:1},githubVersion:{color:'#9da6b5',fontWeight:'800'},change:{color:'#dce1e9',fontSize:13,lineHeight:20}
-});
+export async function connectToExness(
+  c: Credentials,
+): Promise<ConnectionResult> {
+  if (!c.gatewayUrl.trim()) {
+    throw new Error('GATEWAY URL vacío.');
+  }
+
+  if (!c.apiKey.trim()) {
+    throw new Error('API KEY vacía.');
+  }
+
+  if (!c.secret.trim()) {
+    throw new Error('SECRET vacío.');
+  }
+
+  if (!/^\d+$/.test(c.accountId.trim())) {
+    throw new Error('ACCOUNT inválido.');
+  }
+
+  const gateway = c.gatewayUrl.trim().replace(/\/$/, '');
+  const accountId = c.accountId.trim();
+  const discoveryPath =
+    `/v1/trading/access-point?account_id=${encodeURIComponent(accountId)}`;
+
+  // CONNECT only authenticates the API key and discovers the account's
+  // Access Point. It deliberately does not request or require a balance.
+  const discovery = await getJson<{ access_point?: string }>(
+    gateway,
+    discoveryPath,
+    c,
+  );
+
+  if (typeof discovery.access_point !== 'string' || !discovery.access_point) {
+    throw new Error('Exness no devolvió Access Point.');
+  }
+
+  return { accessPoint: new URL(discovery.access_point).origin };
+}
+
+function normalizeScalar(value: unknown): string | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : undefined;
+  }
+  return undefined;
+}
+
+function findBalanceValue(value: unknown, depth = 0): string | undefined {
+  if (depth > 12 || value === null || value === undefined) {
+    return undefined;
+  }
+
+  // A plain string encountered during recursive traversal is NOT assumed
+  // to be a balance: account_id is also commonly a numeric string.
+  // Only parse it when it contains a JSON-encoded object/array.
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      if (parsed !== value && typeof parsed === 'object' && parsed !== null) {
+        return findBalanceValue(parsed, depth + 1);
+      }
+    } catch {
+      // Not JSON; ignore it during recursive traversal.
+    }
+    return undefined;
+  }
+
+  if (typeof value !== 'object') {
+    return undefined;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = findBalanceValue(item, depth + 1);
+      if (found !== undefined) return found;
+    }
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+
+  // First pass: the API's actual account response uses the field name
+  // "balance". Accept numeric/string scalar values and common wrapper
+  // objects such as { amount: ... } without changing the HTTP request.
+  for (const [key, candidate] of Object.entries(record)) {
+    const normalizedKey = key.toLowerCase().replace(/[_-]/g, '');
+    if (normalizedKey === 'balance' || normalizedKey === 'accountbalance') {
+      const scalar = normalizeScalar(candidate);
+      if (scalar !== undefined) return scalar;
+
+      if (candidate && typeof candidate === 'object') {
+        const nested = candidate as Record<string, unknown>;
+        for (const nestedKey of ['amount', 'value', 'balance']) {
+          const nestedScalar = normalizeScalar(nested[nestedKey]);
+          if (nestedScalar !== undefined) return nestedScalar;
+        }
+      }
+    }
+  }
+
+  // Second pass: preserve compatibility with wrapped responses such as
+  // { data: { account: { balance: ... } } }.
+  for (const candidate of Object.values(record)) {
+    const found = findBalanceValue(candidate, depth + 1);
+    if (found !== undefined) return found;
+  }
+
+  return undefined;
+}
+
+export async function getAccountSnapshot(
+  c: Credentials,
+  accessPoint: string,
+): Promise<AccountSnapshot> {
+  if (!accessPoint.trim()) {
+    throw new Error('No hay Access Point. Conectá la cuenta primero.');
+  }
+
+  // IMPORTANT: /v1/configuration/accounts/{account_id}/account returns
+  // account configuration/settings. It does NOT contain the live balance.
+  // Exness exposes the current balance in the trading state snapshot:
+  // /v1/trading/accounts/{account_id}/snapshot -> account_state.balance
+  const snapshotPath =
+    `/v1/trading/accounts/${encodeURIComponent(c.accountId.trim())}/snapshot`;
+
+  const snapshot = await getJson<Record<string, unknown>>(
+    accessPoint,
+    snapshotPath,
+    c,
+  );
+
+  const accountState =
+    snapshot.account_state &&
+    typeof snapshot.account_state === 'object'
+      ? snapshot.account_state as Record<string, unknown>
+      : undefined;
+
+  const balance = accountState
+    ? normalizeScalar(accountState.balance)
+    : undefined;
+  const equity = accountState
+    ? normalizeScalar(accountState.equity)
+    : undefined;
+  const usedMargin = accountState
+    ? normalizeScalar(accountState.used_margin)
+    : undefined;
+
+  return {
+    balance,
+    equity,
+    usedMargin,
+    raw: snapshot,
+  };
+}
+
+
+export type AccountStreamEvent = {
+  event_type?: string;
+  event_time?: string;
+  payload?: {
+    account_state?: {
+      balance?: unknown;
+      equity?: unknown;
+      used_margin?: unknown;
+    };
+  };
+};
+
+/**
+ * Opens Exness' signed Server Events WebSocket.
+ * Authentication signs the GET handshake path, never the subscription JSON.
+ * All subscriptions are read-only.
+ */
+export async function openExnessAccountStream(
+  c: Credentials,
+  accessPoint: string,
+  onAccountState: (state: { balance?: string; equity?: string; usedMargin?: string; at: Date }) => void,
+  onStatus?: (status: 'connecting' | 'connected' | 'disconnected' | 'error') => void,
+): Promise<WebSocket> {
+  if (!accessPoint.trim()) throw new Error('No hay Access Point para el flujo en tiempo real.');
+
+  const path = `/v1/server-events/accounts/${encodeURIComponent(c.accountId.trim())}/ws/events`;
+  const signed = await headers(c, path);
+  const wsUrl = accessPoint.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:').replace(/\\/$/, '') + path;
+
+  // React Native supports custom headers in the third WebSocket constructor argument.
+  const ws = new (WebSocket as unknown as {
+    new (url: string, protocols?: string | string[], options?: { headers: Record<string, string> }): WebSocket;
+  })(wsUrl, 'exness-ws-protocol', { headers: signed.headers });
+
+  onStatus?.('connecting');
+  ws.onopen = () => {
+    onStatus?.('connected');
+    ws.send(JSON.stringify({
+      id: 'tinchodoko-account-state',
+      subscribe: { event: 'account_state' },
+    }));
+    ws.send(JSON.stringify({
+      id: 'tinchodoko-transactions',
+      subscribe: { event: 'transactions' },
+    }));
+  };
+
+  ws.onmessage = event => {
+    try {
+      const message = JSON.parse(String(event.data)) as AccountStreamEvent;
+      const state = message.payload?.account_state;
+      if (
+        (message.event_type === 'account_state_event' ||
+          message.event_type === 'trading_state_snapshot' ||
+          message.event_type === 'transaction_event') &&
+        state
+      ) {
+        onAccountState({
+          balance: normalizeScalar(state.balance),
+          equity: normalizeScalar(state.equity),
+          usedMargin: normalizeScalar(state.used_margin),
+          at: message.event_time ? new Date(message.event_time) : new Date(),
+        });
+      }
+    } catch {
+      // Ignore malformed/non-JSON frames; never log credentials or signed headers.
+    }
+  };
+  ws.onerror = () => onStatus?.('error');
+  ws.onclose = () => onStatus?.('disconnected');
+  return ws;
+}
