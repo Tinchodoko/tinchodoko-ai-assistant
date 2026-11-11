@@ -110,7 +110,8 @@ export default function App() {
           if (state.balance !== undefined) setBalance(state.balance);
           if (state.equity !== undefined) setEquity(state.equity);
           if (state.usedMargin !== undefined) setUsedMargin(state.usedMargin);
-          setLast(state.at);
+          // La fecha refleja la consulta REST programada, no cada evento WebSocket.
+          // El stream sigue actualizando balance/equity en tiempo real sin alterar el intervalo visible.
           setStatus('online');
         },stream=>{
           if (cancelled || !autoRefreshRef.current) return;
