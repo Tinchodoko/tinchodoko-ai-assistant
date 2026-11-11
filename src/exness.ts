@@ -85,18 +85,18 @@ function sha256(bytes: Uint8Array): Uint8Array {
       const s1=((y>>>17)|(y<<15))^((y>>>19)|(y<<13))^(y>>>10);
       w[i]=(w[i-16]+s0+w[i-7]+s1)>>>0;
     }
-    let [a,b,c,d,f,g,h,j]=H;
+    let [a,b,c,d,e,f,g,h]=H;
     for(let i=0;i<64;i++){
-      const S1=((g>>>6)|(g<<26))^((g>>>11)|(g<<21))^((g>>>25)|(g<<7));
-      const ch=(g&f)^((~g)&h);
-      const temp1=(j+S1+ch+K[i]+w[i])>>>0;
+      const S1=((e>>>6)|(e<<26))^((e>>>11)|(e<<21))^((e>>>25)|(e<<7));
+      const ch=(e&f)^((~e)&g);
+      const temp1=(h+S1+ch+K[i]+w[i])>>>0;
       const S0=((a>>>2)|(a<<30))^((a>>>13)|(a<<19))^((a>>>22)|(a<<10));
       const maj=(a&b)^(a&c)^(b&c);
       const temp2=(S0+maj)>>>0;
-      j=h;h=g;g=f;f=(d+temp1)>>>0;d=c;c=b;b=a;a=(temp1+temp2)>>>0;
+      h=g;g=f;f=e;e=(d+temp1)>>>0;d=c;c=b;b=a;a=(temp1+temp2)>>>0;
     }
     H[0]=(H[0]+a)>>>0;H[1]=(H[1]+b)>>>0;H[2]=(H[2]+c)>>>0;H[3]=(H[3]+d)>>>0;
-    H[4]=(H[4]+f)>>>0;H[5]=(H[5]+g)>>>0;H[6]=(H[6]+h)>>>0;H[7]=(H[7]+j)>>>0;
+    H[4]=(H[4]+e)>>>0;H[5]=(H[5]+f)>>>0;H[6]=(H[6]+g)>>>0;H[7]=(H[7]+h)>>>0;
   }
   const out=new Uint8Array(32); for(let i=0;i<8;i++) view.setUint32(i*4,H[i],false);
   return out;
