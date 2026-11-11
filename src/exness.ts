@@ -335,7 +335,7 @@ export async function openExnessAccountStream(
 
   const path = `/v1/server-events/accounts/${encodeURIComponent(c.accountId.trim())}/ws/events`;
   const signed = await headers(c, path);
-  const wsUrl = accessPoint.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:').replace(/\\/$/, '') + path;
+  const wsUrl = accessPoint.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:').replace(/\/$/, '') + path;
 
   // React Native supports custom headers in the third WebSocket constructor argument.
   const ws = new (WebSocket as unknown as {
