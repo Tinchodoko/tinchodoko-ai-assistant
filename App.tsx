@@ -66,6 +66,12 @@ export default function App() {
   const [latestBuild,setLatestBuild]=useState<number|null>(null);
   const [latestApkUrl,setLatestApkUrl]=useState<string|null>(null);
   const [checkingUpdate,setCheckingUpdate]=useState(false);
+  const [historyData,setHistoryData]=useState<TradingHistoryData|null>(null);
+  const [historyMode,setHistoryMode]=useState<'active'|'past'>('active');
+  const [selectedHistoryPair,setSelectedHistoryPair]=useState('ALL');
+  const [historyPairMenu,setHistoryPairMenu]=useState(false);
+  const [historyLoading,setHistoryLoading]=useState(false);
+  const [historyError,setHistoryError]=useState('');
   const [downloadingUpdate,setDownloadingUpdate]=useState(false);
   const [historyData,setHistoryData]=useState<TradingHistoryData|null>(null);
   const [historyMode,setHistoryMode]=useState<'active'|'past'>('active');
@@ -168,6 +174,21 @@ export default function App() {
 
   const pnlValue = (() => { const b=Number(balance); const e=Number(equity); if (!Number.isFinite(b)||!Number.isFinite(e)) return null; return e-b; })();
 
+  const activeHistoryItems: HistoryRecord[] = historyData ? [
+    ...historyData.positions.map(record=>({record,kind:'POSICIÓN ACTIVA'})),
+    ...historyData.activeOrders.map(record=>({record,kind:'ORDEN PENDIENTE'})),
+  ] : [];
+  const pastHistoryItems: HistoryRecord[] = historyData ? [
+    ...historyData.pastOrders.map(record=>({record,kind:'ORDEN PASADA'})),
+    ...historyData.deals.map(record=>({record,kind:'OPERACIÓN EJECUTADA'})),
+  ] : [];
+  const historyPairs = Array.from(new Set([
+    ...(historyData?.positions ?? []), ...(historyData?.activeOrders ?? []),
+    ...(historyData?.pastOrders ?? []), ...(historyData?.deals ?? []),
+  ].map(historySymbol).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
+  const selectedHistoryItems = (historyMode==='active' ? activeHistoryItems : pastHistoryItems)
+    .filter(item=>selectedHistoryPair==='ALL' || historySymbol(item.record)===selectedHistoryPair);
+
   function setSliderFromLocation(pageX:number, width:number) {
     const usableWidth = Math.max(1, width - 18);
     const localX=pageX-sliderLeft;
@@ -225,6 +246,30 @@ export default function App() {
   const selectedActivePositions=(historyData?.positions??[]).filter(x=>!historyPair||x.instrument===historyPair);
   const selectedActiveOrders=(historyData?.activeOrders??[]).filter(x=>!historyPair||x.instrument===historyPair);
   const selectedPastOrders=(historyData?.pastOrders??[]).filter(x=>{const o=x.order&&typeof x.order==='object'?x.order as Record<string,unknown>:x;return !historyPair||o.instrument===historyPair;});
+
+  async function loadHistory() {
+    if (!accessPoint) {
+      setHistoryError('Conectá primero tu cuenta de Exness.');
+      return;
+    }
+    if (historyLoading) return;
+    setHistoryLoading(true);
+    setHistoryError('');
+    try {
+      const data=await getTradingHistory(c,accessPoint);
+      setHistoryData(data);
+      if (selectedHistoryPair!=='ALL' && ![
+        ...data.positions, ...data.activeOrders, ...data.pastOrders, ...data.deals,
+      ].some(record=>historySymbol(record)===selectedHistoryPair)) setSelectedHistoryPair('ALL');
+    } catch(e) {
+      setHistoryError(e instanceof Error?e.message:String(e));
+    } finally { setHistoryLoading(false); }
+  }
+
+  function openHistory() {
+    setScreen('history');
+    if (!historyData) void loadHistory();
+  }
 
   async function checkUpdate() {
     setCheckingUpdate(true);
@@ -461,6 +506,31 @@ export default function App() {
           </View>;
         })}
       </>}
+    </ScrollView> : screen==='history' ? <ScrollView contentContainerStyle={s.content}>
+      <Text style={s.h1}>HISTORIAL</Text>
+      <Text style={s.sub}>Consultá las posiciones activas, órdenes pendientes y operaciones pasadas de tu cuenta.</Text>
+      <Text style={s.meta}>SELECCIONE SU PAR</Text>
+      <Pressable onPress={()=>setHistoryPairMenu(value=>!value)} style={s.historyPairSelect}>
+        <Text style={s.historyPairSelectText}>{selectedHistoryPair==='ALL'?'TODOS LOS PARES':selectedHistoryPair}</Text>
+        <Text style={s.selectArrow}>{historyPairMenu?'▲':'▼'}</Text>
+      </Pressable>
+      {historyPairMenu && <View style={s.historyPairMenu}>
+        <Pressable onPress={()=>{setSelectedHistoryPair('ALL');setHistoryPairMenu(false);}} style={s.menuItem}><Text style={s.menuText}>TODOS LOS PARES</Text></Pressable>
+        {historyPairs.map(pair=><Pressable key={pair} onPress={()=>{setSelectedHistoryPair(pair);setHistoryPairMenu(false);}} style={s.menuItem}><Text style={s.menuText}>{pair}</Text></Pressable>)}
+        {!historyPairs.length && <Text style={s.historyEmptySmall}>Todavía no hay pares disponibles.</Text>}
+      </View>}
+      <View style={s.historyModes}>
+        <Pressable onPress={()=>setHistoryMode('active')} style={[s.historyModeButton,historyMode==='active'&&s.historyModeSelected]}><Text style={[s.historyModeText,historyMode==='active'&&s.historyModeTextSelected]}>ACTIVAS</Text></Pressable>
+        <Pressable onPress={()=>setHistoryMode('past')} style={[s.historyModeButton,historyMode==='past'&&s.historyModeSelected]}><Text style={[s.historyModeText,historyMode==='past'&&s.historyModeTextSelected]}>PASADAS</Text></Pressable>
+      </View>
+      <Pressable disabled={historyLoading} onPress={()=>void loadHistory()} style={[s.refresh,historyLoading&&s.disabled]}>
+        {historyLoading?<ActivityIndicator/>:<Text style={s.refreshText}>↻  ACTUALIZAR HISTORIAL</Text>}
+      </Pressable>
+      {!!historyError && <View style={s.historyErrorBox}><Text style={s.historyError}>{historyError}</Text></View>}
+      {historyLoading && !historyData ? <ActivityIndicator color="#fff" size="large"/> :
+        selectedHistoryItems.length ? selectedHistoryItems.map((item,index)=><HistoryItem key={historyItemKey(item,index)} item={item}/>) :
+        <View style={s.historyEmpty}><Text style={s.historyEmptyTitle}>SIN ÓRDENES</Text><Text style={s.historyEmptyText}>{historyData ? (historyMode==='active'?'No hay posiciones activas ni órdenes pendientes para este par.':'No hay órdenes pasadas para este par.') : 'Actualizá el historial para consultar tus operaciones.'}</Text></View>}
+      <Text style={s.historyFootnote}>Los pares disponibles se obtienen de las operaciones de tu cuenta; no se muestra el catálogo completo de Exness.</Text>
     </ScrollView> : <ScrollView contentContainerStyle={s.content}>
       <Text style={s.h1}>APP</Text>
       <View style={s.card}>
@@ -488,6 +558,10 @@ export default function App() {
 
 function Info({label,value,valueStyle}:{label:string,value:string,valueStyle?:TextStyle}) {
   return <View style={s.info}><Text style={s.infoLabel}>{label}</Text><Text style={[s.infoValue,valueStyle]}>{value}</Text></View>;
+}
+
+function historyItemKey(item: HistoryRecord, index: number) {
+  return `${item.kind}-${historyText(historyField(item.record,'position_id','order_id','deal_id','id'),String(index))}-${index}`;
 }
 
 const s=StyleSheet.create({
