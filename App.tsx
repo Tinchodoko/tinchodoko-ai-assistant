@@ -66,12 +66,6 @@ export default function App() {
   const [latestBuild,setLatestBuild]=useState<number|null>(null);
   const [latestApkUrl,setLatestApkUrl]=useState<string|null>(null);
   const [checkingUpdate,setCheckingUpdate]=useState(false);
-  const [historyData,setHistoryData]=useState<TradingHistoryData|null>(null);
-  const [historyMode,setHistoryMode]=useState<'active'|'past'>('active');
-  const [selectedHistoryPair,setSelectedHistoryPair]=useState('ALL');
-  const [historyPairMenu,setHistoryPairMenu]=useState(false);
-  const [historyLoading,setHistoryLoading]=useState(false);
-  const [historyError,setHistoryError]=useState('');
   const [downloadingUpdate,setDownloadingUpdate]=useState(false);
   const [historyData,setHistoryData]=useState<TradingHistoryData|null>(null);
   const [historyMode,setHistoryMode]=useState<'active'|'past'>('active');
@@ -174,21 +168,6 @@ export default function App() {
 
   const pnlValue = (() => { const b=Number(balance); const e=Number(equity); if (!Number.isFinite(b)||!Number.isFinite(e)) return null; return e-b; })();
 
-  const activeHistoryItems: HistoryRecord[] = historyData ? [
-    ...historyData.positions.map(record=>({record,kind:'POSICIÓN ACTIVA'})),
-    ...historyData.activeOrders.map(record=>({record,kind:'ORDEN PENDIENTE'})),
-  ] : [];
-  const pastHistoryItems: HistoryRecord[] = historyData ? [
-    ...historyData.pastOrders.map(record=>({record,kind:'ORDEN PASADA'})),
-    ...historyData.deals.map(record=>({record,kind:'OPERACIÓN EJECUTADA'})),
-  ] : [];
-  const historyPairs = Array.from(new Set([
-    ...(historyData?.positions ?? []), ...(historyData?.activeOrders ?? []),
-    ...(historyData?.pastOrders ?? []), ...(historyData?.deals ?? []),
-  ].map(historySymbol).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
-  const selectedHistoryItems = (historyMode==='active' ? activeHistoryItems : pastHistoryItems)
-    .filter(item=>selectedHistoryPair==='ALL' || historySymbol(item.record)===selectedHistoryPair);
-
   function setSliderFromLocation(pageX:number, width:number) {
     const usableWidth = Math.max(1, width - 18);
     const localX=pageX-sliderLeft;
@@ -246,30 +225,6 @@ export default function App() {
   const selectedActivePositions=(historyData?.positions??[]).filter(x=>!historyPair||x.instrument===historyPair);
   const selectedActiveOrders=(historyData?.activeOrders??[]).filter(x=>!historyPair||x.instrument===historyPair);
   const selectedPastOrders=(historyData?.pastOrders??[]).filter(x=>{const o=x.order&&typeof x.order==='object'?x.order as Record<string,unknown>:x;return !historyPair||o.instrument===historyPair;});
-
-  async function loadHistory() {
-    if (!accessPoint) {
-      setHistoryError('Conectá primero tu cuenta de Exness.');
-      return;
-    }
-    if (historyLoading) return;
-    setHistoryLoading(true);
-    setHistoryError('');
-    try {
-      const data=await getTradingHistory(c,accessPoint);
-      setHistoryData(data);
-      if (selectedHistoryPair!=='ALL' && ![
-        ...data.positions, ...data.activeOrders, ...data.pastOrders, ...data.deals,
-      ].some(record=>historySymbol(record)===selectedHistoryPair)) setSelectedHistoryPair('ALL');
-    } catch(e) {
-      setHistoryError(e instanceof Error?e.message:String(e));
-    } finally { setHistoryLoading(false); }
-  }
-
-  function openHistory() {
-    setScreen('history');
-    if (!historyData) void loadHistory();
-  }
 
   async function checkUpdate() {
     setCheckingUpdate(true);
@@ -506,31 +461,6 @@ export default function App() {
           </View>;
         })}
       </>}
-    </ScrollView> : screen==='history' ? <ScrollView contentContainerStyle={s.content}>
-      <Text style={s.h1}>HISTORIAL</Text>
-      <Text style={s.sub}>Consultá las posiciones activas, órdenes pendientes y operaciones pasadas de tu cuenta.</Text>
-      <Text style={s.meta}>SELECCIONE SU PAR</Text>
-      <Pressable onPress={()=>setHistoryPairMenu(value=>!value)} style={s.historyPairSelect}>
-        <Text style={s.historyPairSelectText}>{selectedHistoryPair==='ALL'?'TODOS LOS PARES':selectedHistoryPair}</Text>
-        <Text style={s.selectArrow}>{historyPairMenu?'▲':'▼'}</Text>
-      </Pressable>
-      {historyPairMenu && <View style={s.historyPairMenu}>
-        <Pressable onPress={()=>{setSelectedHistoryPair('ALL');setHistoryPairMenu(false);}} style={s.menuItem}><Text style={s.menuText}>TODOS LOS PARES</Text></Pressable>
-        {historyPairs.map(pair=><Pressable key={pair} onPress={()=>{setSelectedHistoryPair(pair);setHistoryPairMenu(false);}} style={s.menuItem}><Text style={s.menuText}>{pair}</Text></Pressable>)}
-        {!historyPairs.length && <Text style={s.historyEmptySmall}>Todavía no hay pares disponibles.</Text>}
-      </View>}
-      <View style={s.historyModes}>
-        <Pressable onPress={()=>setHistoryMode('active')} style={[s.historyModeButton,historyMode==='active'&&s.historyModeSelected]}><Text style={[s.historyModeText,historyMode==='active'&&s.historyModeTextSelected]}>ACTIVAS</Text></Pressable>
-        <Pressable onPress={()=>setHistoryMode('past')} style={[s.historyModeButton,historyMode==='past'&&s.historyModeSelected]}><Text style={[s.historyModeText,historyMode==='past'&&s.historyModeTextSelected]}>PASADAS</Text></Pressable>
-      </View>
-      <Pressable disabled={historyLoading} onPress={()=>void loadHistory()} style={[s.refresh,historyLoading&&s.disabled]}>
-        {historyLoading?<ActivityIndicator/>:<Text style={s.refreshText}>↻  ACTUALIZAR HISTORIAL</Text>}
-      </Pressable>
-      {!!historyError && <View style={s.historyErrorBox}><Text style={s.historyError}>{historyError}</Text></View>}
-      {historyLoading && !historyData ? <ActivityIndicator color="#fff" size="large"/> :
-        selectedHistoryItems.length ? selectedHistoryItems.map((item,index)=><HistoryItem key={historyItemKey(item,index)} item={item}/>) :
-        <View style={s.historyEmpty}><Text style={s.historyEmptyTitle}>SIN ÓRDENES</Text><Text style={s.historyEmptyText}>{historyData ? (historyMode==='active'?'No hay posiciones activas ni órdenes pendientes para este par.':'No hay órdenes pasadas para este par.') : 'Actualizá el historial para consultar tus operaciones.'}</Text></View>}
-      <Text style={s.historyFootnote}>Los pares disponibles se obtienen de las operaciones de tu cuenta; no se muestra el catálogo completo de Exness.</Text>
     </ScrollView> : <ScrollView contentContainerStyle={s.content}>
       <Text style={s.h1}>APP</Text>
       <View style={s.card}>
@@ -560,10 +490,6 @@ function Info({label,value,valueStyle}:{label:string,value:string,valueStyle?:Te
   return <View style={s.info}><Text style={s.infoLabel}>{label}</Text><Text style={[s.infoValue,valueStyle]}>{value}</Text></View>;
 }
 
-function historyItemKey(item: HistoryRecord, index: number) {
-  return `${item.kind}-${historyText(historyField(item.record,'position_id','order_id','deal_id','id'),String(index))}-${index}`;
-}
-
 const s=StyleSheet.create({
  safe:{flex:1,backgroundColor:'#0b0e13'},header:{height:68,paddingHorizontal:20,flexDirection:'row',alignItems:'center',justifyContent:'space-between',borderBottomWidth:1,borderBottomColor:'#252b35'},
  title:{color:'#fff',fontSize:18,fontWeight:'800'},dot:{width:12,height:12,borderRadius:6},green:{backgroundColor:'#28d17c'},yellow:{backgroundColor:'#f0b429'},red:{backgroundColor:'#e05252'},
@@ -577,6 +503,6 @@ const s=StyleSheet.create({
  meta:{color:'#8f98a8',fontSize:11,fontWeight:'900'},time:{color:'#fff',fontWeight:'600',marginTop:-9},ap:{color:'#707988',fontSize:11},
  githubButton:{minHeight:54,borderRadius:12,borderWidth:1,borderColor:'#3b4350',paddingHorizontal:16,flexDirection:'row',alignItems:'center',gap:12},githubLogo:{width:24,height:24},githubText:{color:'#fff',fontWeight:'900',flex:1},githubVersion:{color:'#9da6b5',fontWeight:'800'},change:{color:'#dce1e9',fontSize:13,lineHeight:20},
  saveIntervalButton:{minHeight:46,borderRadius:10,borderWidth:1,borderColor:'#3b4350',alignItems:'center',justifyContent:'center',backgroundColor:'#151a22'},saveIntervalText:{color:'#fff',fontWeight:'900',fontSize:12},
- intervalCard:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:14,padding:17,gap:12},intervalHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},clockButton:{width:40,height:40,borderRadius:20,alignItems:'center',justifyContent:'center'},clockOn:{color:'#28d17c',fontSize:25,fontWeight:'900'},clockOff:{color:'#e05252',fontSize:22,fontWeight:'900'},intervalTitle:{color:'#fff',fontSize:14,fontWeight:'800'},select:{minHeight:44,borderWidth:1,borderColor:'#3b4350',borderRadius:9,paddingHorizontal:12,flexDirection:'row',alignItems:'center',justifyContent:'space-between',backgroundColor:'#0f131a'},selectText:{color:'#fff',fontWeight:'700'},selectArrow:{color:'#9da6b5',fontSize:12},menu:{borderWidth:1,borderColor:'#3b4350',borderRadius:9,backgroundColor:'#0f131a',overflow:'hidden'},menuItem:{paddingHorizontal:13,paddingVertical:12},menuText:{color:'#fff',fontWeight:'700'},sliderRow:{flexDirection:'row',alignItems:'center',gap:8},sliderMin:{color:'#9da6b5',fontSize:11,fontWeight:'800'},sliderMax:{color:'#9da6b5',fontSize:11,fontWeight:'800'},sliderTrack:{flex:1,height:32,borderRadius:16,backgroundColor:'transparent',position:'relative',justifyContent:'center'},sliderEnabled:{opacity:1},sliderDisabled:{opacity:0.4},sliderRail:{position:'absolute',left:9,right:9,top:13,height:6,borderRadius:3,backgroundColor:'#303744'},sliderFill:{position:'absolute',left:9,top:13,height:6,borderRadius:3,backgroundColor:'#fff'},sliderThumb:{position:'absolute',top:7,width:18,height:18,borderRadius:9,backgroundColor:'#fff',marginLeft:-9},intervalValue:{color:'#9da6b5',fontSize:11,fontWeight:'700'}
+ intervalCard:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:14,padding:17,gap:12},intervalHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},clockButton:{width:40,height:40,borderRadius:20,alignItems:'center',justifyContent:'center'},clockOn:{color:'#28d17c',fontSize:25,fontWeight:'900'},clockOff:{color:'#e05252',fontSize:22,fontWeight:'900'},intervalTitle:{color:'#fff',fontSize:14,fontWeight:'800'},select:{minHeight:44,borderWidth:1,borderColor:'#3b4350',borderRadius:9,paddingHorizontal:12,flexDirection:'row',alignItems:'center',justifyContent:'space-between',backgroundColor:'#0f131a'},selectText:{color:'#fff',fontWeight:'700'},selectArrow:{color:'#9da6b5',fontSize:12},menu:{borderWidth:1,borderColor:'#3b4350',borderRadius:9,backgroundColor:'#0f131a',overflow:'hidden'},menuItem:{paddingHorizontal:13,paddingVertical:12},menuText:{color:'#fff',fontWeight:'700'},sliderRow:{flexDirection:'row',alignItems:'center',gap:8},sliderMin:{color:'#9da6b5',fontSize:11,fontWeight:'800'},sliderMax:{color:'#9da6b5',fontSize:11,fontWeight:'800'},sliderTrack:{flex:1,height:32,borderRadius:16,backgroundColor:'transparent',position:'relative',justifyContent:'center'},sliderEnabled:{opacity:1},sliderDisabled:{opacity:0.4},sliderRail:{position:'absolute',left:9,right:9,top:13,height:6,borderRadius:3,backgroundColor:'#303744'},sliderFill:{position:'absolute',left:9,top:13,height:6,borderRadius:3,backgroundColor:'#fff'},sliderThumb:{position:'absolute',top:7,width:18,height:18,borderRadius:9,backgroundColor:'#fff',marginLeft:-9},intervalValue:{color:'#9da6b5',fontSize:11,fontWeight:'700'},
   historyModes:{flexDirection:'row',gap:10},historyMode:{flex:1,minHeight:48,borderWidth:1,borderColor:'#3b4350',borderRadius:10,alignItems:'center',justifyContent:'center',backgroundColor:'#151a22'},historyModeSelected:{backgroundColor:'#fff',borderColor:'#fff'},historyModeText:{color:'#dce1e9',fontWeight:'900'},historyModeTextSelected:{color:'#0b0e13'},historySection:{color:'#fff',fontSize:13,fontWeight:'900',marginTop:5},historyCard:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:13,padding:15,gap:12},historyCardHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},historyPair:{color:'#fff',fontSize:17,fontWeight:'900'},pendingText:{color:'#f0b429',fontWeight:'900'},emptyHistory:{color:'#9da6b5',textAlign:'center',paddingVertical:18},menuEmpty:{color:'#9da6b5',padding:13}
 });
