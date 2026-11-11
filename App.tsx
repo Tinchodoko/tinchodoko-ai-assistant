@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Linking, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Linking, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View, type TextStyle } from 'react-native';
 import { connectToExness, getAccountSnapshot, openExnessAccountStream, type Credentials } from './src/exness';
 import { loadCredentials, saveCredentials } from './src/storage';
 import { BUILD_INFO } from './src/buildInfo';
@@ -346,9 +346,9 @@ export default function App() {
             <View style={[s.sliderFill,{width:`${((intervalValue-minInterval)/(maxInterval-minInterval))*100}%`}]}/>
             <View style={[s.sliderThumb,{left:`${((intervalValue-minInterval)/(maxInterval-minInterval))*100}%`}]}/>
           </View>
-          <Text style={s.sliderMax}>{intervalLabel}</Text>
+          <Text style={s.sliderMax}>{intervalUnit==='seconds'?'60S':'10M'}</Text>
         </View>
-        <Text style={s.intervalValue}>{intervalLabel} · {autoRefresh?'activo':'desactivado'}</Text>
+        <Text style={s.intervalValue}>Seleccionado: {intervalLabel} · {autoRefresh?'activo':'desactivado'}</Text>
       </View>
 
       <Text style={s.meta}>ÚLTIMA ACTUALIZACIÓN</Text><Text style={s.time}>{dateText(last)}</Text>
@@ -380,7 +380,7 @@ export default function App() {
   </SafeAreaView>;
 }
 
-function Info({label,value,valueStyle}:{label:string,value:string,valueStyle?:object}) {
+function Info({label,value,valueStyle}:{label:string,value:string,valueStyle?:TextStyle}) {
   return <View style={s.info}><Text style={s.infoLabel}>{label}</Text><Text style={[s.infoValue,valueStyle]}>{value}</Text></View>;
 }
 
