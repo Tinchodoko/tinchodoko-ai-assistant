@@ -1,3 +1,4 @@
+- #V75 — fix(exness): calibrate timestamp offset at request midpoint
 - #V74 — fix(exness): handle invalid time range timestamp errors
 - #V73 — fix(history): hide SLTP helper orders from pending list
 - #V67 — fix(profile): make last update follow selected refresh interval
