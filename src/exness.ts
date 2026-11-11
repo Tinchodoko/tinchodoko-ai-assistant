@@ -59,10 +59,8 @@ type SignedRequest = {
 let serverClockOffsetMs = 0;
 let hasServerClockOffset = false;
 
-async function headers(c: Credentials, path: string): Promise<SignedRequest> {
-  const timestamp = Date.now() + (hasServerClockOffset ? serverClockOffsetMs : 0);
+function buildSignedHeadersAtTimestamp(c: Credentials, path: string, timestamp: number): SignedRequest {
   const bodyHash = EMPTY_BODY_SHA256_BASE64URL;
-
   const payload = JSON.stringify({
     api_key: c.apiKey,
     idempotency_key: '',
@@ -74,10 +72,7 @@ async function headers(c: Credentials, path: string): Promise<SignedRequest> {
   });
 
   const data = new TextEncoder().encode(payload);
-  const signature = ed25519.sign(
-    data,
-    hexToBytes(c.secret).slice(0, 32),
-  );
+  const signature = ed25519.sign(data, hexToBytes(c.secret).slice(0, 32));
 
   return {
     timestamp,
@@ -91,6 +86,11 @@ async function headers(c: Credentials, path: string): Promise<SignedRequest> {
       'Accept': 'application/json',
     },
   };
+}
+
+async function headers(c: Credentials, path: string): Promise<SignedRequest> {
+  const timestamp = Date.now() + (hasServerClockOffset ? serverClockOffsetMs : 0);
+  return buildSignedHeadersAtTimestamp(c, path, timestamp);
 }
 
 async function getJson<T>(
@@ -339,7 +339,9 @@ async function getLiveTradingState(
   accessPoint: string,
 ): Promise<{ positions: Record<string, unknown>[]; activeOrders: Record<string, unknown>[] }> {
   const path = `/v1/server-events/accounts/${encodeURIComponent(c.accountId.trim())}/ws/events`;
-  const signed = await headers(c, path);
+  // Match the proven positions.ts implementation: the WebSocket handshake
+  // uses the phone's current timestamp directly, without REST clock offset.
+  const signed = buildSignedHeadersAtTimestamp(c, path, Date.now());
   const wsUrl = accessPoint.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:').replace(/\/$/, '') + path;
 
   return await new Promise((resolve, reject) => {
