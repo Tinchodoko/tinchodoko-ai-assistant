@@ -1,3 +1,4 @@
+- #V67 — fix(profile): make last update follow selected refresh interval
 - #V66 — fix(profile): stabilize interval slider and persist saved interval
 - #V65 — fix(sync): pass explicit manual refresh flag to button
 - #V63 — fix(sync): stop automatic REST and WebSocket updates when clock is red; lock interval slider while active; clarify last-sync status
