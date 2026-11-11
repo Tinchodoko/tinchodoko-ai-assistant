@@ -109,7 +109,7 @@ function buildSignedHeadersAtTimestamp(
   method: string = 'GET',
   body: string = '',
   idempotencyKey: string = '',
-): Promise<SignedRequest> {
+): SignedRequest {
   const bodyBytes = new TextEncoder().encode(body);
   const bodyHash = body
     ? b64url(sha256(bodyBytes))
