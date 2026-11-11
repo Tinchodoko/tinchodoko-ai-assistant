@@ -421,7 +421,7 @@ export async function getTradingHistory(
   const orders = asRecords(payload.orders ?? snapshot.orders);
   return {
     positions,
-    activeOrders: orders.filter(order => String(order.order_type ?? '').toLowerCase() !== 'sltp'),
+    activeOrders: orders,
     pastOrders,
     deals: deals.filter(item => {
       const deal = item.deal && typeof item.deal === 'object'
