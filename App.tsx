@@ -432,7 +432,7 @@ export default function App() {
         <View style={s.modalButtons}><Pressable disabled={tradeBusy} onPress={()=>setTradeConfirm(null)} style={s.modalCancel}><Text style={s.modalCancelText}>CANCELAR</Text></Pressable><Pressable disabled={tradeBusy} onPress={()=>void executeTradeAction()} style={[s.modalConfirm,tradeBusy&&s.disabled]}>{tradeBusy?<ActivityIndicator color="#0b0e13"/>:<Text style={s.modalConfirmText}>CONFIRMAR</Text>}</Pressable></View>
       </View>
     </View>}
-  </>
+  </>;
   return <SafeAreaView style={s.safe}>
     <View style={s.header}><Text style={s.title}>Tinchodoko AI Assistant</Text><View style={[s.dot,status==='online'?s.green:status==='connecting'?s.yellow:s.red]}/></View>
     <View style={s.tabs}>
@@ -572,6 +572,7 @@ export default function App() {
         {(BUILD_INFO.changelog.length ? BUILD_INFO.changelog : ['#V0 — Historial inicial']).map((entry,i)=><Text key={i} style={s.change}>{entry}</Text>)}
       </View>
     </ScrollView>}
+  {renderTradeModals()}
   </SafeAreaView>;
 }
 
