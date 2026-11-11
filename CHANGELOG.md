@@ -1,3 +1,4 @@
+- #V63 — fix(sync): stop automatic REST and WebSocket updates when clock is red; lock interval slider while active; clarify last-sync status
 - #V62 — fix(ui): remove invalid slider touch event property
 - #V60 — fix(ui): stabilize interval slider touch tracking, thumb alignment and drag area
 - #V57 — fix(ui): add interval refresh styles
