@@ -345,8 +345,9 @@ export default function App() {
             onResponderGrant={e=>setSliderFromLocation(e.nativeEvent.locationX,e.nativeEvent.layoutMeasurement.width)}
             onResponderMove={e=>setSliderFromLocation(e.nativeEvent.locationX,e.nativeEvent.layoutMeasurement.width)}
           >
-            <View style={[s.sliderFill,{width:`${((intervalValue-minInterval)/(maxInterval-minInterval))*100}%`}]}/>
-            <View style={[s.sliderThumb,{left:`${((intervalValue-minInterval)/(maxInterval-minInterval))*100}%`}]}/>
+            <View style={s.sliderRail}/>
+            <View style={[s.sliderFill,{width:sliderThumbPosition-9}]}/>
+            <View style={[s.sliderThumb,{left:sliderThumbPosition}]}/>
           </View>
           <Text style={s.sliderMax}>{intervalUnit==='seconds'?'60S':'10M'}</Text>
         </View>
