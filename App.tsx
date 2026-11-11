@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Linking, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View, type TextStyle } from 'react-native';
 import { connectToExness, getAccountSnapshot, openExnessAccountStream, type Credentials } from './src/exness';
 import { loadCredentials, saveCredentials } from './src/storage';
@@ -53,6 +53,7 @@ export default function App() {
   const [busy,setBusy]=useState(false);
   const [streamStatus,setStreamStatus]=useState<'off'|'connecting'|'connected'|'disconnected'|'error'>('off');
   const [autoRefresh,setAutoRefresh]=useState(true);
+  const autoRefreshRef=useRef(true);
   const [intervalUnit,setIntervalUnit]=useState<'seconds'|'minutes'>('seconds');
   const [intervalValue,setIntervalValue]=useState(5);
   const [intervalMenu,setIntervalMenu]=useState(false);
@@ -70,7 +71,7 @@ export default function App() {
 
   // Mantiene un único flujo firmado por cuenta y se resincroniza al reconectar.
   useEffect(()=>{
-    if (!accessPoint || !c.apiKey || !c.secret || !c.accountId) {
+    if (!accessPoint || !autoRefresh || !c.apiKey || !c.secret || !c.accountId) {
       setStreamStatus('off');
       return;
     }
@@ -87,14 +88,14 @@ export default function App() {
       if (cancelled) return;
       try {
         const next=await openExnessAccountStream(c,accessPoint,state=>{
-          if (cancelled) return;
+          if (cancelled || !autoRefreshRef.current) return;
           if (state.balance !== undefined) setBalance(state.balance);
           if (state.equity !== undefined) setEquity(state.equity);
           if (state.usedMargin !== undefined) setUsedMargin(state.usedMargin);
           setLast(state.at);
           setStatus('online');
         },stream=>{
-          if (cancelled) return;
+          if (cancelled || !autoRefreshRef.current) return;
           setStreamStatus(stream);
           if (stream==='connected') retryDelay=3000;
           if (stream==='disconnected' || stream==='error') scheduleReconnect();
@@ -111,12 +112,12 @@ export default function App() {
       if (retryTimer) clearTimeout(retryTimer);
       socket?.close();
     };
-  },[accessPoint,c.apiKey,c.secret,c.accountId]);
+  },[accessPoint,autoRefresh,c.apiKey,c.secret,c.accountId]);
 
   useEffect(()=>{
     if (!accessPoint || !autoRefresh) return;
     const intervalMs = (intervalUnit==='seconds' ? intervalValue : intervalValue*60) * 1000;
-    const timer = setInterval(()=>{ void refresh(); }, intervalMs);
+    const timer = setInterval(()=>{ void refresh(true); }, intervalMs);
     return ()=>clearInterval(timer);
   },[accessPoint,autoRefresh,intervalUnit,intervalValue]);
 
@@ -150,17 +151,20 @@ export default function App() {
   }
   const sliderThumbPosition = 9 + ((intervalValue - minInterval) / (maxInterval - minInterval)) * Math.max(1, sliderWidth - 18);
 
-  async function refresh() {
+  async function refresh(automatic=false) {
+    if (automatic && !autoRefreshRef.current) return;
     if(busy) return;
     setBusy(true);
     try {
       const r=await getAccountSnapshot(c,accessPoint);
+      if (automatic && !autoRefreshRef.current) return;
       setBalance(r.balance ?? 'No disponible en la respuesta');
       setEquity(r.equity ?? 'No disponible en la respuesta');
       setUsedMargin(r.usedMargin ?? 'No disponible en la respuesta');
       setStatus('online');
       setLast(new Date());
     } catch(e) {
+      if (automatic && !autoRefreshRef.current) return;
       setStatus('offline'); Alert.alert('Actualización fallida',e instanceof Error?e.message:String(e));
     } finally { setBusy(false); }
   }
@@ -323,7 +327,7 @@ export default function App() {
       <View style={s.intervalCard}>
         <View style={s.intervalHeader}>
           <Text style={s.meta}>AUTORREFRESCO</Text>
-          <Pressable onPress={()=>setAutoRefresh(x=>!x)} style={s.clockButton}>
+          <Pressable onPress={()=>{const next=!autoRefresh;autoRefreshRef.current=next;setAutoRefresh(next);}} style={s.clockButton}>
             <Text style={autoRefresh?s.clockOn:s.clockOff}>{autoRefresh?'◷':'✕'}</Text>
           </Pressable>
         </View>
@@ -338,10 +342,10 @@ export default function App() {
         <View style={s.sliderRow}>
           <Text style={s.sliderMin}>{intervalUnit==='seconds'?'05S':'1M'}</Text>
           <View
-            style={s.sliderTrack}
+            style={[s.sliderTrack,!autoRefresh?s.sliderEnabled:s.sliderDisabled]}
             onLayout={e=>setSliderWidth(e.nativeEvent.layout.width)}
-            onStartShouldSetResponder={()=>true}
-            onMoveShouldSetResponder={()=>true}
+            onStartShouldSetResponder={()=>!autoRefresh}
+            onMoveShouldSetResponder={()=>!autoRefresh}
             onResponderGrant={e=>setSliderFromLocation(e.nativeEvent.locationX,sliderWidth)}
             onResponderMove={e=>setSliderFromLocation(e.nativeEvent.locationX,sliderWidth)}
           >
@@ -355,7 +359,7 @@ export default function App() {
       </View>
 
       <Text style={s.meta}>ÚLTIMA ACTUALIZACIÓN</Text><Text style={s.time}>{dateText(last)}</Text>
-      <Text style={streamStatus==='connected'?s.onlineText:s.offlineText}>Flujo en tiempo real: {streamStatus}</Text>
+      <Text style={!autoRefresh?s.offlineText:streamStatus==='connected'?s.onlineText:s.offlineText}>Sincronización automática: {autoRefresh?streamStatus:'detenida'}</Text>
       <Text style={status==='online'?s.onlineText:s.offlineText}>Estado: {status}</Text>
       {!!accessPoint && <Text style={s.ap}>Access Point: {accessPoint}</Text>}
     </ScrollView> : <ScrollView contentContainerStyle={s.content}>
@@ -399,5 +403,5 @@ const s=StyleSheet.create({
  refresh:{minHeight:48,borderRadius:10,borderWidth:1,borderColor:'#3b4350',alignItems:'center',justifyContent:'center'},refreshText:{color:'#fff',fontWeight:'900'},
  meta:{color:'#8f98a8',fontSize:11,fontWeight:'900'},time:{color:'#fff',fontWeight:'600',marginTop:-9},ap:{color:'#707988',fontSize:11},
  githubButton:{minHeight:54,borderRadius:12,borderWidth:1,borderColor:'#3b4350',paddingHorizontal:16,flexDirection:'row',alignItems:'center',gap:12},githubLogo:{width:24,height:24},githubText:{color:'#fff',fontWeight:'900',flex:1},githubVersion:{color:'#9da6b5',fontWeight:'800'},change:{color:'#dce1e9',fontSize:13,lineHeight:20},
- intervalCard:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:14,padding:17,gap:12},intervalHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},clockButton:{width:40,height:40,borderRadius:20,alignItems:'center',justifyContent:'center'},clockOn:{color:'#28d17c',fontSize:25,fontWeight:'900'},clockOff:{color:'#e05252',fontSize:22,fontWeight:'900'},intervalTitle:{color:'#fff',fontSize:14,fontWeight:'800'},select:{minHeight:44,borderWidth:1,borderColor:'#3b4350',borderRadius:9,paddingHorizontal:12,flexDirection:'row',alignItems:'center',justifyContent:'space-between',backgroundColor:'#0f131a'},selectText:{color:'#fff',fontWeight:'700'},selectArrow:{color:'#9da6b5',fontSize:12},menu:{borderWidth:1,borderColor:'#3b4350',borderRadius:9,backgroundColor:'#0f131a',overflow:'hidden'},menuItem:{paddingHorizontal:13,paddingVertical:12},menuText:{color:'#fff',fontWeight:'700'},sliderRow:{flexDirection:'row',alignItems:'center',gap:8},sliderMin:{color:'#9da6b5',fontSize:11,fontWeight:'800'},sliderMax:{color:'#9da6b5',fontSize:11,fontWeight:'800'},sliderTrack:{flex:1,height:32,borderRadius:16,backgroundColor:'transparent',position:'relative',justifyContent:'center'},sliderRail:{position:'absolute',left:9,right:9,top:13,height:6,borderRadius:3,backgroundColor:'#303744'},sliderFill:{position:'absolute',left:9,top:13,height:6,borderRadius:3,backgroundColor:'#fff'},sliderThumb:{position:'absolute',top:7,width:18,height:18,borderRadius:9,backgroundColor:'#fff',marginLeft:-9},intervalValue:{color:'#9da6b5',fontSize:11,fontWeight:'700'}
+ intervalCard:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:14,padding:17,gap:12},intervalHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},clockButton:{width:40,height:40,borderRadius:20,alignItems:'center',justifyContent:'center'},clockOn:{color:'#28d17c',fontSize:25,fontWeight:'900'},clockOff:{color:'#e05252',fontSize:22,fontWeight:'900'},intervalTitle:{color:'#fff',fontSize:14,fontWeight:'800'},select:{minHeight:44,borderWidth:1,borderColor:'#3b4350',borderRadius:9,paddingHorizontal:12,flexDirection:'row',alignItems:'center',justifyContent:'space-between',backgroundColor:'#0f131a'},selectText:{color:'#fff',fontWeight:'700'},selectArrow:{color:'#9da6b5',fontSize:12},menu:{borderWidth:1,borderColor:'#3b4350',borderRadius:9,backgroundColor:'#0f131a',overflow:'hidden'},menuItem:{paddingHorizontal:13,paddingVertical:12},menuText:{color:'#fff',fontWeight:'700'},sliderRow:{flexDirection:'row',alignItems:'center',gap:8},sliderMin:{color:'#9da6b5',fontSize:11,fontWeight:'800'},sliderMax:{color:'#9da6b5',fontSize:11,fontWeight:'800'},sliderTrack:{flex:1,height:32,borderRadius:16,backgroundColor:'transparent',position:'relative',justifyContent:'center'},sliderEnabled:{opacity:1},sliderDisabled:{opacity:0.4},sliderRail:{position:'absolute',left:9,right:9,top:13,height:6,borderRadius:3,backgroundColor:'#303744'},sliderFill:{position:'absolute',left:9,top:13,height:6,borderRadius:3,backgroundColor:'#fff'},sliderThumb:{position:'absolute',top:7,width:18,height:18,borderRadius:9,backgroundColor:'#fff',marginLeft:-9},intervalValue:{color:'#9da6b5',fontSize:11,fontWeight:'700'}
 });
