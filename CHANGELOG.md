@@ -1,3 +1,4 @@
+- #V134 — Use repository icon.png as Android app launcher icon
 - #V128 — Add visual asset icons to open and pending trade pairs
 - #V127 — Fix chronological build history sorting
 - #V125 — Fix TypeScript typing for past order groups
