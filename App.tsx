@@ -352,7 +352,7 @@ export default function App() {
             if(!Number.isFinite(runNumber)) continue;
             byBuild.set(runNumber,{run_number:runNumber,conclusion:run.conclusion??null,status:String(run.status??'unknown'),display_title:String(run.display_title??run.name??'Build')});
           }
-          setBuildRuns([...byBuild.values()].sort((a,b)=>a.run_number-b.run.run_number));
+          setBuildRuns([...byBuild.values()].sort((a,b)=>a.run_number-b.run_number));
         }
       }catch{
         if(!cancelled)setBuildRuns([]);
