@@ -1,3 +1,4 @@
+- #V100 — fix(history): preserve selector toggle and reset stale account pair
 - #V97 — fix(exness): write SHA-256 digest to output buffer for signed mutations
 - #V92 — fix(history): show floating PnL for single active position
 - #V89 — fix(exness): send mutation idempotency key in signed headers
