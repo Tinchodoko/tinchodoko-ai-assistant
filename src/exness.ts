@@ -585,6 +585,24 @@ function asRecords(value: unknown): Record<string, unknown>[] {
     : [];
 }
 
+async function getHistoryJson<T>(
+  host: string,
+  path: string,
+  c: Credentials,
+): Promise<T> {
+  const url = host.replace(/\/$/, '') + path;
+  // HISTORIAL follows the proven balance.ts/positions.ts strategy: direct Date.now().
+  // Do not apply the calibrated REST offset because history has a stricter time window.
+  const signed = buildSignedHeadersAtTimestamp(c, path, Date.now());
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: signed.headers,
+    redirect: 'error',
+  });
+  const text = await res.text();
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${text}`);
+  return JSON.parse(text) as T;
+}
 async function fetchHistoryPages(
   host: string,
   c: Credentials,
@@ -632,12 +650,12 @@ export async function getTradingHistory(
 
   const accountId = encodeURIComponent(c.accountId.trim());
   const [snapshot, limitsResponse] = await Promise.all([
-    getJson<Record<string, unknown>>(
+    getHistoryJson<Record<string, unknown>>(
       accessPoint,
       `/v1/trading/accounts/${accountId}/snapshot`,
       c,
     ),
-    getJson<{ limits?: { rest?: { methods?: HistoryLimit[] } } }>(
+    getHistoryJson<{ limits?: { rest?: { methods?: HistoryLimit[] } } }>(
       accessPoint,
       `/v1/configuration/accounts/${accountId}/limits`,
       c,
