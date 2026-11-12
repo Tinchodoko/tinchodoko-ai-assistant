@@ -238,7 +238,7 @@ async function requestJson<T>(
   host: string,
   path: string,
   c: Credentials,
-  method: 'PATCH' | 'DELETE',
+  method: 'POST' | 'PATCH' | 'DELETE',
   bodyObject?: Record<string, unknown>,
 ): Promise<T> {
   const url = host.replace(/\/$/, '') + path;
@@ -306,6 +306,20 @@ export async function modifyActiveOrder(
   }
   const path = `/v1/trading/accounts/${encodeURIComponent(c.accountId.trim())}/orders/${encodeURIComponent(cleanOrderId)}`;
   return requestJson(accessPoint, path, c, 'PATCH', cleanChanges);
+}
+
+export async function createPositionSltp(
+  c: Credentials,
+  accessPoint: string,
+  positionId: string,
+  changes: { stop_loss_price?: string; take_profit_price?: string },
+): Promise<{ operation_id?: string; status?: string }> {
+  const cleanPositionId=positionId.trim();
+  if (!/^\d{1,20}$/.test(cleanPositionId)) throw new Error('ID de posición inválido para configurar SL/TP.');
+  const cleanChanges=Object.fromEntries(Object.entries(changes).filter(([,value])=>value!==undefined));
+  if (!Object.keys(cleanChanges).length) throw new Error('Ingresá un Stop Loss o Take Profit.');
+  const path = `/v1/trading/accounts/${encodeURIComponent(c.accountId.trim())}/orders`;
+  return requestJson(accessPoint,path,c,'POST',{type:'sltp',position_id:cleanPositionId,...cleanChanges});
 }
 
 export async function cancelActiveOrder(
