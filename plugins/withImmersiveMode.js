@@ -27,8 +27,8 @@ module.exports = function withImmersiveMode(config) {
     // Keep the plugin idempotent when Expo Prebuild runs more than once.
     if (!contents.includes('private fun enableImmersiveMode()')) {
       contents = contents.replace(
-        /super\\.onCreate\\(null\\)/,
-        'super.onCreate(null)\\n    enableImmersiveMode()'
+        /super\.onCreate\(null\)/,
+        'super.onCreate(null)\n    enableImmersiveMode()'
       );
 
       const classEnd = contents.lastIndexOf('}');
