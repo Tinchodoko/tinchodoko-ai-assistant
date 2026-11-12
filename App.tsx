@@ -15,16 +15,21 @@ BTC:'₿',ETH:'Ξ',BNB:'◆',XRP:'XRP',SOL:'◎',ADA:'₳',DOGE:'Ð',LTC:'Ł',DO
 };
 function pairAssets(instrument:string): Array<{key:string;mark:string;crypto:boolean}> {
  const symbol=instrument.toUpperCase().replace(/[^A-Z0-9]/g,'');
- const codes=Object.keys(CRYPTO_MARKS).sort((a,b)=>b.length-a.length);
- const base=codes.find(code=>symbol.startsWith(code));
+ const cryptoCodes=Object.keys(CRYPTO_MARKS).sort((a,b)=>b.length-a.length);
+ const currencyCodes=Object.keys(CURRENCY_FLAGS).sort((a,b)=>b.length-a.length);
+ const base=cryptoCodes.find(code=>symbol.startsWith(code));
  if(base) {
-  const quote=symbol.slice(base.length);
-  const mark=CRYPTO_MARKS[quote], flag=CURRENCY_FLAGS[quote];
-  return [{key:base,mark:CRYPTO_MARKS[base],crypto:true},...(mark?[{key:quote,mark,crypto:true}]:flag?[{key:quote,mark:flag,crypto:false}]:[])];
+  const remainder=symbol.slice(base.length);
+  const cryptoQuote=cryptoCodes.find(code=>remainder.startsWith(code));
+  if(cryptoQuote) return [{key:base,mark:CRYPTO_MARKS[base],crypto:true},{key:cryptoQuote,mark:CRYPTO_MARKS[cryptoQuote],crypto:true}];
+  const currencyQuote=currencyCodes.find(code=>remainder.startsWith(code));
+  return [{key:base,mark:CRYPTO_MARKS[base],crypto:true},...(currencyQuote?[{key:currencyQuote,mark:CURRENCY_FLAGS[currencyQuote],crypto:false}]:[])];
  }
- if(symbol.length===6) {
-  const a=symbol.slice(0,3),b=symbol.slice(3);
-  if(CURRENCY_FLAGS[a]&&CURRENCY_FLAGS[b]) return [{key:a,mark:CURRENCY_FLAGS[a],crypto:false},{key:b,mark:CURRENCY_FLAGS[b],crypto:false}];
+ if(symbol.length>=6) {
+  const baseCurrency=symbol.slice(0,3);
+  const remainder=symbol.slice(3);
+  const quoteCurrency=currencyCodes.find(code=>remainder.startsWith(code));
+  if(CURRENCY_FLAGS[baseCurrency]&&quoteCurrency) return [{key:baseCurrency,mark:CURRENCY_FLAGS[baseCurrency],crypto:false},{key:quoteCurrency,mark:CURRENCY_FLAGS[quoteCurrency],crypto:false}];
  }
  return [];
 }
@@ -122,6 +127,7 @@ export default function App() {
   const [sellOrdersExpanded,setSellOrdersExpanded]=useState(true);
   const [cancelledOrdersExpanded,setCancelledOrdersExpanded]=useState(true);
   const [buildRuns,setBuildRuns]=useState<Array<{run_number:number;conclusion:string|null;status:string;display_title:string}>>([]);
+  const [buildRunsLoading,setBuildRunsLoading]=useState(true);
   const swipeStart=useRef<{x:number;y:number}|null>(null);
   const [historyLoading,setHistoryLoading]=useState(false);
   const historyLoadingRef=useRef(false);
@@ -361,6 +367,7 @@ export default function App() {
   useEffect(()=>{
     if(screen!=='app') return;
     let cancelled=false;
+    setBuildRunsLoading(true);
     const loadAllBuildRuns=async()=>{
       try{
         const allRuns:any[]=[];
@@ -381,10 +388,12 @@ export default function App() {
             if(!Number.isFinite(runNumber)) continue;
             byBuild.set(runNumber,{run_number:runNumber,conclusion:run.conclusion??null,status:String(run.status??'unknown'),display_title:String(run.display_title??run.name??'Build')});
           }
-          setBuildRuns([...byBuild.values()].sort((a,b)=>a.run_number-b.run_number));
+          setBuildRuns([...byBuild.values()].sort((a,b)=>b.run_number-a.run_number));
         }
       }catch{
         if(!cancelled)setBuildRuns([]);
+      }finally{
+        if(!cancelled)setBuildRunsLoading(false);
       }
     };
     void loadAllBuildRuns();
@@ -464,7 +473,7 @@ export default function App() {
     const pnl=state==='FILLED'?historyOrderPnl(order):'—';
     const stateStyle=state==='FILLED'?(direction==='buy'?s.pnlPositive:s.pnlNegative):s.pendingText;
     return <View key={String(order.order_id??index)} style={s.historyCard}>
-      <View style={s.historyCardHeader}><Text style={s.historyPair}>{historyValue(order,'instrument')}</Text><Text style={stateStyle}>{state||'FINALIZADA'}</Text></View>
+      <View style={s.historyCardHeader}><PairIdentity instrument={historyValue(order,'instrument','')}/><Text style={stateStyle}>{state||'FINALIZADA'}</Text></View>
       <Info label="ID ORDEN" value={historyValue(order,'order_id')}/>
       <View style={s.info}><Text style={s.infoLabel}>DIRECCIÓN</Text><Text style={[s.infoValue,direction==='buy'?s.pnlPositive:direction==='sell'?s.pnlNegative:undefined]}>{historyValue(order,'direction')}</Text></View>
       <Info label="VOLUMEN" value={historyValue(order,'volume')}/><Info label="PRECIO DE ENTRADA" value={historyValue(order,'price')}/>
@@ -841,14 +850,16 @@ export default function App() {
       </Pressable>
       <Text style={s.meta}>REGISTRO DE CAMBIOS</Text>
       <View style={s.buildHistory}>
-        <View style={s.buildCard}>
-          <Text style={s.buildPending}>#V0</Text>
-          <Text style={s.buildDescription}>Initial Android foundation: Connection and Profile screens.</Text>
-        </View>
-        {buildRuns.map(run=><View key={run.run_number} style={s.buildCard}>
-          <Text style={run.conclusion==='success'?s.buildSuccess:run.conclusion==='failure'||run.conclusion==='timed_out'?s.buildFailure:s.buildPending}>#V{run.run_number}</Text>
-          <Text style={s.buildDescription}>{run.display_title}</Text>
-        </View>)}
+        {buildRunsLoading?<View style={{alignItems:'center',paddingVertical:18,gap:8}}><ActivityIndicator color="#fff"/><Text style={s.buildDescription}>CARGANDO HISTORIAL DE BUILDS...</Text></View>:<>
+          {buildRuns.map(run=><View key={run.run_number} style={s.buildCard}>
+            <Text style={run.conclusion==='success'?s.buildSuccess:run.conclusion==='failure'||run.conclusion==='timed_out'?s.buildFailure:s.buildPending}>#V{run.run_number}</Text>
+            <Text style={s.buildDescription}>{run.display_title}</Text>
+          </View>)}
+          <View style={s.buildCard}>
+            <Text style={s.buildPending}>#V0</Text>
+            <Text style={s.buildDescription}>Initial Android foundation: Connection and Profile screens.</Text>
+          </View>
+        </>}
       </View>
     </ScrollView>}
   {renderTradeModals()}
