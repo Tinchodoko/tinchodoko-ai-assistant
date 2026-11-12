@@ -242,6 +242,19 @@ export default function App() {
   }
   const historySymbols=historyData?Array.from(new Set([...historyData.positions.map(x=>String(x.instrument??'')),...historyData.activeOrders.map(x=>String(x.instrument??'')),...historyData.pastOrders.map(x=>{const o=x.order&&typeof x.order==='object'?x.order as Record<string,unknown>:x;return String(o.instrument??'');}),...historyData.deals.map(x=>{const d=x.deal&&typeof x.deal==='object'?x.deal as Record<string,unknown>:x;return String(d.instrument??'');})].filter(x=>x&&x!=='undefined'))).sort():[];
   const selectedActivePositions=(historyData?.positions??[]).filter(x=>!historyPair||x.instrument===historyPair);
+  const accountFloatingPnl = (() => {
+    const b=Number(balance), e=Number(equity);
+    if (!Number.isFinite(b)||!Number.isFinite(e)) return null;
+    return e-b;
+  })();
+  function positionPnl(item:Record<string,unknown>): number|null {
+    const direct=getFloatingPnl(item);
+    if (direct!==null) return direct;
+    // Exness trading snapshots expose account-level floating P/L through
+    // equity-balance, not a per-position profit field. With exactly one open
+    // position, that account value is the exact floating P/L of that position.
+    return selectedActivePositions.length===1 ? accountFloatingPnl : null;
+  }
   const selectedActiveOrders=(historyData?.activeOrders??[]).filter(x=>String(x.order_type??'').toLowerCase()!=='sltp'&&(!historyPair||x.instrument===historyPair));
   const selectedPastOrders=(historyData?.pastOrders??[]).filter(x=>{const o=x.order&&typeof x.order==='object'?x.order as Record<string,unknown>:x;return !historyPair||o.instrument===historyPair;});
   function beginEdit(target:'position'|'order', targetId:string, field:'stop_loss_price'|'take_profit_price', previous:string, instrument:string) {
@@ -531,11 +544,11 @@ export default function App() {
           const buy=String(item.direction??'').toLowerCase()==='buy'; const sltp=historyData.activeOrders.find(o=>String(o.position_id??'')===String(item.position_id??'')&&String(o.order_type??'').toLowerCase()==='sltp');
           return <View key={String(item.position_id??index)} style={s.historyCard}>
             <View style={s.historyCardHeader}><Text style={s.historyPair}>{historyValue(item,'instrument')}</Text><Text style={buy?s.pnlPositive:s.pnlNegative}>{buy?'BUY':'SELL'}</Text></View>
-            <Info label="ID POSICIÓN" value={historyValue(item,'position_id')}/><Info label="VOLUMEN" value={historyValue(item,'volume')}/><Info label="PRECIO DE APERTURA" value={historyValue(item,'open_price')}/><Info label="PNL FLOTANTE" value={getFloatingPnl(item)===null?'—':`${getFloatingPnl(item)!>=0?'+':''}${getFloatingPnl(item)!.toFixed(2)}`} valueStyle={getFloatingPnl(item)===null?undefined:getFloatingPnl(item)!>=0?s.pnlPositive:s.pnlNegative}/><Info label="ESTADO" value={historyValue(item,'state')}/>
+            <Info label="ID POSICIÓN" value={historyValue(item,'position_id')}/><Info label="VOLUMEN" value={historyValue(item,'volume')}/><Info label="PRECIO DE APERTURA" value={historyValue(item,'open_price')}/><Info label="PNL FLOTANTE" value={positionPnl(item)===null?'—':`${positionPnl(item)!>=0?'+':''}${positionPnl(item)!.toFixed(2)}`} valueStyle={positionPnl(item)===null?undefined:positionPnl(item)!>=0?s.pnlPositive:s.pnlNegative}/><Info label="ESTADO" value={historyValue(item,'state')}/>
             <View style={s.editableRow}><Text style={s.infoLabel}>STOP LOSS</Text><View style={s.editableValue}><Text style={s.infoValue}>{sltp?historyValue(sltp,'stop_loss_price'):'—'}</Text>{sltp&&<Pressable onPress={()=>beginEdit('position',String(sltp.order_id??''),'stop_loss_price',historyValue(sltp,'stop_loss_price'),String(item.instrument??''))}><Text style={s.pencil}>✎</Text></Pressable>}</View></View>
             <View style={s.editableRow}><Text style={s.infoLabel}>TAKE PROFIT</Text><View style={s.editableValue}><Text style={s.infoValue}>{sltp?historyValue(sltp,'take_profit_price'):'—'}</Text>{sltp&&<Pressable onPress={()=>beginEdit('position',String(sltp.order_id??''),'take_profit_price',historyValue(sltp,'take_profit_price'),String(item.instrument??''))}><Text style={s.pencil}>✎</Text></Pressable>}</View></View>
             <Info label="APERTURA" value={historyDate(item,'create_time')}/>
-            <View style={s.cardActionRow}><Pressable onPress={()=>beginClose('position',String(item.position_id??''),String(item.instrument??''),getFloatingPnl(item))} style={s.closeButton}><Text style={s.closeButtonText}>✕</Text></Pressable></View>
+            <View style={s.cardActionRow}><Pressable onPress={()=>beginClose('position',String(item.position_id??''),String(item.instrument??''),positionPnl(item))} style={s.closeButton}><Text style={s.closeButtonText}>✕</Text></Pressable></View>
           </View>;
         })}
         <Text style={s.historySection}>ÓRDENES PENDIENTES ({selectedActiveOrders.length})</Text>
