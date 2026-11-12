@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Linking, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View, type TextStyle } from 'react-native';
-import { connectToExness, getAccountSnapshot, getTradingHistory, openExnessAccountStream, modifyActiveOrder, cancelActiveOrder, closePosition, type Credentials, type TradingHistoryData } from './src/exness';
+import { connectToExness, getAccountSnapshot, getTradingHistory, openExnessAccountStream, modifyActiveOrder, createPositionSltp, cancelActiveOrder, closePosition, type Credentials, type TradingHistoryData } from './src/exness';
 import { loadCredentials, saveCredentials } from './src/storage';
 import { BUILD_INFO } from './src/buildInfo';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -21,6 +21,8 @@ type TradeAction = {
   otherField?: 'stop_loss_price' | 'take_profit_price';
   otherValue?: string;
   instrument?: string;
+  positionId?: string;
+  createSltp?: boolean;
   pnl?: number | null;
 };
 
@@ -323,13 +325,20 @@ export default function App() {
   const selectedActiveOrders=(historyData?.activeOrders??[]).filter(x=>String(x.order_type??'').toLowerCase()!=='sltp'&&(!historyPair||x.instrument===historyPair));
   // PASADAS es el historial completo: no depende de ningún par seleccionado.
   const selectedPastOrders=historyData?.pastOrders??[];
-  function beginEdit(target:'position'|'order', targetId:string, field:'price'|'stop_loss_price'|'take_profit_price', previous:string, instrument:string, otherField?:'stop_loss_price'|'take_profit_price', otherValue?:string) {
+  function beginEdit(target:'position'|'order', targetId:string, field:'price'|'stop_loss_price'|'take_profit_price', previous:string, instrument:string, otherField?:'stop_loss_price'|'take_profit_price', otherValue?:string, positionId?:string) {
     const cleanId=targetId.trim();
-    if (!/^\d{1,20}$/.test(cleanId)) {
+    const cleanPositionId=(positionId??'').trim();
+    const createSltp=target==='position' && !/^\d{1,20}$/.test(cleanId);
+    if (createSltp && !/^\d{1,20}$/.test(cleanPositionId)) {
+      Alert.alert('No se puede modificar', 'Exness no devolvió un ID de posición válido.');
+      return;
+    }
+    if (!createSltp && !/^\d{1,20}$/.test(cleanId)) {
       Alert.alert('No se puede modificar', 'Exness no devolvió un ID de orden válido para este precio.');
       return;
     }
-    setTradeAction({kind:'edit',target,targetId:cleanId,field,previous,instrument,value:previous==='—'?'':previous,otherField,otherValue:otherValue==='—'?'':otherValue});
+    const otherConfigured=otherValue && otherValue!=='NO CONFIGURADO' && otherValue!=='—' && Number(otherValue)>0 ? otherValue : undefined;
+    setTradeAction({kind:'edit',target,targetId:cleanId,positionId:cleanPositionId,createSltp,field,previous,instrument,value:previous==='—'||previous==='NO CONFIGURADO'?'':previous,otherField:otherConfigured?otherField:undefined,otherValue:otherConfigured});
   }
   function beginClose(target:'position'|'order', targetId:string, instrument:string, pnl:number|null) {
     setTradeConfirm({kind:'close',target,targetId,instrument,pnl});
@@ -352,7 +361,11 @@ export default function App() {
         if (!tradeConfirm.field || !tradeConfirm.value) throw new Error('Falta el valor de modificación.');
         const payload: Record<string, string> = {[tradeConfirm.field!]: tradeConfirm.value!};
         if (tradeConfirm.otherField && tradeConfirm.otherValue) payload[tradeConfirm.otherField] = tradeConfirm.otherValue.replace(',', '.').trim();
-        await modifyActiveOrder(c,accessPoint,tradeConfirm.targetId,payload);
+        if (tradeConfirm.createSltp && tradeConfirm.positionId) {
+          await createPositionSltp(c,accessPoint,tradeConfirm.positionId,payload);
+        } else {
+          await modifyActiveOrder(c,accessPoint,tradeConfirm.targetId,payload);
+        }
         setTradeConfirm(null);
         Alert.alert('Solicitud enviada','Exness aceptó la modificación. El resultado final se actualizará en el próximo snapshot.');
       } else if (tradeConfirm.target==='position') {
@@ -637,8 +650,8 @@ export default function App() {
           return <View key={String(item.position_id??index)} style={s.historyCard}>
             <View style={s.historyCardHeader}><Text style={s.historyPair}>{historyValue(item,'instrument')}</Text><Text style={buy?s.pnlPositive:s.pnlNegative}>{buy?'BUY':'SELL'}</Text></View>
             <Info label="ID POSICIÓN" value={historyValue(item,'position_id')}/><Info label="VOLUMEN" value={historyValue(item,'volume')}/><Info label="PRECIO DE APERTURA" value={historyValue(item,'open_price')}/><Info label="ESTADO" value={historyValue(item,'state')}/>
-            <View style={s.editableRow}><Text style={s.infoLabel}>STOP LOSS</Text><View style={s.editableValue}><Text style={s.infoValue}>{configuredPrice(sltp,'stop_loss_price')}</Text><Pressable onPress={()=>beginEdit('position',String(sltp?.order_id??''),'stop_loss_price',configuredPrice(sltp,'stop_loss_price'),String(item.instrument??''),'take_profit_price',configuredPrice(sltp,'take_profit_price'))}><Text style={s.pencil}>✎</Text></Pressable></View></View>
-            <View style={s.editableRow}><Text style={s.infoLabel}>TAKE PROFIT</Text><View style={s.editableValue}><Text style={s.infoValue}>{configuredPrice(sltp,'take_profit_price')}</Text><Pressable onPress={()=>beginEdit('position',String(sltp?.order_id??''),'take_profit_price',configuredPrice(sltp,'take_profit_price'),String(item.instrument??''),'stop_loss_price',configuredPrice(sltp,'stop_loss_price'))}><Text style={s.pencil}>✎</Text></Pressable></View></View>
+            <View style={s.editableRow}><Text style={s.infoLabel}>STOP LOSS</Text><View style={s.editableValue}><Text style={s.infoValue}>{configuredPrice(sltp,'stop_loss_price')}</Text><Pressable onPress={()=>beginEdit('position',String(sltp?.order_id??''),'stop_loss_price',configuredPrice(sltp,'stop_loss_price'),String(item.instrument??''),'take_profit_price',configuredPrice(sltp,'take_profit_price'),String(item.position_id??''))}><Text style={s.pencil}>✎</Text></Pressable></View></View>
+            <View style={s.editableRow}><Text style={s.infoLabel}>TAKE PROFIT</Text><View style={s.editableValue}><Text style={s.infoValue}>{configuredPrice(sltp,'take_profit_price')}</Text><Pressable onPress={()=>beginEdit('position',String(sltp?.order_id??''),'take_profit_price',configuredPrice(sltp,'take_profit_price'),String(item.instrument??''),'stop_loss_price',configuredPrice(sltp,'stop_loss_price'),String(item.position_id??''))}><Text style={s.pencil}>✎</Text></Pressable></View></View>
             <Info label="APERTURA" value={historyDate(item,'create_time')}/>
             <View style={s.cardActionRow}><Pressable onPress={()=>beginClose('position',String(item.position_id??''),String(item.instrument??''),null)} style={s.closeButton}><Text style={s.closeButtonText}>✕</Text></Pressable></View>
           </View>;
