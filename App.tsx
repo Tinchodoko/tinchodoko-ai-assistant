@@ -478,7 +478,7 @@ export default function App() {
     }).then(next=>{if(cancelled){next.close();return;}socket=next;tickSocketRef.current=next;})
       .catch(error=>{if(!cancelled){setTickStatus('offline');setInstrumentError(error instanceof Error?error.message:String(error));}});
     return ()=>{cancelled=true;socket?.close();if(tickSocketRef.current===socket)tickSocketRef.current=null;};
-  },[screen,selectedInstrument,accessPoint,c.apiKey,c.secret,c.accountId]);
+  },[screen,selectedInstrument,accessPoint,c.apiKey,c.secret,c.accountId,appActiveTick]);
 
   useEffect(()=>{
     if(screen!=='positions'||!positionsAutoRefresh||!selectedInstrument||!accessPoint)return;
