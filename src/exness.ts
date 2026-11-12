@@ -282,8 +282,23 @@ export async function modifyActiveOrder(
   orderId: string,
   changes: { price?: string; stop_loss_price?: string | null; take_profit_price?: string | null },
 ): Promise<{ operation_id?: string; status?: string }> {
-  const path = `/v1/trading/accounts/${encodeURIComponent(c.accountId.trim())}/orders/${encodeURIComponent(orderId)}`;
-  return requestJson(accessPoint, path, c, 'PATCH', changes);
+  const cleanOrderId = orderId.trim();
+  if (!/^\d{1,20}$/.test(cleanOrderId)) {
+    throw new Error('ID de orden inválido para modificar.');
+  }
+  const cleanChanges = Object.fromEntries(
+    Object.entries(changes).filter(([, value]) => value !== undefined),
+  ) as { price?: string; stop_loss_price?: string | null; take_profit_price?: string | null };
+  if (!Object.keys(cleanChanges).length) {
+    throw new Error('No hay ningún valor para modificar.');
+  }
+  for (const value of Object.values(cleanChanges)) {
+    if (value !== null && (typeof value !== 'string' || !/^[+]?(?:(?:0*[1-9][0-9]*)(?:\.[0-9]+)?|0+\.[0-9]*[1-9][0-9]*)$/.test(value))) {
+      throw new Error('El precio enviado no tiene un formato válido para Exness.');
+    }
+  }
+  const path = `/v1/trading/accounts/${encodeURIComponent(c.accountId.trim())}/orders/${encodeURIComponent(cleanOrderId)}`;
+  return requestJson(accessPoint, path, c, 'PATCH', cleanChanges);
 }
 
 export async function cancelActiveOrder(
