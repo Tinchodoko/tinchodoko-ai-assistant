@@ -599,6 +599,9 @@ function asRecords(value: unknown): Record<string, unknown>[] {
     : [];
 }
 
+// Last server time observed from Exness' HTTP Date header (whole-second precision).
+let historyServerNowMs = 0;
+
 async function getHistoryJson<T>(
   host: string,
   path: string,
@@ -616,6 +619,11 @@ async function getHistoryJson<T>(
   });
   const responseReceivedAt = Date.now();
   const serverDate = res.headers.get('date');
+  const serverTime = serverDate ? Date.parse(serverDate) : Number.NaN;
+  if (Number.isFinite(serverTime)) {
+    // HTTP Date is rounded down to a whole second; center that second.
+    historyServerNowMs = serverTime + 500;
+  }
   const text = await res.text();
   if (!res.ok) {
     const roundTripMs = responseReceivedAt - requestStartedAt;
@@ -713,14 +721,16 @@ export async function getTradingHistory(
     throw new Error('Exness no informó los límites de antigüedad y rango del historial. No se enviaron consultas históricas.');
   }
 
-  // Exness can reject a history window whose upper bound is ahead of its
-  // server clock. The phone's clock can differ by a few seconds even when
-  // signed GET requests work, so end the requested range 5 seconds in the past.
-  // This is only a history-query boundary; signed timestamps remain Date.now().
-  const historyEndMs = Date.now() - 5000;
-  const start = new Date(historyEndMs - ageDays * 24 * 60 * 60 * 1000);
+  // Build the history window against Exness' server clock, not the phone clock.
+  // The HTTP Date header has one-second precision, so keep a 60-second safety
+  // margin inside both the maximum history age and each maximum range.
+  // The upper bound is exclusive and stays safely behind the server's current time.
+  const dayMs = 24 * 60 * 60 * 1000;
+  const serverNowMs = historyServerNowMs || Date.now();
+  const historyEndMs = serverNowMs - 5000;
+  const start = new Date(historyEndMs - ageDays * dayMs + 60_000);
   const historyEnd = new Date(historyEndMs);
-  const maxRangeMs = rangeDays * 24 * 60 * 60 * 1000;
+  const maxRangeMs = Math.max(60_000, rangeDays * dayMs - 60_000);
   const pastOrders: Record<string, unknown>[] = [];
   const deals: Record<string, unknown>[] = [];
 
