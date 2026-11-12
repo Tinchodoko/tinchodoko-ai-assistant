@@ -1,3 +1,4 @@
+- #V112 — Fix malformed JSX in pending history section
 - #V108 — Fix history range boundary and add endpoint diagnostics
 - #V107 — Fix history timestamp path and avoid rate-limit bursts
 - #V106 — Use direct timestamp for Exness history requests
