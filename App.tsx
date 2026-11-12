@@ -555,7 +555,8 @@ export default function App() {
     if(!hasValue) return 'NO DISPONIBLE';
     return `${total>=0?'+':''}${total.toFixed(2)}${currency?' '+currency:''}`;
   }
-  const filteredPositionInstruments=instrumentList.filter(symbol=>classifyExnessInstrument(symbol)===positionCategory);\n  const historySymbols=historyData?Array.from(new Set([...historyData.positions.map(x=>String(x.instrument??'')),...historyData.activeOrders.map(x=>String(x.instrument??'')),...historyData.pastOrders.map(x=>{const o=x.order&&typeof x.order==='object'?x.order as Record<string,unknown>:x;return String(o.instrument??'');}),...historyData.deals.map(x=>{const d=x.deal&&typeof x.deal==='object'?x.deal as Record<string,unknown>:x;return String(d.instrument??'');})].filter(x=>x&&x!=='undefined'))).sort():[];
+  const filteredPositionInstruments=instrumentList.filter(symbol=>classifyExnessInstrument(symbol)===positionCategory);
+  const historySymbols=historyData?Array.from(new Set([...historyData.positions.map(x=>String(x.instrument??'')),...historyData.activeOrders.map(x=>String(x.instrument??'')),...historyData.pastOrders.map(x=>{const o=x.order&&typeof x.order==='object'?x.order as Record<string,unknown>:x;return String(o.instrument??'');}),...historyData.deals.map(x=>{const d=x.deal&&typeof x.deal==='object'?x.deal as Record<string,unknown>:x;return String(d.instrument??'');})].filter(x=>x&&x!=='undefined'))).sort():[];
   const selectedActivePositions=(historyData?.positions??[]).filter(x=>historyPair==='*'||x.instrument===historyPair);
   const selectedActiveOrders=(historyData?.activeOrders??[]).filter(x=>String(x.order_type??'').toLowerCase()!=='sltp'&&(historyPair==='*'||x.instrument===historyPair));
   const selectedPastOrders=(historyData?.pastOrders??[]).filter(item=>{
