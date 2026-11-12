@@ -18,6 +18,8 @@ type TradeAction = {
   field?: 'stop_loss_price' | 'take_profit_price';
   previous?: string;
   value?: string;
+  otherField?: 'stop_loss_price' | 'take_profit_price';
+  otherValue?: string;
   instrument?: string;
   pnl?: number | null;
 };
@@ -250,20 +252,20 @@ export default function App() {
   function positionPnl(item:Record<string,unknown>): number|null {
   const selectedActiveOrders=(historyData?.activeOrders??[]).filter(x=>String(x.order_type??'').toLowerCase()!=='sltp'&&(!historyPair||x.instrument===historyPair));
   const selectedPastOrders=(historyData?.pastOrders??[]).filter(x=>{const o=x.order&&typeof x.order==='object'?x.order as Record<string,unknown>:x;return !historyPair||o.instrument===historyPair;});
-  function beginEdit(target:'position'|'order', targetId:string, field:'stop_loss_price'|'take_profit_price', previous:string, instrument:string) {
+  function beginEdit(target:'position'|'order', targetId:string, field:'stop_loss_price'|'take_profit_price', previous:string, instrument:string, otherField:'stop_loss_price'|'take_profit_price', otherValue:string) {
     const cleanId=targetId.trim();
     if (!/^\d{1,20}$/.test(cleanId)) {
       Alert.alert('No se puede modificar', 'Exness no devolvió un ID de orden válido para este SL/TP.');
       return;
     }
-    setTradeAction({kind:'edit',target,targetId:cleanId,field,previous,instrument,value:previous==='—'?'':previous});
+    setTradeAction({kind:'edit',target,targetId:cleanId,field,previous,instrument,value:previous==='—'?'':previous,otherField,otherValue:otherValue==='—'?'':otherValue});
   }
   function beginClose(target:'position'|'order', targetId:string, instrument:string, pnl:number|null) {
     setTradeConfirm({kind:'close',target,targetId,instrument,pnl});
   }
   function confirmEditInput() {
     if (!tradeAction || tradeAction.kind!=='edit') return;
-    const value=(tradeAction.value??'').trim();
+    const value=(tradeAction.value??'').trim().replace(',', '.');
     if (!value || !/^[+]?(?:0*[1-9][0-9]*)(?:\.[0-9]+)?$/.test(value)) {
       Alert.alert('Valor inválido','Ingresá un precio válido mayor que 0.');
       return;
@@ -277,7 +279,9 @@ export default function App() {
     try {
       if (tradeConfirm.kind==='edit') {
         if (!tradeConfirm.field || !tradeConfirm.value) throw new Error('Falta el valor de modificación.');
-        await modifyActiveOrder(c,accessPoint,tradeConfirm.targetId,{[tradeConfirm.field]:tradeConfirm.value});
+        const payload: Record<string, string> = {[tradeConfirm.field!]: tradeConfirm.value!};
+        if (tradeConfirm.otherField && tradeConfirm.otherValue) payload[tradeConfirm.otherField] = tradeConfirm.otherValue.replace(',', '.').trim();
+        await modifyActiveOrder(c,accessPoint,tradeConfirm.targetId,payload);
         setTradeConfirm(null);
         Alert.alert('Solicitud enviada','Exness aceptó la modificación. El resultado final se actualizará en el próximo snapshot.');
       } else if (tradeConfirm.target==='position') {
@@ -538,8 +542,8 @@ export default function App() {
           return <View key={String(item.position_id??index)} style={s.historyCard}>
             <View style={s.historyCardHeader}><Text style={s.historyPair}>{historyValue(item,'instrument')}</Text><Text style={buy?s.pnlPositive:s.pnlNegative}>{buy?'BUY':'SELL'}</Text></View>
             <Info label="ID POSICIÓN" value={historyValue(item,'position_id')}/><Info label="VOLUMEN" value={historyValue(item,'volume')}/><Info label="PRECIO DE APERTURA" value={historyValue(item,'open_price')}/><Info label="ESTADO" value={historyValue(item,'state')}/>
-            <View style={s.editableRow}><Text style={s.infoLabel}>STOP LOSS</Text><View style={s.editableValue}><Text style={s.infoValue}>{sltp?historyValue(sltp,'stop_loss_price'):'—'}</Text>{sltp&&<Pressable onPress={()=>beginEdit('position',String(sltp.order_id??''),'stop_loss_price',historyValue(sltp,'stop_loss_price'),String(item.instrument??''))}><Text style={s.pencil}>✎</Text></Pressable>}</View></View>
-            <View style={s.editableRow}><Text style={s.infoLabel}>TAKE PROFIT</Text><View style={s.editableValue}><Text style={s.infoValue}>{sltp?historyValue(sltp,'take_profit_price'):'—'}</Text>{sltp&&<Pressable onPress={()=>beginEdit('position',String(sltp.order_id??''),'take_profit_price',historyValue(sltp,'take_profit_price'),String(item.instrument??''))}><Text style={s.pencil}>✎</Text></Pressable>}</View></View>
+            <View style={s.editableRow}><Text style={s.infoLabel}>STOP LOSS</Text><View style={s.editableValue}><Text style={s.infoValue}>{sltp?historyValue(sltp,'stop_loss_price'):'—'}</Text>{sltp&&<Pressable onPress={()=>beginEdit('position',String(sltp.order_id??''),'stop_loss_price',historyValue(sltp,'stop_loss_price'),String(item.instrument??''),'take_profit_price',historyValue(sltp,'take_profit_price'))}><Text style={s.pencil}>✎</Text></Pressable>}</View></View>
+            <View style={s.editableRow}><Text style={s.infoLabel}>TAKE PROFIT</Text><View style={s.editableValue}><Text style={s.infoValue}>{sltp?historyValue(sltp,'take_profit_price'):'—'}</Text>{sltp&&<Pressable onPress={()=>beginEdit('position',String(sltp.order_id??''),'take_profit_price',historyValue(sltp,'take_profit_price'),String(item.instrument??''),'stop_loss_price',historyValue(sltp,'stop_loss_price'))}><Text style={s.pencil}>✎</Text></Pressable>}</View></View>
             <Info label="APERTURA" value={historyDate(item,'create_time')}/>
             <View style={s.cardActionRow}><Pressable onPress={()=>beginClose('position',String(item.position_id??''),String(item.instrument??''),null)} style={s.closeButton}><Text style={s.closeButtonText}>✕</Text></Pressable></View>
           </View>;
@@ -548,8 +552,8 @@ export default function App() {
         {selectedActiveOrders.length===0?<Text style={s.emptyHistory}>No hay órdenes pendientes para este par.</Text>:selectedActiveOrders.map((item,index)=><View key={String(item.order_id??index)} style={s.historyCard}>
           <View style={s.historyCardHeader}><Text style={s.historyPair}>{historyValue(item,'instrument')}</Text><Text style={s.pendingText}>PENDIENTE</Text></View>
           <Info label="ID ORDEN" value={historyValue(item,'order_id')}/><Info label="TIPO" value={historyValue(item,'order_type')}/><Info label="DIRECCIÓN" value={historyValue(item,'direction')}/><Info label="VOLUMEN" value={historyValue(item,'volume')}/><Info label="PRECIO" value={historyValue(item,'price')}/>
-          <View style={s.editableRow}><Text style={s.infoLabel}>STOP LOSS</Text><View style={s.editableValue}><Text style={s.infoValue}>{historyValue(item,'stop_loss_price')}</Text><Pressable onPress={()=>beginEdit('order',String(item.order_id??''),'stop_loss_price',historyValue(item,'stop_loss_price'),String(item.instrument??''))}><Text style={s.pencil}>✎</Text></Pressable></View></View>
-          <View style={s.editableRow}><Text style={s.infoLabel}>TAKE PROFIT</Text><View style={s.editableValue}><Text style={s.infoValue}>{historyValue(item,'take_profit_price')}</Text><Pressable onPress={()=>beginEdit('order',String(item.order_id??''),'take_profit_price',historyValue(item,'take_profit_price'),String(item.instrument??''))}><Text style={s.pencil}>✎</Text></Pressable></View></View>
+          <View style={s.editableRow}><Text style={s.infoLabel}>STOP LOSS</Text><View style={s.editableValue}><Text style={s.infoValue}>{historyValue(item,'stop_loss_price')}</Text><Pressable onPress={()=>beginEdit('order',String(item.order_id??''),'stop_loss_price',historyValue(item,'stop_loss_price'),String(item.instrument??''),'take_profit_price',historyValue(item,'take_profit_price'))}><Text style={s.pencil}>✎</Text></Pressable></View></View>
+          <View style={s.editableRow}><Text style={s.infoLabel}>TAKE PROFIT</Text><View style={s.editableValue}><Text style={s.infoValue}>{historyValue(item,'take_profit_price')}</Text><Pressable onPress={()=>beginEdit('order',String(item.order_id??''),'take_profit_price',historyValue(item,'take_profit_price'),String(item.instrument??''),'stop_loss_price',historyValue(item,'stop_loss_price'))}><Text style={s.pencil}>✎</Text></Pressable></View></View>
           <Info label="CREADA" value={historyDate(item,'create_time')}/>
           <View style={s.cardActionRow}><Pressable onPress={()=>beginClose('order',String(item.order_id??''),String(item.instrument??''),null)} style={s.closeButton}><Text style={s.closeButtonText}>✕</Text></Pressable></View>
         </View>)}
