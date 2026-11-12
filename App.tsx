@@ -66,7 +66,7 @@ export default function App() {
   const [accessPoint,setAccessPoint]=useState('');
   const [last,setLast]=useState<Date|null>(null);
   const [busy,setBusy]=useState(false);
-  const [streamStatus,setStreamStatus]=useState<'off'|'connecting'|'connected'|'disconnected'|'error'>('off');
+  const [,setStreamStatus]=useState<'off'|'connecting'|'connected'|'disconnected'|'error'>('off');
   const [autoRefresh,setAutoRefresh]=useState(false);
   const autoRefreshRef=useRef(false);
   const [intervalUnit,setIntervalUnit]=useState<'seconds'|'minutes'>('seconds');
