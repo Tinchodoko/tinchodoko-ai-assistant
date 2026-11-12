@@ -58,6 +58,7 @@ type TradeAction = {
   positionId?: string;
   createSltp?: boolean;
   pnl?: number | null;
+  basePrice?: number;
 };
 
 function classifyExnessInstrument(symbol:string):'Crypto'|'Forex'|'Indices'|'ETC' {
@@ -190,6 +191,7 @@ export default function App() {
   const [limitVolume,setLimitVolume]=useState('0.01');
   const [limitEntryPrice,setLimitEntryPrice]=useState('');
   const [limitTakeProfit,setLimitTakeProfit]=useState('');
+  const [orderPanel,setOrderPanel]=useState<'market'|'limit'>('market');
   const [limitStopLoss,setLimitStopLoss]=useState('');
   const [positionSubmitting,setPositionSubmitting]=useState(false);
   const tickSocketRef=useRef<WebSocket|null>(null);
@@ -517,6 +519,10 @@ export default function App() {
     if(!selectedInstrument){Alert.alert('Instrumento requerido','Seleccioná un instrumento disponible de Exness.');return;}
     const volume=validateOrderVolume(marketVolume);if(!volume){Alert.alert('Volumen inválido','INGRESA UN VALOR DE LOTE VÁLIDO DE 0.01 A 1 LOTES PORFAVOR');return;}
     const sl=validateOrderPrice(marketStopLoss,'STOP LOSS'),tp=validateOrderPrice(marketTakeProfit,'TAKE PROFIT');if(sl===null||tp===null)return;
+    const currentPrice=tick?(tick.bid+tick.ask)/2:NaN;
+    if(!Number.isFinite(currentPrice)){Alert.alert('Precio no disponible','Esperá la cotización actual de Exness.');return;}
+    if(tp!==undefined&&!(marketDirection==='buy'?Number(tp)>currentPrice:Number(tp)<currentPrice)){Alert.alert('VALOR DE TP/SL INCORRECTO','VALOR DE TP/SL INCORRECTO, DEBE SER '+(marketDirection==='buy'?'MAYOR':'MENOR')+' A ('+currentPrice+')');return;}
+    if(sl!==undefined&&!(marketDirection==='buy'?Number(sl)<currentPrice:Number(sl)>currentPrice)){Alert.alert('VALOR DE TP/SL INCORRECTO','VALOR DE TP/SL INCORRECTO, DEBE SER '+(marketDirection==='buy'?'MENOR':'MAYOR')+' A ('+currentPrice+')');return;}
     setPositionSubmitting(true);try{const result=await openMarketPosition(c,accessPoint,{instrument:selectedInstrument,direction:marketDirection,volume,stopLoss:sl,takeProfit:tp});
       Alert.alert('Solicitud de MARKET ORDER enviada',`Exness aceptó la solicitud.\\nOperación: ${String(result.operation_id??'pendiente')}\\nEstado: ${String(result.status??'accepted')}`);setPositionsLastSync(new Date());}
     catch(error){Alert.alert('No se pudo abrir la MARKET ORDER',error instanceof Error?error.message:String(error));}finally{setPositionSubmitting(false);}
@@ -527,6 +533,11 @@ export default function App() {
     const volume=validateOrderVolume(limitVolume);if(!volume){Alert.alert('Volumen inválido','INGRESA UN VALOR DE LOTE VÁLIDO DE 0.01 A 1 LOTES PORFAVOR');return;}
     const entry=validateOrderPrice(limitEntryPrice,'ENTRY PRICE'),sl=validateOrderPrice(limitStopLoss,'STOP LOSS'),tp=validateOrderPrice(limitTakeProfit,'TAKE PROFIT');
     if(entry===null||sl===null||tp===null)return;if(entry===undefined){Alert.alert('Precio requerido','Ingresá el ENTRY PRICE de la orden límite.');return;}
+    const currentPrice=tick?(tick.bid+tick.ask)/2:NaN;
+    if(!Number.isFinite(currentPrice)){Alert.alert('Precio no disponible','Esperá la cotización actual de Exness.');return;}
+    if(!(limitDirection==='buy'?Number(entry)<currentPrice:Number(entry)>currentPrice)){Alert.alert('PRECIO DE ENTRADA INCORRECTO','PRECIO DE ENTRADA INCORRECTO, DEBE SER '+(limitDirection==='buy'?'MENOR':'MAYOR')+' QUE ('+currentPrice+')');return;}
+    if(tp!==undefined&&!(limitDirection==='buy'?Number(tp)>Number(entry):Number(tp)<Number(entry))){Alert.alert('VALOR DE TP/SL INCORRECTO','VALOR DE TP/SL INCORRECTO, DEBE SER '+(limitDirection==='buy'?'MAYOR':'MENOR')+' A ('+entry+')');return;}
+    if(sl!==undefined&&!(limitDirection==='buy'?Number(sl)<Number(entry):Number(sl)>Number(entry))){Alert.alert('VALOR DE TP/SL INCORRECTO','VALOR DE TP/SL INCORRECTO, DEBE SER '+(limitDirection==='buy'?'MENOR':'MAYOR')+' A ('+entry+')');return;}
     setPositionSubmitting(true);try{const result=await placeLimitOrder(c,accessPoint,{instrument:selectedInstrument,direction:limitDirection,volume,price:entry,stopLoss:sl,takeProfit:tp});
       Alert.alert('Solicitud de LIMIT ORDER enviada',`Exness aceptó la solicitud.\\nOperación: ${String(result.operation_id??'pendiente')}\\nEstado: ${String(result.status??'accepted')}`);setPositionsLastSync(new Date());}
     catch(error){Alert.alert('No se pudo crear la LIMIT ORDER',error instanceof Error?error.message:String(error));}finally{setPositionSubmitting(false);}
@@ -626,7 +637,7 @@ export default function App() {
       <Info label="PNL" value={pnl} valueStyle={historyPnlStyle(pnl)}/><Info label="FECHA Y HORA" value={historyDate(item,'event_time')}/>
     </View>;
   }
-  function beginEdit(target:'position'|'order', targetId:string, field:'price'|'stop_loss_price'|'take_profit_price', previous:string, instrument:string, otherField?:'stop_loss_price'|'take_profit_price', otherValue?:string, positionId?:string) {
+  function beginEdit(target:'position'|'order', targetId:string, field:'price'|'stop_loss_price'|'take_profit_price', previous:string, instrument:string, otherField?:'stop_loss_price'|'take_profit_price', otherValue?:string, positionId?:string, basePrice?:number) {
     const cleanId=targetId.trim();
     const cleanPositionId=(positionId??'').trim();
     const createSltp=target==='position' && !/^\d{1,20}$/.test(cleanId);
@@ -639,7 +650,7 @@ export default function App() {
       return;
     }
     const otherConfigured=otherValue && otherValue!=='NO CONFIGURADO' && otherValue!=='—' && Number(otherValue)>0 ? otherValue : undefined;
-    setTradeAction({kind:'edit',target,targetId:cleanId,positionId:cleanPositionId,createSltp,field,previous,instrument,value:previous==='—'||previous==='NO CONFIGURADO'?'':previous,otherField:otherConfigured?otherField:undefined,otherValue:otherConfigured});
+    setTradeAction({kind:'edit',target,targetId:cleanId,positionId:cleanPositionId,createSltp,field,previous,instrument,value:previous==='—'||previous==='NO CONFIGURADO'?'':previous,otherField:otherConfigured?otherField:undefined,otherValue:otherConfigured,basePrice});
   }
   function beginClose(target:'position'|'order', targetId:string, instrument:string, pnl:number|null) {
     setTradeConfirm({kind:'close',target,targetId,instrument,pnl});
@@ -650,6 +661,18 @@ export default function App() {
     if (!value || !/^[+]?(?:0*[1-9][0-9]*)(?:\.[0-9]+)?$/.test(value)) {
       Alert.alert('Valor inválido','Ingresá un precio válido mayor que 0.');
       return;
+    }
+    const base=Number(tradeAction.basePrice);
+    if(tradeAction.target==='position' && Number.isFinite(base) && (tradeAction.field==='stop_loss_price'||tradeAction.field==='take_profit_price')){
+      const pos=historyData?.activePositions?.find(p=>String(p.position_id??'')===String(tradeAction.positionId??''));
+      const buyDirection=String(pos?.direction??'').toLowerCase()==='buy';
+      const price=Number(value);
+      const valid=tradeAction.field==='take_profit_price' ? (buyDirection ? price>base : price<base) : (buyDirection ? price<base : price>base);
+      if(!valid){
+        const relation=tradeAction.field==='take_profit_price' ? (buyDirection?'MAYOR':'MENOR') : (buyDirection?'MENOR':'MAYOR');
+        Alert.alert('VALOR DE TP/SL INCORRECTO','VALOR DE TP/SL INCORRECTO, DEBE SER '+relation+' A ('+base+')');
+        return;
+      }
     }
     setTradeConfirm({...tradeAction,value});
     setTradeAction(null);
@@ -927,7 +950,11 @@ export default function App() {
           <Info label="SPREAD" value={tick?(tick.ask-tick.bid).toFixed(instrumentConditions?.point_digits??5):'—'}/>
         </View>
       </View>
-      <View style={s.card}>
+      <View style={s.orderTabs}>
+        <Pressable onPress={()=>setOrderPanel('market')} style={[s.orderTab,orderPanel==='market'&&s.orderTabSelected]}><Text style={[s.orderTabText,orderPanel==='market'&&s.orderTabTextSelected]}>MARKET ORDER</Text></Pressable>
+        <Pressable onPress={()=>setOrderPanel('limit')} style={[s.orderTab,orderPanel==='limit'&&s.orderTabSelected]}><Text style={[s.orderTabText,orderPanel==='limit'&&s.orderTabTextSelected]}>LIMIT ORDER</Text></Pressable>
+      </View>
+      {orderPanel==='market'?      <View style={s.card}>
         <Text style={s.orderTitle}>MARKET ORDER</Text><Text style={s.label}>VOLUMEN (LOTES) · {marketVolume}</Text>
         <View ref={marketVolumeSliderRef} style={s.volumeSliderTrack} onLayout={e=>{setMarketVolumeSliderWidth(e.nativeEvent.layout.width);marketVolumeSliderRef.current?.measureInWindow(x=>setMarketVolumeSliderLeft(x));}} onStartShouldSetResponder={()=>true} onMoveShouldSetResponder={()=>true} onResponderGrant={e=>setVolumeFromLocation(e.nativeEvent.pageX,marketVolumeSliderWidth,marketVolumeSliderLeft,setMarketVolume)} onResponderMove={e=>setVolumeFromLocation(e.nativeEvent.pageX,marketVolumeSliderWidth,marketVolumeSliderLeft,setMarketVolume)}>
           <View style={s.sliderRail}/><View style={[s.sliderFill,{width:volumeThumbPosition(marketVolume,marketVolumeSliderWidth)-9}]}/><View style={[s.sliderThumb,{left:volumeThumbPosition(marketVolume,marketVolumeSliderWidth)}]}/>
@@ -937,7 +964,7 @@ export default function App() {
         <Text style={s.sellText}>STOP LOSS</Text><TextInput value={marketStopLoss} onChangeText={setMarketStopLoss} keyboardType="decimal-pad" placeholder="Precio SL (opcional)" placeholderTextColor="#707988" style={s.orderInput}/>
         <Pressable disabled={positionSubmitting||!tick||tickStatus!=='online'} onPress={()=>void submitMarketOrder()} style={[s.marketButton,(positionSubmitting||!tick||tickStatus!=='online')&&s.disabled]}>{positionSubmitting?<ActivityIndicator color="#fff"/>:<Text style={s.marketButtonText}>ABRIR MARKET ORDER</Text>}</Pressable>
       </View>
-      <View style={s.card}>
+:      <View style={s.card}>
         <Text style={s.orderTitle}>LIMIT ORDER</Text><Text style={s.label}>ENTRY PRICE</Text><TextInput value={limitEntryPrice} onChangeText={setLimitEntryPrice} keyboardType="decimal-pad" placeholder="Precio de entrada" placeholderTextColor="#707988" style={s.orderInput}/>
         <Text style={s.label}>VOLUMEN (LOTES) · {limitVolume}</Text>
         <View ref={limitVolumeSliderRef} style={s.volumeSliderTrack} onLayout={e=>{setLimitVolumeSliderWidth(e.nativeEvent.layout.width);limitVolumeSliderRef.current?.measureInWindow(x=>setLimitVolumeSliderLeft(x));}} onStartShouldSetResponder={()=>true} onMoveShouldSetResponder={()=>true} onResponderGrant={e=>setVolumeFromLocation(e.nativeEvent.pageX,limitVolumeSliderWidth,limitVolumeSliderLeft,setLimitVolume)} onResponderMove={e=>setVolumeFromLocation(e.nativeEvent.pageX,limitVolumeSliderWidth,limitVolumeSliderLeft,setLimitVolume)}>
@@ -948,15 +975,7 @@ export default function App() {
         <Text style={s.sellText}>STOP LOSS</Text><TextInput value={limitStopLoss} onChangeText={setLimitStopLoss} keyboardType="decimal-pad" placeholder="Precio SL (opcional)" placeholderTextColor="#707988" style={s.orderInput}/>
         <Pressable disabled={positionSubmitting} onPress={()=>void submitLimitOrder()} style={[s.limitButton,positionSubmitting&&s.disabled]}>{positionSubmitting?<ActivityIndicator color="#0b0e13"/>:<Text style={s.limitButtonText}>ABRIR LIMIT ORDER</Text>}</Pressable>
       </View>
-      <View style={s.intervalCard}>
-        <View style={s.intervalHeader}><Text style={s.intervalTitle}>AUTORREFRESCO</Text><Pressable onPress={()=>setPositionsAutoRefresh(v=>!v)}><Text style={positionsAutoRefresh?s.clockOn:s.clockOff}>{positionsAutoRefresh?'●':'○'}</Text></Pressable></View>
-        <Text style={s.label}>INTERVALO DE SINCRONIZACIÓN</Text><Pressable onPress={()=>setPositionsIntervalMenu(v=>!v)} style={s.select}><Text style={s.selectText}>{positionsInterval} SEGUNDOS</Text><Text style={s.selectArrow}>{positionsIntervalMenu?'▲':'▼'}</Text></Pressable>
-        {positionsIntervalMenu&&<View style={s.menu}>{[5,10,15,30,60].map(value=><Pressable key={value} onPress={()=>{setPositionsInterval(value);setPositionsIntervalMenu(false);}} style={s.menuItem}><Text style={s.menuText}>{value} segundos</Text></Pressable>)}</View>}
-        <Pressable disabled={positionsSavingInterval} onPress={()=>void savePositionsInterval()} style={[s.saveIntervalButton,positionsSavingInterval&&s.disabled]}>{positionsSavingInterval?<ActivityIndicator/>:<Text style={s.saveIntervalText}>GUARDAR INTERVALO</Text>}</Pressable>
-        <Text style={positionsAutoRefresh?s.onlineText:s.offlineText}>{positionsAutoRefresh?'SINCRONIZACIÓN AUTOMÁTICA ACTIVADA':'SINCRONIZACIÓN AUTOMÁTICA DETENIDA'}</Text>
-        <Text style={s.meta}>ÚLTIMA ACTUALIZACIÓN</Text><Text style={s.time}>{dateText(positionsLastSync)}</Text><Text style={tickStatus==='online'?s.onlineText:s.offlineText}>Estado: {tickStatus}</Text>
-      </View>
-    </ScrollView> : screen==='history' ? <ScrollView contentContainerStyle={s.content} onTouchStart={handleSwipeStart} onTouchEnd={handleSwipeEnd}>
+}    </ScrollView> : screen==='history' ? <ScrollView contentContainerStyle={s.content} onTouchStart={handleSwipeStart} onTouchEnd={handleSwipeEnd}>
       <Text style={s.h1}>HISTORIAL</Text><Text style={s.sub}>Consultá las posiciones activas, órdenes pendientes y operaciones pasadas de tu cuenta.</Text>
       <Text style={s.label}>SELECCIONE SU PAR</Text>
       <Pressable disabled={!historyData||historyLoading} onPress={()=>setHistoryMenuOpen(!historyMenuOpen)} style={[s.select,(!historyData||historyLoading)&&s.disabled]}><Text style={s.selectText}>{historyPair==='*'?'MOSTRAR TODO':historyPair||'MOSTRAR TODO'}</Text><Text style={s.selectArrow}>{historyMenuOpen?'▲':'▼'}</Text></Pressable>
@@ -1000,7 +1019,7 @@ export default function App() {
           return <View key={String(item.position_id??index)} style={s.historyCard}>
             <View style={s.historyCardHeader}><PairIdentity instrument={historyValue(item,'instrument','')}/><Text style={buy?s.pnlPositive:s.pnlNegative}>{buy?'BUY':'SELL'}</Text></View>
             <Info label="ID POSICIÓN" value={historyValue(item,'position_id')}/><Info label="VOLUMEN" value={historyValue(item,'volume')}/><Info label="PRECIO DE APERTURA" value={historyValue(item,'open_price')}/><Info label="ESTADO" value={historyValue(item,'state')}/>
-            <View style={s.editableRow}><Text style={s.infoLabel}>STOP LOSS</Text><View style={s.editableValue}><Text style={s.infoValue}>{configuredPrice(sltp,'stop_loss_price')}</Text><Pressable onPress={()=>beginEdit('position',String(sltp?.order_id??''),'stop_loss_price',configuredPrice(sltp,'stop_loss_price'),String(item.instrument??''),'take_profit_price',configuredPrice(sltp,'take_profit_price'),String(item.position_id??''))}><Text style={s.pencil}>✎</Text></Pressable></View></View>
+            <View style={s.editableRow}><Text style={s.infoLabel}>STOP LOSS</Text><View style={s.editableValue}><Text style={s.infoValue}>{configuredPrice(sltp,'stop_loss_price')}</Text><Pressable onPress={()=>beginEdit('position',String(sltp?.order_id??''),'stop_loss_price',configuredPrice(sltp,'stop_loss_price'),String(item.instrument??''),'take_profit_price',configuredPrice(sltp,'take_profit_price'),String(item.position_id??''),Number(item.open_price??0))}><Text style={s.pencil}>✎</Text></Pressable></View></View>
             <View style={s.editableRow}><Text style={s.infoLabel}>TAKE PROFIT</Text><View style={s.editableValue}><Text style={s.infoValue}>{configuredPrice(sltp,'take_profit_price')}</Text><Pressable onPress={()=>beginEdit('position',String(sltp?.order_id??''),'take_profit_price',configuredPrice(sltp,'take_profit_price'),String(item.instrument??''),'stop_loss_price',configuredPrice(sltp,'stop_loss_price'),String(item.position_id??''))}><Text style={s.pencil}>✎</Text></Pressable></View></View>
             <Info label="APERTURA" value={historyDate(item,'create_time')}/>
             <View style={s.cardActionRow}><Pressable onPress={()=>beginClose('position',String(item.position_id??''),String(item.instrument??''),null)} style={s.closeButton}><Text style={s.closeButtonText}>✕</Text></Pressable></View>
@@ -1082,5 +1101,6 @@ const s=StyleSheet.create({
  intervalCard:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:14,padding:17,gap:12},intervalHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},clockButton:{width:40,height:40,borderRadius:20,alignItems:'center',justifyContent:'center'},clockOn:{color:'#28d17c',fontSize:25,fontWeight:'900'},clockOff:{color:'#e05252',fontSize:22,fontWeight:'900'},intervalTitle:{color:'#fff',fontSize:14,fontWeight:'800'},select:{minHeight:44,borderWidth:1,borderColor:'#3b4350',borderRadius:9,paddingHorizontal:12,flexDirection:'row',alignItems:'center',justifyContent:'space-between',backgroundColor:'#0f131a'},selectText:{color:'#fff',fontWeight:'700'},selectArrow:{color:'#9da6b5',fontSize:12},menu:{borderWidth:1,borderColor:'#3b4350',borderRadius:9,backgroundColor:'#0f131a',overflow:'hidden'},menuItem:{paddingHorizontal:13,paddingVertical:12},menuText:{color:'#fff',fontWeight:'700'},sliderRow:{flexDirection:'row',alignItems:'center',gap:8},sliderMin:{color:'#9da6b5',fontSize:11,fontWeight:'800'},sliderMax:{color:'#9da6b5',fontSize:11,fontWeight:'800'},sliderTrack:{flex:1,height:32,borderRadius:16,backgroundColor:'transparent',position:'relative',justifyContent:'center'},sliderEnabled:{opacity:1},sliderDisabled:{opacity:0.4},sliderRail:{position:'absolute',left:9,right:9,top:13,height:6,borderRadius:3,backgroundColor:'#303744'},sliderFill:{position:'absolute',left:9,top:13,height:6,borderRadius:3,backgroundColor:'#fff'},sliderThumb:{position:'absolute',top:7,width:18,height:18,borderRadius:9,backgroundColor:'#fff',marginLeft:-9},intervalValue:{color:'#9da6b5',fontSize:11,fontWeight:'700'},
   modalBackdrop:{position:'absolute',top:0,left:0,right:0,bottom:0,zIndex:100,backgroundColor:'rgba(0,0,0,0.72)',alignItems:'center',justifyContent:'center',padding:22},modalCard:{width:'100%',backgroundColor:'#151a22',borderWidth:1,borderColor:'#3b4350',borderRadius:15,padding:18,gap:12},modalTitle:{color:'#fff',fontSize:18,fontWeight:'900'},modalSub:{color:'#9da6b5',lineHeight:20},modalLabel:{color:'#8f98a8',fontSize:11,fontWeight:'900'},modalBig:{color:'#fff',fontSize:16,fontWeight:'900'},modalInput:{color:'#fff',backgroundColor:'#0f131a',borderWidth:1,borderColor:'#3b4350',borderRadius:9,padding:13,fontSize:16},modalButtons:{flexDirection:'row',gap:10,marginTop:5},modalCancel:{flex:1,minHeight:46,borderRadius:9,borderWidth:1,borderColor:'#3b4350',alignItems:'center',justifyContent:'center'},modalCancelText:{color:'#dce1e9',fontWeight:'900'},modalConfirm:{flex:1,minHeight:46,borderRadius:9,backgroundColor:'#fff',alignItems:'center',justifyContent:'center'},modalConfirmText:{color:'#0b0e13',fontWeight:'900'},editableRow:{gap:5},editableValue:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},pencil:{color:'#fff',fontSize:19,fontWeight:'900',paddingHorizontal:8},cardActionRow:{alignItems:'flex-end',marginTop:2},closeButton:{width:34,height:34,borderRadius:17,borderWidth:1,borderColor:'#3b4350',alignItems:'center',justifyContent:'center'},closeButtonText:{color:'#e05252',fontSize:16,fontWeight:'900'},
   selectedPairHeader:{flexDirection:'row',alignItems:'center',gap:8},selectedPairActions:{flexDirection:'row',alignItems:'center',gap:6},iconButton:{width:34,height:34,borderRadius:9,borderWidth:1,borderColor:'#303744',backgroundColor:'#151a22',alignItems:'center',justifyContent:'center'},favoriteIcon:{color:'#f0b429',fontSize:22,fontWeight:'900'},removePairIcon:{color:'#e05252',fontSize:25,fontWeight:'700',lineHeight:25},volumeSliderTrack:{height:34,borderRadius:17,backgroundColor:'transparent',position:'relative',justifyContent:'center'},volumeScale:{flexDirection:'row',justifyContent:'space-between'},
-  quoteCard:{backgroundColor:'#0f131a',borderWidth:1,borderColor:'#303744',borderRadius:11,padding:13,gap:10},quoteRow:{flexDirection:'row',gap:12},quoteSide:{flex:1,gap:4},bidText:{color:'#28d17c',fontSize:19,fontWeight:'900'},askText:{color:'#e05252',fontSize:19,fontWeight:'900'},instrumentOption:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},orderTitle:{color:'#fff',fontSize:17,fontWeight:'900'},orderInput:{color:'#fff',backgroundColor:'#0f131a',borderWidth:1,borderColor:'#3b4350',borderRadius:9,padding:13,minHeight:48,fontSize:16},directionRow:{flexDirection:'row',gap:10},directionButton:{flex:1,minHeight:46,borderWidth:1,borderColor:'#3b4350',borderRadius:9,alignItems:'center',justifyContent:'center',backgroundColor:'#0f131a'},buySelected:{borderColor:'#28d17c',backgroundColor:'#12271f'},sellSelected:{borderColor:'#e05252',backgroundColor:'#2b171a'},buyText:{color:'#28d17c',fontWeight:'900'},sellText:{color:'#e05252',fontWeight:'900'},marketButton:{minHeight:50,borderRadius:10,backgroundColor:'#16834e',alignItems:'center',justifyContent:'center'},marketButtonText:{color:'#fff',fontWeight:'900'},limitButton:{minHeight:50,borderRadius:10,backgroundColor:'#fff',alignItems:'center',justifyContent:'center'},limitButtonText:{color:'#0b0e13',fontWeight:'900'},historyModes:{flexDirection:'row',gap:10},historyMode:{flex:1,minHeight:48,borderWidth:1,borderColor:'#3b4350',borderRadius:10,alignItems:'center',justifyContent:'center',backgroundColor:'#151a22'},historyModeSelected:{backgroundColor:'#fff',borderColor:'#fff'},historyModeText:{color:'#dce1e9',fontWeight:'900'},historyModeTextSelected:{color:'#0b0e13'},historySection:{color:'#fff',fontSize:13,fontWeight:'900',marginTop:5},historySectionToggle:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',paddingVertical:4},sectionChevron:{color:'#fff',fontSize:25,fontWeight:'900',paddingHorizontal:8},historyCard:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:13,padding:15,gap:12},historyCardHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:8},historyPair:{color:'#fff',fontSize:17,fontWeight:'900'},pairIdentity:{flex:1,minWidth:0,flexDirection:'row',alignItems:'center',gap:9},pairIcons:{flexDirection:'row',alignItems:'center',gap:5},pairIcon:{width:27,height:27,borderRadius:8,backgroundColor:'#0f131a',borderWidth:1,borderColor:'#303744',alignItems:'center',justifyContent:'center'},cryptoIcon:{backgroundColor:'#172033'},cryptoMark:{color:'#f4b942',fontSize:16,fontWeight:'900'},flagMark:{fontSize:17},pendingText:{color:'#f0b429',fontWeight:'900'},emptyHistory:{color:'#9da6b5',textAlign:'center',paddingVertical:18},menuEmpty:{color:'#9da6b5',padding:13}
+  orderTabs:{flexDirection:'row',backgroundColor:'#0f131a',borderRadius:12,borderWidth:1,borderColor:'#29303c',padding:4,marginBottom:10},orderTab:{flex:1,paddingVertical:11,alignItems:'center',borderRadius:9},orderTabSelected:{backgroundColor:'#222a38'},orderTabText:{color:'#8e97a8',fontWeight:'900',fontSize:12},orderTabTextSelected:{color:'#fff'},
+quoteCard:{backgroundColor:'#0f131a',borderWidth:1,borderColor:'#303744',borderRadius:11,padding:13,gap:10},quoteRow:{flexDirection:'row',gap:12},quoteSide:{flex:1,gap:4},bidText:{color:'#28d17c',fontSize:19,fontWeight:'900'},askText:{color:'#e05252',fontSize:19,fontWeight:'900'},instrumentOption:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},orderTitle:{color:'#fff',fontSize:17,fontWeight:'900'},orderInput:{color:'#fff',backgroundColor:'#0f131a',borderWidth:1,borderColor:'#3b4350',borderRadius:9,padding:13,minHeight:48,fontSize:16},directionRow:{flexDirection:'row',gap:10},directionButton:{flex:1,minHeight:46,borderWidth:1,borderColor:'#3b4350',borderRadius:9,alignItems:'center',justifyContent:'center',backgroundColor:'#0f131a'},buySelected:{borderColor:'#28d17c',backgroundColor:'#12271f'},sellSelected:{borderColor:'#e05252',backgroundColor:'#2b171a'},buyText:{color:'#28d17c',fontWeight:'900'},sellText:{color:'#e05252',fontWeight:'900'},marketButton:{minHeight:50,borderRadius:10,backgroundColor:'#16834e',alignItems:'center',justifyContent:'center'},marketButtonText:{color:'#fff',fontWeight:'900'},limitButton:{minHeight:50,borderRadius:10,backgroundColor:'#fff',alignItems:'center',justifyContent:'center'},limitButtonText:{color:'#0b0e13',fontWeight:'900'},historyModes:{flexDirection:'row',gap:10},historyMode:{flex:1,minHeight:48,borderWidth:1,borderColor:'#3b4350',borderRadius:10,alignItems:'center',justifyContent:'center',backgroundColor:'#151a22'},historyModeSelected:{backgroundColor:'#fff',borderColor:'#fff'},historyModeText:{color:'#dce1e9',fontWeight:'900'},historyModeTextSelected:{color:'#0b0e13'},historySection:{color:'#fff',fontSize:13,fontWeight:'900',marginTop:5},historySectionToggle:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',paddingVertical:4},sectionChevron:{color:'#fff',fontSize:25,fontWeight:'900',paddingHorizontal:8},historyCard:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:13,padding:15,gap:12},historyCardHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:8},historyPair:{color:'#fff',fontSize:17,fontWeight:'900'},pairIdentity:{flex:1,minWidth:0,flexDirection:'row',alignItems:'center',gap:9},pairIcons:{flexDirection:'row',alignItems:'center',gap:5},pairIcon:{width:27,height:27,borderRadius:8,backgroundColor:'#0f131a',borderWidth:1,borderColor:'#303744',alignItems:'center',justifyContent:'center'},cryptoIcon:{backgroundColor:'#172033'},cryptoMark:{color:'#f4b942',fontSize:16,fontWeight:'900'},flagMark:{fontSize:17},pendingText:{color:'#f0b429',fontWeight:'900'},emptyHistory:{color:'#9da6b5',textAlign:'center',paddingVertical:18},menuEmpty:{color:'#9da6b5',padding:13}
 });
