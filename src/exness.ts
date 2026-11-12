@@ -763,7 +763,10 @@ export async function getTradingHistory(
         ? item.deal as Record<string, unknown>
         : item;
       const type = String(deal.type ?? '').toLowerCase();
-      return type === 'open' || type === 'close';
+      // Keep trade PNL components so the history UI can calculate net
+      // realized result (profit plus commissions and linked fees) per order.
+      return type === 'open' || type === 'close' || type === 'swap_fee' ||
+        type === 'admin_fee' || type === 'null_compensation';
     }),
   };
 }
