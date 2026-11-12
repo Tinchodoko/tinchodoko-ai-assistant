@@ -974,7 +974,7 @@ export async function openExnessTickStream(
   if (!symbol) throw new Error('Seleccioná un instrumento para recibir cotizaciones.');
   const path = `/v1/server-events/accounts/${encodeURIComponent(c.accountId.trim())}/ws/ticks`;
   const signed = await headers(c, path);
-  const wsUrl = accessPoint.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:').replace(/\\/$/, '') + path;
+  const wsUrl = accessPoint.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:').replace(/\/$/, '') + path;
   const ws = new (WebSocket as unknown as {
     new (url: string, protocols?: string | string[], options?: { headers: Record<string,string> }): WebSocket;
   })(wsUrl, 'exness-ws-protocol', { headers: signed.headers });
