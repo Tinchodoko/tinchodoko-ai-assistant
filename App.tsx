@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Linking, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View, type TextStyle } from 'react-native';
-import { connectToExness, getAccountSnapshot, getTradingHistory, openExnessAccountStream, modifyActiveOrder, createPositionSltp, cancelActiveOrder, closePosition, type Credentials, type TradingHistoryData } from './src/exness';
+import { connectToExness, getAccountSnapshot, getTradingHistory, openExnessAccountStream, modifyActiveOrder, createPositionSltp, cancelActiveOrder, closePosition, getAvailableInstruments, getInstrumentConditions, openExnessTickStream, openMarketPosition, placeLimitOrder, type Credentials, type TradingHistoryData, type ExnessInstrumentConditions, type ExnessTick } from './src/exness';
 import { loadCredentials, saveCredentials } from './src/storage';
 import { BUILD_INFO } from './src/buildInfo';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -44,7 +44,7 @@ function PairIdentity({instrument}:{instrument:string}) {
 const RELEASES_URL = 'https://github.com/Tinchodoko/tinchodoko-ai-assistant/releases';
 const LATEST_RELEASE_API = 'https://api.github.com/repos/Tinchodoko/tinchodoko-ai-assistant/releases/latest';
 const UPDATE_MANIFEST_URL = 'https://raw.githubusercontent.com/Tinchodoko/tinchodoko-ai-assistant/main/update.json';
-type Screen = 'connection' | 'profile' | 'history' | 'app';
+type Screen = 'connection' | 'profile' | 'positions' | 'history' | 'app';
 type TradeAction = {
   kind: 'edit' | 'close';
   target: 'position' | 'order';
@@ -59,6 +59,16 @@ type TradeAction = {
   createSltp?: boolean;
   pnl?: number | null;
 };
+
+function classifyExnessInstrument(symbol:string):'Crypto'|'Forex'|'Indices'|'ETC' {
+  const value=symbol.toUpperCase().replace(/[^A-Z0-9]/g,'');
+  const currencies=['USD','EUR','GBP','JPY','AUD','NZD','CAD','CHF','CNH','CNY','HKD','SGD','SEK','NOK','DKK','MXN','ZAR','TRY','PLN','INR','KRW','BRL','THB','HUF','CZK','ILS','AED','SAR'];
+  const crypto=['BTC','ETH','BNB','XRP','SOL','ADA','DOGE','LTC','DOT','AVAX','LINK','BCH','TRX','TON','XLM','UNI','ATOM','ETC','NEAR','SUI','USDT','USDC','DAI'];
+  if(crypto.some(code=>value.startsWith(code)))return 'Crypto';
+  if(value.length===6&&currencies.includes(value.slice(0,3))&&currencies.includes(value.slice(3,6)))return 'Forex';
+  if(/^(US30|US500|USTEC|NAS100|SPX500|DE30|GER40|UK100|JP225|HK50|AUS200|EU50|FR40|STOXX50)/.test(value))return 'Indices';
+  return 'ETC';
+}
 
 function dateText(d: Date | null) {
   if (!d) return '--/--/---- --:--:--';
@@ -148,6 +158,33 @@ export default function App() {
   const [tradeAction,setTradeAction]=useState<TradeAction|null>(null);
   const [tradeConfirm,setTradeConfirm]=useState<TradeAction|null>(null);
   const [tradeBusy,setTradeBusy]=useState(false);
+  const [positionCategory,setPositionCategory]=useState<'Crypto'|'Forex'|'Indices'|'ETC'>('Forex');
+  const [instrumentList,setInstrumentList]=useState<string[]>([]);
+  const [selectedInstrument,setSelectedInstrument]=useState('');
+  const [instrumentCategoryMenu,setInstrumentCategoryMenu]=useState(false);
+  const [instrumentMenuOpen,setInstrumentMenuOpen]=useState(false);
+  const [instrumentLoading,setInstrumentLoading]=useState(false);
+  const [instrumentError,setInstrumentError]=useState('');
+  const [instrumentConditions,setInstrumentConditions]=useState<ExnessInstrumentConditions|null>(null);
+  const [tick,setTick]=useState<ExnessTick|null>(null);
+  const [tickStatus,setTickStatus]=useState<'offline'|'online'|'connecting'>('offline');
+  const [positionsLastSync,setPositionsLastSync]=useState<Date|null>(null);
+  const [positionsAutoRefresh,setPositionsAutoRefresh]=useState(false);
+  const [positionsInterval,setPositionsInterval]=useState(5);
+  const [positionsAppliedInterval,setPositionsAppliedInterval]=useState(5);
+  const [positionsIntervalMenu,setPositionsIntervalMenu]=useState(false);
+  const [positionsSavingInterval,setPositionsSavingInterval]=useState(false);
+  const [marketDirection,setMarketDirection]=useState<'buy'|'sell'>('buy');
+  const [marketVolume,setMarketVolume]=useState('0.01');
+  const [marketTakeProfit,setMarketTakeProfit]=useState('');
+  const [marketStopLoss,setMarketStopLoss]=useState('');
+  const [limitDirection,setLimitDirection]=useState<'buy'|'sell'>('buy');
+  const [limitVolume,setLimitVolume]=useState('0.01');
+  const [limitEntryPrice,setLimitEntryPrice]=useState('');
+  const [limitTakeProfit,setLimitTakeProfit]=useState('');
+  const [limitStopLoss,setLimitStopLoss]=useState('');
+  const [positionSubmitting,setPositionSubmitting]=useState(false);
+  const tickSocketRef=useRef<WebSocket|null>(null);
 
   useEffect(()=>{
     loadCredentials().then(x=>x&&setC(x));
@@ -166,6 +203,10 @@ export default function App() {
           }
         }
       } catch { /* Ignore invalid saved interval and keep 5 seconds. */ }
+    }).catch(()=>{});
+    SecureStore.getItemAsync('tinchodoko.positions.refreshInterval').then(raw=>{
+      if (!raw) return;
+      try { const saved=JSON.parse(raw) as {value?:number}; if(Number.isInteger(saved.value)&&saved.value!>=5&&saved.value!<=60){setPositionsInterval(saved.value!);setPositionsAppliedInterval(saved.value!);} } catch {}
     }).catch(()=>{});
     SecureStore.getItemAsync('tinchodoko.history.refreshInterval').then(raw=>{
       if (!raw) return;
@@ -401,11 +442,82 @@ export default function App() {
   },[screen]);
 
   function handleSwipeStart(event:any) { swipeStart.current={x:event.nativeEvent.pageX,y:event.nativeEvent.pageY}; }
+
+  useEffect(()=>{
+    if(screen!=='positions'||!accessPoint||!c.apiKey||!c.secret||!c.accountId)return;
+    let cancelled=false;setInstrumentLoading(true);setInstrumentError('');
+    getAvailableInstruments(c,accessPoint).then(items=>{
+      if(cancelled)return;setInstrumentList(items);
+      if(!selectedInstrument||!items.includes(selectedInstrument))setSelectedInstrument(items.find(x=>classifyExnessInstrument(x)==='Forex')??items[0]??'');
+    }).catch(error=>{if(!cancelled)setInstrumentError(error instanceof Error?error.message:String(error));})
+      .finally(()=>{if(!cancelled)setInstrumentLoading(false);});
+    return ()=>{cancelled=true;};
+  },[screen,accessPoint,c.apiKey,c.secret,c.accountId]);
+
+  useEffect(()=>{
+    if(screen!=='positions'||!selectedInstrument||!accessPoint){setTick(null);setTickStatus('offline');tickSocketRef.current?.close();tickSocketRef.current=null;return;}
+    let cancelled=false;let socket:WebSocket|null=null;setTickStatus('connecting');setInstrumentConditions(null);
+    getInstrumentConditions(c,accessPoint,selectedInstrument).then(value=>{if(!cancelled)setInstrumentConditions(value);})
+      .catch(error=>{if(!cancelled)setInstrumentError(error instanceof Error?error.message:String(error));});
+    openExnessTickStream(c,accessPoint,selectedInstrument,value=>{if(!cancelled){setTick(value);setPositionsLastSync(new Date());}},state=>{
+      if(!cancelled)setTickStatus(state==='connected'?'online':state==='connecting'?'connecting':'offline');
+    }).then(next=>{if(cancelled){next.close();return;}socket=next;tickSocketRef.current=next;})
+      .catch(error=>{if(!cancelled){setTickStatus('offline');setInstrumentError(error instanceof Error?error.message:String(error));}});
+    return ()=>{cancelled=true;socket?.close();if(tickSocketRef.current===socket)tickSocketRef.current=null;};
+  },[screen,selectedInstrument,accessPoint,c.apiKey,c.secret,c.accountId]);
+
+  useEffect(()=>{
+    if(screen!=='positions'||!positionsAutoRefresh||!selectedInstrument||!accessPoint)return;
+    const timer=setInterval(()=>{getInstrumentConditions(c,accessPoint,selectedInstrument).then(value=>{setInstrumentConditions(value);setPositionsLastSync(new Date());}).catch(()=>setTickStatus('offline'));},positionsAppliedInterval*1000);
+    return ()=>clearInterval(timer);
+  },[screen,positionsAutoRefresh,selectedInstrument,accessPoint,positionsAppliedInterval,c.apiKey,c.secret,c.accountId]);
+
+  async function savePositionsInterval(){
+    setPositionsSavingInterval(true);
+    try{await SecureStore.setItemAsync('tinchodoko.positions.refreshInterval',JSON.stringify({value:positionsInterval}));setPositionsAppliedInterval(positionsInterval);Alert.alert('Intervalo guardado',`El intervalo de POSICIONES ahora es ${positionsInterval} segundos.`);}
+    catch(error){Alert.alert('No se pudo guardar el intervalo',error instanceof Error?error.message:String(error));}
+    finally{setPositionsSavingInterval(false);}
+  }
+  function validateOrderVolume(raw:string):string|null{
+    const value=raw.trim().replace(',','.');if(!/^(?:0|[0-9]+)(?:\\.[0-9]+)?$/.test(value))return null;
+    const amount=Number(value);if(!Number.isFinite(amount)||amount<0.01||amount>1)return null;
+    const min=Number(instrumentConditions?.volume_min??0.01),max=Math.min(1,Number(instrumentConditions?.volume_max??1)),step=Number(instrumentConditions?.volume_step??0.01);
+    if(amount<min||amount>max)return null;
+    if(Number.isFinite(step)&&step>0&&Math.abs(amount/step-Math.round(amount/step))>1e-7)return null;
+    return value;
+  }
+  function validateOrderPrice(raw:string,label:string):string|undefined|null{
+    const value=raw.trim().replace(',','.');if(!value)return undefined;
+    if(!/^(?:[0-9]+)(?:\\.[0-9]+)?$/.test(value)||!Number.isFinite(Number(value))||Number(value)<=0)return null;
+    const digits=instrumentConditions?.point_digits;
+    if(typeof digits==='number'&&value.includes('.')&&value.split('.')[1].length>digits){Alert.alert('Precisión inválida',`${label}: Exness permite como máximo ${digits} decimales para ${selectedInstrument}.`);return null;}
+    return value;
+  }
+  async function submitMarketOrder(){
+    if(positionSubmitting)return;if(status!=='online'||!accessPoint){Alert.alert('Cuenta desconectada','Conectá tu cuenta Exness antes de enviar una orden.');return;}
+    if(!selectedInstrument){Alert.alert('Instrumento requerido','Seleccioná un instrumento disponible de Exness.');return;}
+    const volume=validateOrderVolume(marketVolume);if(!volume){Alert.alert('Volumen inválido','INGRESA UN VALOR DE LOTE VÁLIDO DE 0.01 A 1 LOTES PORFAVOR');return;}
+    const sl=validateOrderPrice(marketStopLoss,'STOP LOSS'),tp=validateOrderPrice(marketTakeProfit,'TAKE PROFIT');if(sl===null||tp===null)return;
+    setPositionSubmitting(true);try{const result=await openMarketPosition(c,accessPoint,{instrument:selectedInstrument,direction:marketDirection,volume,stopLoss:sl,takeProfit:tp});
+      Alert.alert('Solicitud de MARKET ORDER enviada',`Exness aceptó la solicitud.\\nOperación: ${String(result.operation_id??'pendiente')}\\nEstado: ${String(result.status??'accepted')}`);setPositionsLastSync(new Date());}
+    catch(error){Alert.alert('No se pudo abrir la MARKET ORDER',error instanceof Error?error.message:String(error));}finally{setPositionSubmitting(false);}
+  }
+  async function submitLimitOrder(){
+    if(positionSubmitting)return;if(status!=='online'||!accessPoint){Alert.alert('Cuenta desconectada','Conectá tu cuenta Exness antes de enviar una orden.');return;}
+    if(!selectedInstrument){Alert.alert('Instrumento requerido','Seleccioná un instrumento disponible de Exness.');return;}
+    const volume=validateOrderVolume(limitVolume);if(!volume){Alert.alert('Volumen inválido','INGRESA UN VALOR DE LOTE VÁLIDO DE 0.01 A 1 LOTES PORFAVOR');return;}
+    const entry=validateOrderPrice(limitEntryPrice,'ENTRY PRICE'),sl=validateOrderPrice(limitStopLoss,'STOP LOSS'),tp=validateOrderPrice(limitTakeProfit,'TAKE PROFIT');
+    if(entry===null||sl===null||tp===null)return;if(entry===undefined){Alert.alert('Precio requerido','Ingresá el ENTRY PRICE de la orden límite.');return;}
+    setPositionSubmitting(true);try{const result=await placeLimitOrder(c,accessPoint,{instrument:selectedInstrument,direction:limitDirection,volume,price:entry,stopLoss:sl,takeProfit:tp});
+      Alert.alert('Solicitud de LIMIT ORDER enviada',`Exness aceptó la solicitud.\\nOperación: ${String(result.operation_id??'pendiente')}\\nEstado: ${String(result.status??'accepted')}`);setPositionsLastSync(new Date());}
+    catch(error){Alert.alert('No se pudo crear la LIMIT ORDER',error instanceof Error?error.message:String(error));}finally{setPositionSubmitting(false);}
+  }
+
   function handleSwipeEnd(event:any) {
     const start=swipeStart.current; swipeStart.current=null; if(!start)return;
     const dx=event.nativeEvent.pageX-start.x,dy=event.nativeEvent.pageY-start.y;
     if(Math.abs(dx)<75||Math.abs(dx)<Math.abs(dy)*1.25)return;
-    const steps: Array<{screen:Screen;mode?:'active'|'past'}>=[{screen:'connection'},{screen:'profile'},{screen:'history',mode:'active'},{screen:'history',mode:'past'},{screen:'app'}];
+    const steps: Array<{screen:Screen;mode?:'active'|'past'}>=[{screen:'connection'},{screen:'profile'},{screen:'positions'},{screen:'history',mode:'active'},{screen:'history',mode:'past'},{screen:'app'}];
     const current=steps.findIndex(step=>step.screen===screen&&(step.screen!=='history'||step.mode===historyMode));
     const next=steps[Math.max(0,Math.min(steps.length-1,current+(dx<0?1:-1)))];
     if(next){setScreen(next.screen);if(next.mode)setHistoryMode(next.mode);setHistoryMenuOpen(false);setIntervalMenu(false);setHistoryIntervalMenu(false);}
@@ -443,7 +555,7 @@ export default function App() {
     if(!hasValue) return 'NO DISPONIBLE';
     return `${total>=0?'+':''}${total.toFixed(2)}${currency?' '+currency:''}`;
   }
-  const historySymbols=historyData?Array.from(new Set([...historyData.positions.map(x=>String(x.instrument??'')),...historyData.activeOrders.map(x=>String(x.instrument??'')),...historyData.pastOrders.map(x=>{const o=x.order&&typeof x.order==='object'?x.order as Record<string,unknown>:x;return String(o.instrument??'');}),...historyData.deals.map(x=>{const d=x.deal&&typeof x.deal==='object'?x.deal as Record<string,unknown>:x;return String(d.instrument??'');})].filter(x=>x&&x!=='undefined'))).sort():[];
+  const filteredPositionInstruments=instrumentList.filter(symbol=>classifyExnessInstrument(symbol)===positionCategory);\n  const historySymbols=historyData?Array.from(new Set([...historyData.positions.map(x=>String(x.instrument??'')),...historyData.activeOrders.map(x=>String(x.instrument??'')),...historyData.pastOrders.map(x=>{const o=x.order&&typeof x.order==='object'?x.order as Record<string,unknown>:x;return String(o.instrument??'');}),...historyData.deals.map(x=>{const d=x.deal&&typeof x.deal==='object'?x.deal as Record<string,unknown>:x;return String(d.instrument??'');})].filter(x=>x&&x!=='undefined'))).sort():[];
   const selectedActivePositions=(historyData?.positions??[]).filter(x=>historyPair==='*'||x.instrument===historyPair);
   const selectedActiveOrders=(historyData?.activeOrders??[]).filter(x=>String(x.order_type??'').toLowerCase()!=='sltp'&&(historyPair==='*'||x.instrument===historyPair));
   const selectedPastOrders=(historyData?.pastOrders??[]).filter(item=>{
@@ -696,7 +808,7 @@ export default function App() {
     <View style={s.tabs}>
       <Pressable onPress={()=>{setIntervalMenu(false);setHistoryMenuOpen(false);setHistoryIntervalMenu(false);setScreen('connection');}} style={[s.tab,screen==='connection'&&s.active]}><Text style={s.tabText}>CONEXIÓN</Text></Pressable>
       <Pressable onPress={()=>{setHistoryMenuOpen(false);setHistoryIntervalMenu(false);setScreen('profile');}} style={[s.tab,screen==='profile'&&s.active]}><Text style={s.tabText}>BALANCE</Text></Pressable>
-      <Pressable onPress={()=>{setIntervalMenu(false);openHistory();}} style={[s.tab,screen==='history'&&s.active]}><Text style={s.tabText}>HISTORIAL</Text></Pressable>
+      <Pressable onPress={()=>{setInstrumentMenuOpen(false);setInstrumentCategoryMenu(false);setScreen('positions');}} style={[s.tab,screen==='positions'&&s.active]}><Text style={s.tabText}>POSICIONES</Text></Pressable>\n      <Pressable onPress={()=>{setIntervalMenu(false);openHistory();}} style={[s.tab,screen==='history'&&s.active]}><Text style={s.tabText}>HISTORIAL</Text></Pressable>
       <Pressable onPress={()=>{setIntervalMenu(false);setHistoryMenuOpen(false);setHistoryIntervalMenu(false);setScreen('app');}} style={[s.tab,screen==='app'&&s.active]}><Text style={s.tabText}>APP</Text></Pressable>
     </View>
 
@@ -760,7 +872,48 @@ export default function App() {
       <Text style={s.meta}>ÚLTIMA ACTUALIZACIÓN</Text><Text style={s.time}>{dateText(last)}</Text>
       <Text style={autoRefresh?s.onlineText:s.offlineText}>{autoRefresh?'SINCRONIZACIÓN AUTOMÁTICA ACTIVADA':'SINCRONIZACIÓN AUTOMÁTICA DETENIDA'}</Text>
       <Text style={status==='online'?s.onlineText:s.offlineText}>Estado: {status}</Text>
-    </ScrollView>  : screen==='history' ? <ScrollView contentContainerStyle={s.content} onTouchStart={handleSwipeStart} onTouchEnd={handleSwipeEnd}>
+    </ScrollView>  : screen==='positions' ? <ScrollView contentContainerStyle={s.content} onTouchStart={handleSwipeStart} onTouchEnd={handleSwipeEnd}>
+      <Text style={s.h1}>POSICIONES</Text><Text style={s.sub}>Ejecutá órdenes a mercado o límite con instrumentos habilitados para tu cuenta Exness.</Text>
+      <View style={s.card}>
+        <Text style={s.label}>CATEGORÍA DE INSTRUMENTOS</Text>
+        <Pressable onPress={()=>{setInstrumentCategoryMenu(v=>!v);setInstrumentMenuOpen(false);}} style={s.select}><Text style={s.selectText}>{positionCategory}</Text><Text style={s.selectArrow}>{instrumentCategoryMenu?'▲':'▼'}</Text></Pressable>
+        {instrumentCategoryMenu&&<View style={s.menu}>{(['Crypto','Forex','Indices','ETC'] as const).map(category=><Pressable key={category} onPress={()=>{setPositionCategory(category);setInstrumentCategoryMenu(false);}} style={s.menuItem}><Text style={s.menuText}>{category}</Text></Pressable>)}</View>}
+        <Text style={s.label}>PAR A COMERCIAR</Text>
+        <Pressable disabled={instrumentLoading||!instrumentList.length} onPress={()=>{setInstrumentMenuOpen(v=>!v);setInstrumentCategoryMenu(false);}} style={[s.select,(instrumentLoading||!instrumentList.length)&&s.disabled]}><Text style={s.selectText}>{instrumentLoading?'CARGANDO INSTRUMENTOS...':selectedInstrument||'SELECCIONAR PAR'}</Text><Text style={s.selectArrow}>{instrumentMenuOpen?'▲':'▼'}</Text></Pressable>
+        {instrumentMenuOpen&&<View style={s.menu}>{filteredPositionInstruments.length?filteredPositionInstruments.map(symbol=><Pressable key={symbol} onPress={()=>{setSelectedInstrument(symbol);setInstrumentMenuOpen(false);setTick(null);}} style={s.menuItem}><View style={s.instrumentOption}><PairIdentity instrument={symbol}/><Text style={s.menuText}>›</Text></View></Pressable>):<Text style={s.menuEmpty}>No hay instrumentos de esta categoría disponibles para esta cuenta Exness.</Text>}</View>}
+        {instrumentError!==''&&<Text style={s.offlineText}>{instrumentError}</Text>}
+        <View style={s.quoteCard}>
+          <View style={s.historyCardHeader}><Text style={s.historySection}>PAR</Text><PairIdentity instrument={selectedInstrument||'—'}/></View>
+          <Info label="PRECIO ACTUAL" value={tick?((tick.bid+tick.ask)/2).toFixed(instrumentConditions?.point_digits??5):'Esperando cotización...'}/>
+          <View style={s.quoteRow}><View style={s.quoteSide}><Text style={s.infoLabel}>BID</Text><Text style={s.bidText}>{tick?tick.bid.toFixed(instrumentConditions?.point_digits??5):'—'}</Text></View><View style={s.quoteSide}><Text style={s.infoLabel}>ASK</Text><Text style={s.askText}>{tick?tick.ask.toFixed(instrumentConditions?.point_digits??5):'—'}</Text></View></View>
+          <Info label="SPREAD" value={tick?(tick.ask-tick.bid).toFixed(instrumentConditions?.point_digits??5):'—'}/>
+        </View>
+      </View>
+      <View style={s.card}>
+        <Text style={s.orderTitle}>MARKET ORDER</Text><Text style={s.label}>VOLUMEN (LOTES) · 0.01 A 1.00</Text>
+        <TextInput value={marketVolume} onChangeText={setMarketVolume} keyboardType="decimal-pad" placeholder="0.01" placeholderTextColor="#707988" style={s.orderInput}/>
+        <View style={s.directionRow}><Pressable onPress={()=>setMarketDirection('buy')} style={[s.directionButton,marketDirection==='buy'&&s.buySelected]}><Text style={s.buyText}>BUY / LONG</Text></Pressable><Pressable onPress={()=>setMarketDirection('sell')} style={[s.directionButton,marketDirection==='sell'&&s.sellSelected]}><Text style={s.sellText}>SELL / SHORT</Text></Pressable></View>
+        <Text style={s.buyText}>TAKE PROFIT</Text><TextInput value={marketTakeProfit} onChangeText={setMarketTakeProfit} keyboardType="decimal-pad" placeholder="Precio TP (opcional)" placeholderTextColor="#707988" style={s.orderInput}/>
+        <Text style={s.sellText}>STOP LOSS</Text><TextInput value={marketStopLoss} onChangeText={setMarketStopLoss} keyboardType="decimal-pad" placeholder="Precio SL (opcional)" placeholderTextColor="#707988" style={s.orderInput}/>
+        <Pressable disabled={positionSubmitting||!tick||tickStatus!=='online'} onPress={()=>void submitMarketOrder()} style={[s.marketButton,(positionSubmitting||!tick||tickStatus!=='online')&&s.disabled]}>{positionSubmitting?<ActivityIndicator color="#fff"/>:<Text style={s.marketButtonText}>ABRIR MARKET ORDER</Text>}</Pressable>
+      </View>
+      <View style={s.card}>
+        <Text style={s.orderTitle}>LIMIT ORDER</Text><Text style={s.label}>ENTRY PRICE</Text><TextInput value={limitEntryPrice} onChangeText={setLimitEntryPrice} keyboardType="decimal-pad" placeholder="Precio de entrada" placeholderTextColor="#707988" style={s.orderInput}/>
+        <Text style={s.label}>VOLUMEN (LOTES) · 0.01 A 1.00</Text><TextInput value={limitVolume} onChangeText={setLimitVolume} keyboardType="decimal-pad" placeholder="0.01" placeholderTextColor="#707988" style={s.orderInput}/>
+        <View style={s.directionRow}><Pressable onPress={()=>setLimitDirection('buy')} style={[s.directionButton,limitDirection==='buy'&&s.buySelected]}><Text style={s.buyText}>BUY / LONG</Text></Pressable><Pressable onPress={()=>setLimitDirection('sell')} style={[s.directionButton,limitDirection==='sell'&&s.sellSelected]}><Text style={s.sellText}>SELL / SHORT</Text></Pressable></View>
+        <Text style={s.buyText}>TAKE PROFIT</Text><TextInput value={limitTakeProfit} onChangeText={setLimitTakeProfit} keyboardType="decimal-pad" placeholder="Precio TP (opcional)" placeholderTextColor="#707988" style={s.orderInput}/>
+        <Text style={s.sellText}>STOP LOSS</Text><TextInput value={limitStopLoss} onChangeText={setLimitStopLoss} keyboardType="decimal-pad" placeholder="Precio SL (opcional)" placeholderTextColor="#707988" style={s.orderInput}/>
+        <Pressable disabled={positionSubmitting} onPress={()=>void submitLimitOrder()} style={[s.limitButton,positionSubmitting&&s.disabled]}>{positionSubmitting?<ActivityIndicator color="#0b0e13"/>:<Text style={s.limitButtonText}>ABRIR LIMIT ORDER</Text>}</Pressable>
+      </View>
+      <View style={s.intervalCard}>
+        <View style={s.intervalHeader}><Text style={s.intervalTitle}>AUTORREFRESCO</Text><Pressable onPress={()=>setPositionsAutoRefresh(v=>!v)}><Text style={positionsAutoRefresh?s.clockOn:s.clockOff}>{positionsAutoRefresh?'●':'○'}</Text></Pressable></View>
+        <Text style={s.label}>INTERVALO DE SINCRONIZACIÓN</Text><Pressable onPress={()=>setPositionsIntervalMenu(v=>!v)} style={s.select}><Text style={s.selectText}>{positionsInterval} SEGUNDOS</Text><Text style={s.selectArrow}>{positionsIntervalMenu?'▲':'▼'}</Text></Pressable>
+        {positionsIntervalMenu&&<View style={s.menu}>{[5,10,15,30,60].map(value=><Pressable key={value} onPress={()=>{setPositionsInterval(value);setPositionsIntervalMenu(false);}} style={s.menuItem}><Text style={s.menuText}>{value} segundos</Text></Pressable>)}</View>}
+        <Pressable disabled={positionsSavingInterval} onPress={()=>void savePositionsInterval()} style={[s.saveIntervalButton,positionsSavingInterval&&s.disabled]}>{positionsSavingInterval?<ActivityIndicator/>:<Text style={s.saveIntervalText}>GUARDAR INTERVALO</Text>}</Pressable>
+        <Text style={positionsAutoRefresh?s.onlineText:s.offlineText}>{positionsAutoRefresh?'SINCRONIZACIÓN AUTOMÁTICA ACTIVADA':'SINCRONIZACIÓN AUTOMÁTICA DETENIDA'}</Text>
+        <Text style={s.meta}>ÚLTIMA ACTUALIZACIÓN</Text><Text style={s.time}>{dateText(positionsLastSync)}</Text><Text style={tickStatus==='online'?s.onlineText:s.offlineText}>Estado: {tickStatus}</Text>
+      </View>
+    </ScrollView> : screen==='history' ? <ScrollView contentContainerStyle={s.content} onTouchStart={handleSwipeStart} onTouchEnd={handleSwipeEnd}>
       <Text style={s.h1}>HISTORIAL</Text><Text style={s.sub}>Consultá las posiciones activas, órdenes pendientes y operaciones pasadas de tu cuenta.</Text>
       <Text style={s.label}>SELECCIONE SU PAR</Text>
       <Pressable disabled={!historyData||historyLoading} onPress={()=>setHistoryMenuOpen(!historyMenuOpen)} style={[s.select,(!historyData||historyLoading)&&s.disabled]}><Text style={s.selectText}>{historyPair==='*'?'MOSTRAR TODO':historyPair||'MOSTRAR TODO'}</Text><Text style={s.selectArrow}>{historyMenuOpen?'▲':'▼'}</Text></Pressable>
@@ -885,5 +1038,5 @@ const s=StyleSheet.create({
  saveIntervalButton:{minHeight:46,borderRadius:10,borderWidth:1,borderColor:'#3b4350',alignItems:'center',justifyContent:'center',backgroundColor:'#151a22'},saveIntervalText:{color:'#fff',fontWeight:'900',fontSize:12},
  intervalCard:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:14,padding:17,gap:12},intervalHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},clockButton:{width:40,height:40,borderRadius:20,alignItems:'center',justifyContent:'center'},clockOn:{color:'#28d17c',fontSize:25,fontWeight:'900'},clockOff:{color:'#e05252',fontSize:22,fontWeight:'900'},intervalTitle:{color:'#fff',fontSize:14,fontWeight:'800'},select:{minHeight:44,borderWidth:1,borderColor:'#3b4350',borderRadius:9,paddingHorizontal:12,flexDirection:'row',alignItems:'center',justifyContent:'space-between',backgroundColor:'#0f131a'},selectText:{color:'#fff',fontWeight:'700'},selectArrow:{color:'#9da6b5',fontSize:12},menu:{borderWidth:1,borderColor:'#3b4350',borderRadius:9,backgroundColor:'#0f131a',overflow:'hidden'},menuItem:{paddingHorizontal:13,paddingVertical:12},menuText:{color:'#fff',fontWeight:'700'},sliderRow:{flexDirection:'row',alignItems:'center',gap:8},sliderMin:{color:'#9da6b5',fontSize:11,fontWeight:'800'},sliderMax:{color:'#9da6b5',fontSize:11,fontWeight:'800'},sliderTrack:{flex:1,height:32,borderRadius:16,backgroundColor:'transparent',position:'relative',justifyContent:'center'},sliderEnabled:{opacity:1},sliderDisabled:{opacity:0.4},sliderRail:{position:'absolute',left:9,right:9,top:13,height:6,borderRadius:3,backgroundColor:'#303744'},sliderFill:{position:'absolute',left:9,top:13,height:6,borderRadius:3,backgroundColor:'#fff'},sliderThumb:{position:'absolute',top:7,width:18,height:18,borderRadius:9,backgroundColor:'#fff',marginLeft:-9},intervalValue:{color:'#9da6b5',fontSize:11,fontWeight:'700'},
   modalBackdrop:{position:'absolute',top:0,left:0,right:0,bottom:0,zIndex:100,backgroundColor:'rgba(0,0,0,0.72)',alignItems:'center',justifyContent:'center',padding:22},modalCard:{width:'100%',backgroundColor:'#151a22',borderWidth:1,borderColor:'#3b4350',borderRadius:15,padding:18,gap:12},modalTitle:{color:'#fff',fontSize:18,fontWeight:'900'},modalSub:{color:'#9da6b5',lineHeight:20},modalLabel:{color:'#8f98a8',fontSize:11,fontWeight:'900'},modalBig:{color:'#fff',fontSize:16,fontWeight:'900'},modalInput:{color:'#fff',backgroundColor:'#0f131a',borderWidth:1,borderColor:'#3b4350',borderRadius:9,padding:13,fontSize:16},modalButtons:{flexDirection:'row',gap:10,marginTop:5},modalCancel:{flex:1,minHeight:46,borderRadius:9,borderWidth:1,borderColor:'#3b4350',alignItems:'center',justifyContent:'center'},modalCancelText:{color:'#dce1e9',fontWeight:'900'},modalConfirm:{flex:1,minHeight:46,borderRadius:9,backgroundColor:'#fff',alignItems:'center',justifyContent:'center'},modalConfirmText:{color:'#0b0e13',fontWeight:'900'},editableRow:{gap:5},editableValue:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},pencil:{color:'#fff',fontSize:19,fontWeight:'900',paddingHorizontal:8},cardActionRow:{alignItems:'flex-end',marginTop:2},closeButton:{width:34,height:34,borderRadius:17,borderWidth:1,borderColor:'#3b4350',alignItems:'center',justifyContent:'center'},closeButtonText:{color:'#e05252',fontSize:16,fontWeight:'900'},
-  historyModes:{flexDirection:'row',gap:10},historyMode:{flex:1,minHeight:48,borderWidth:1,borderColor:'#3b4350',borderRadius:10,alignItems:'center',justifyContent:'center',backgroundColor:'#151a22'},historyModeSelected:{backgroundColor:'#fff',borderColor:'#fff'},historyModeText:{color:'#dce1e9',fontWeight:'900'},historyModeTextSelected:{color:'#0b0e13'},historySection:{color:'#fff',fontSize:13,fontWeight:'900',marginTop:5},historySectionToggle:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',paddingVertical:4},sectionChevron:{color:'#fff',fontSize:25,fontWeight:'900',paddingHorizontal:8},historyCard:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:13,padding:15,gap:12},historyCardHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:8},historyPair:{color:'#fff',fontSize:17,fontWeight:'900'},pairIdentity:{flex:1,minWidth:0,flexDirection:'row',alignItems:'center',gap:9},pairIcons:{flexDirection:'row',alignItems:'center',gap:5},pairIcon:{width:27,height:27,borderRadius:8,backgroundColor:'#0f131a',borderWidth:1,borderColor:'#303744',alignItems:'center',justifyContent:'center'},cryptoIcon:{backgroundColor:'#172033'},cryptoMark:{color:'#f4b942',fontSize:16,fontWeight:'900'},flagMark:{fontSize:17},pendingText:{color:'#f0b429',fontWeight:'900'},emptyHistory:{color:'#9da6b5',textAlign:'center',paddingVertical:18},menuEmpty:{color:'#9da6b5',padding:13}
+  quoteCard:{backgroundColor:'#0f131a',borderWidth:1,borderColor:'#303744',borderRadius:11,padding:13,gap:10},quoteRow:{flexDirection:'row',gap:12},quoteSide:{flex:1,gap:4},bidText:{color:'#28d17c',fontSize:19,fontWeight:'900'},askText:{color:'#e05252',fontSize:19,fontWeight:'900'},instrumentOption:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},orderTitle:{color:'#fff',fontSize:17,fontWeight:'900'},orderInput:{color:'#fff',backgroundColor:'#0f131a',borderWidth:1,borderColor:'#3b4350',borderRadius:9,padding:13,minHeight:48,fontSize:16},directionRow:{flexDirection:'row',gap:10},directionButton:{flex:1,minHeight:46,borderWidth:1,borderColor:'#3b4350',borderRadius:9,alignItems:'center',justifyContent:'center',backgroundColor:'#0f131a'},buySelected:{borderColor:'#28d17c',backgroundColor:'#12271f'},sellSelected:{borderColor:'#e05252',backgroundColor:'#2b171a'},buyText:{color:'#28d17c',fontWeight:'900'},sellText:{color:'#e05252',fontWeight:'900'},marketButton:{minHeight:50,borderRadius:10,backgroundColor:'#16834e',alignItems:'center',justifyContent:'center'},marketButtonText:{color:'#fff',fontWeight:'900'},limitButton:{minHeight:50,borderRadius:10,backgroundColor:'#fff',alignItems:'center',justifyContent:'center'},limitButtonText:{color:'#0b0e13',fontWeight:'900'},historyModes:{flexDirection:'row',gap:10},historyMode:{flex:1,minHeight:48,borderWidth:1,borderColor:'#3b4350',borderRadius:10,alignItems:'center',justifyContent:'center',backgroundColor:'#151a22'},historyModeSelected:{backgroundColor:'#fff',borderColor:'#fff'},historyModeText:{color:'#dce1e9',fontWeight:'900'},historyModeTextSelected:{color:'#0b0e13'},historySection:{color:'#fff',fontSize:13,fontWeight:'900',marginTop:5},historySectionToggle:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',paddingVertical:4},sectionChevron:{color:'#fff',fontSize:25,fontWeight:'900',paddingHorizontal:8},historyCard:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:13,padding:15,gap:12},historyCardHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:8},historyPair:{color:'#fff',fontSize:17,fontWeight:'900'},pairIdentity:{flex:1,minWidth:0,flexDirection:'row',alignItems:'center',gap:9},pairIcons:{flexDirection:'row',alignItems:'center',gap:5},pairIcon:{width:27,height:27,borderRadius:8,backgroundColor:'#0f131a',borderWidth:1,borderColor:'#303744',alignItems:'center',justifyContent:'center'},cryptoIcon:{backgroundColor:'#172033'},cryptoMark:{color:'#f4b942',fontSize:16,fontWeight:'900'},flagMark:{fontSize:17},pendingText:{color:'#f0b429',fontWeight:'900'},emptyHistory:{color:'#9da6b5',textAlign:'center',paddingVertical:18},menuEmpty:{color:'#9da6b5',padding:13}
 });

@@ -846,3 +846,159 @@ export async function openExnessAccountStream(
   ws.onclose = () => onStatus?.('disconnected');
   return ws;
 }
+
+
+export type ExnessInstrumentConditions = {
+  instrument?: string;
+  category?: string;
+  description?: string;
+  international_name?: string;
+  point_digits?: number;
+  volume_min?: string | number;
+  volume_max?: string | number;
+  volume_step?: string | number;
+};
+
+export type ExnessTick = {
+  instrument: string;
+  bid: number;
+  ask: number;
+  at: Date;
+};
+
+export async function getAvailableInstruments(
+  c: Credentials,
+  accessPoint: string,
+): Promise<string[]> {
+  const path = `/v1/configuration/accounts/${encodeURIComponent(c.accountId.trim())}/instruments`;
+  const data = await getJson<{ instruments?: unknown }>(accessPoint, path, c);
+  if (!Array.isArray(data.instruments)) {
+    throw new Error('Exness no devolvió la lista de instrumentos disponibles.');
+  }
+  return Array.from(new Set(data.instruments.filter((value): value is string =>
+    typeof value === 'string' && /^[A-Za-z0-9._-]{1,11}$/.test(value)
+  ))).sort((a,b)=>a.localeCompare(b));
+}
+
+export async function getInstrumentConditions(
+  c: Credentials,
+  accessPoint: string,
+  instrument: string,
+): Promise<ExnessInstrumentConditions> {
+  const symbol = instrument.trim();
+  if (!/^[A-Za-z0-9._-]{1,11}$/.test(symbol)) {
+    throw new Error('Instrumento inválido.');
+  }
+  const path = `/v1/configuration/accounts/${encodeURIComponent(c.accountId.trim())}/instruments/${encodeURIComponent(symbol)}/conditions`;
+  return getJson<ExnessInstrumentConditions>(accessPoint, path, c);
+}
+
+export async function openMarketPosition(
+  c: Credentials,
+  accessPoint: string,
+  params: {
+    instrument: string;
+    direction: 'buy' | 'sell';
+    volume: string;
+    stopLoss?: string;
+    takeProfit?: string;
+  },
+): Promise<{ operation_id?: string; status?: string; [key: string]: unknown }> {
+  const body: Record<string,string> = {
+    instrument: params.instrument,
+    side: params.direction,
+    volume: params.volume,
+  };
+  if (params.stopLoss !== undefined) body.stop_loss_price = params.stopLoss;
+  if (params.takeProfit !== undefined) body.take_profit_price = params.takeProfit;
+  const path = `/v1/trading/accounts/${encodeURIComponent(c.accountId.trim())}/positions`;
+  return requestJson(accessPoint, path, c, 'POST', body);
+}
+
+export async function placeLimitOrder(
+  c: Credentials,
+  accessPoint: string,
+  params: {
+    instrument: string;
+    direction: 'buy' | 'sell';
+    volume: string;
+    price: string;
+    stopLoss?: string;
+    takeProfit?: string;
+  },
+): Promise<{ operation_id?: string; status?: string; [key: string]: unknown }> {
+  const body: Record<string,string> = {
+    instrument: params.instrument,
+    side: params.direction,
+    type: 'limit',
+    volume: params.volume,
+    price: params.price,
+  };
+  if (params.stopLoss !== undefined) body.stop_loss_price = params.stopLoss;
+  if (params.takeProfit !== undefined) body.take_profit_price = params.takeProfit;
+  const path = `/v1/trading/accounts/${encodeURIComponent(c.accountId.trim())}/orders`;
+  return requestJson(accessPoint, path, c, 'POST', body);
+}
+
+function findTickRecord(value: unknown, instrument: string, depth = 0): Record<string,unknown> | null {
+  if (depth > 8 || value === null || typeof value !== 'object') return null;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = findTickRecord(item, instrument, depth + 1);
+      if (found) return found;
+    }
+    return null;
+  }
+  const record = value as Record<string,unknown>;
+  const symbol = String(record.instrument ?? record.symbol ?? '');
+  const bid = Number(record.bid ?? record.bid_price);
+  const ask = Number(record.ask ?? record.ask_price);
+  if (symbol.toUpperCase() === instrument.toUpperCase() &&
+      Number.isFinite(bid) && bid > 0 && Number.isFinite(ask) && ask > 0) return record;
+  for (const child of Object.values(record)) {
+    const found = findTickRecord(child, instrument, depth + 1);
+    if (found) return found;
+  }
+  return null;
+}
+
+export async function openExnessTickStream(
+  c: Credentials,
+  accessPoint: string,
+  instrument: string,
+  onTick: (tick: ExnessTick) => void,
+  onStatus?: (status: 'connecting' | 'connected' | 'disconnected' | 'error') => void,
+): Promise<WebSocket> {
+  if (!accessPoint.trim()) throw new Error('No hay Access Point para recibir cotizaciones.');
+  const symbol = instrument.trim();
+  if (!symbol) throw new Error('Seleccioná un instrumento para recibir cotizaciones.');
+  const path = `/v1/server-events/accounts/${encodeURIComponent(c.accountId.trim())}/ws/ticks`;
+  const signed = await headers(c, path);
+  const wsUrl = accessPoint.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:').replace(/\\/$/, '') + path;
+  const ws = new WebSocket(wsUrl, 'exness-ws-protocol', { headers: signed.headers } as never);
+  onStatus?.('connecting');
+  ws.onopen = () => {
+    onStatus?.('connected');
+    ws.send(JSON.stringify({
+      id: 'tinchodoko-ticks',
+      subscribe: { event: 'ticks', instruments: [symbol] },
+    }));
+  };
+  ws.onmessage = event => {
+    try {
+      const message = JSON.parse(String(event.data)) as Record<string,unknown>;
+      const record = findTickRecord(message.payload ?? message, symbol);
+      if (!record) return;
+      const bid = Number(record.bid ?? record.bid_price);
+      const ask = Number(record.ask ?? record.ask_price);
+      if (Number.isFinite(bid) && bid > 0 && Number.isFinite(ask) && ask > 0) {
+        onTick({ instrument: symbol, bid, ask, at: message.event_time ? new Date(String(message.event_time)) : new Date() });
+      }
+    } catch {
+      // Ignore unrelated or malformed frames; never log signed headers.
+    }
+  };
+  ws.onerror = () => onStatus?.('error');
+  ws.onclose = () => onStatus?.('disconnected');
+  return ws;
+}
