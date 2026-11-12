@@ -506,7 +506,7 @@ export async function getAccountSnapshot(
 }
 
 
-export type TradingHistoryMode = 'active' | 'past';
+export type TradingHistoryMode = 'active' | 'past' | 'all';
 
 async function getLiveTradingState(
   c: Credentials,
@@ -679,10 +679,12 @@ export async function getTradingHistory(
 ): Promise<TradingHistoryData> {
   if (!accessPoint.trim()) throw new Error('No hay Access Point. Conectá la cuenta primero.');
 
-  // ACTIVAS: use the same signed WebSocket snapshot proven by positions.ts.
-  // This avoids the stricter REST timestamp window used by history endpoints.
-  if (mode === 'active') {
-    const live = await getLiveTradingState(c, accessPoint);
+  // Read the live snapshot and, when requested, historical orders in one
+  // operation so ACTIVAS and PASADAS always share the same synchronization.
+  const live = mode === 'active' || mode === 'all'
+    ? await getLiveTradingState(c, accessPoint)
+    : null;
+  if (mode === 'active' && live) {
     return {
       positions: live.positions,
       activeOrders: live.activeOrders,
@@ -755,8 +757,8 @@ export async function getTradingHistory(
   const positions = asRecords(payload.positions ?? snapshot.positions);
   const orders = asRecords(payload.orders ?? snapshot.orders);
   return {
-    positions,
-    activeOrders: orders,
+    positions: live?.positions ?? positions,
+    activeOrders: live?.activeOrders ?? orders,
     pastOrders,
     deals: deals.filter(item => {
       const deal = item.deal && typeof item.deal === 'object'
