@@ -617,7 +617,9 @@ async function fetchHistoryPages(
       ? new URLSearchParams({ cursor, limit: '200' })
       : new URLSearchParams({ from: from.toISOString(), to: to.toISOString(), limit: '200' });
     const path = `/v1/history/accounts/${encodeURIComponent(c.accountId.trim())}/${endpoint}?${params.toString()}`;
-    const page = await getJson<HistoryPage>(host, path, c);
+    // History endpoints must use the proven direct Date.now() timestamp.
+    // Do not reuse the generic calibrated GET helper here.
+    const page = await getHistoryJson<HistoryPage>(host, path, c);
     result.push(...(page.items ?? []));
     cursor = page.next_cursor;
   } while (cursor);
@@ -688,11 +690,11 @@ export async function getTradingHistory(
     const next = Math.min(cursor + maxRangeMs, now.getTime());
     const from = new Date(cursor);
     const to = new Date(next);
-    const [ordersPage, dealsPage] = await Promise.all([
-      fetchHistoryPages(accessPoint, c, 'orders', from, to),
-      fetchHistoryPages(accessPoint, c, 'deals', from, to),
-    ]);
+    // Keep the two history endpoints sequential. Exness can return
+    // REQUEST_RATE_LIMIT when orders and deals are requested simultaneously.
+    const ordersPage = await fetchHistoryPages(accessPoint, c, 'orders', from, to);
     pastOrders.push(...ordersPage);
+    const dealsPage = await fetchHistoryPages(accessPoint, c, 'deals', from, to);
     deals.push(...dealsPage);
     cursor = next;
   }
