@@ -1,3 +1,4 @@
+- #V120 — Remove unused stream status display state
 - #V117 — Reset server clock before each history query
 - #V112 — Fix malformed JSX in pending history section
 - #V108 — Fix history range boundary and add endpoint diagnostics
