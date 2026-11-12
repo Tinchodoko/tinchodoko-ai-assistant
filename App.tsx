@@ -628,8 +628,8 @@ export default function App() {
         {historySymbols.length===0?<Text style={s.menuEmpty}>Buscando pares disponibles...</Text>:historySymbols.map(symbol=><Pressable key={symbol} onPress={()=>{setHistoryPair(symbol);setHistoryMenuOpen(false);}} style={s.menuItem}><Text style={s.menuText}>{symbol}</Text></Pressable>)}
       </View>}
       <View style={s.historyModes}>
-        <Pressable onPress={()=>{setHistoryMode('active');setHistoryData(null);setHistoryPair('');setHistoryMenuOpen(false);}} style={[s.historyMode,historyMode==='active'&&s.historyModeSelected]}><Text style={[s.historyModeText,historyMode==='active'&&s.historyModeTextSelected]}>ACTIVAS</Text></Pressable>
-        <Pressable onPress={()=>{setHistoryMode('past');setHistoryData(null);setHistoryPair('');setHistoryMenuOpen(false);}} style={[s.historyMode,historyMode==='past'&&s.historyModeSelected]}><Text style={[s.historyModeText,historyMode==='past'&&s.historyModeTextSelected]}>PASADAS</Text></Pressable>
+        <Pressable onPress={()=>{setHistoryMode('active');setHistoryData(null);setHistoryPair('');setHistoryError('');setHistoryMenuOpen(false);}} style={[s.historyMode,historyMode==='active'&&s.historyModeSelected]}><Text style={[s.historyModeText,historyMode==='active'&&s.historyModeTextSelected]}>ACTIVAS</Text></Pressable>
+        <Pressable onPress={()=>{setHistoryMode('past');setHistoryData(null);setHistoryPair('');setHistoryError('');setHistoryMenuOpen(false);}} style={[s.historyMode,historyMode==='past'&&s.historyModeSelected]}><Text style={[s.historyModeText,historyMode==='past'&&s.historyModeTextSelected]}>PASADAS</Text></Pressable>
       </View>
       <Pressable disabled={historyLoading||!historyPair} onPress={()=>void loadHistory(historyMode)} style={[s.refresh,(historyLoading||!historyPair)&&s.disabled]}>{historyLoading?<ActivityIndicator/>:<Text style={s.refreshText}>↻  ACTUALIZAR HISTORIAL</Text>}</Pressable>
       <View style={s.intervalCard}>
