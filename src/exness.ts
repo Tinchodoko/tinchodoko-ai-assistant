@@ -591,16 +591,35 @@ async function getHistoryJson<T>(
   c: Credentials,
 ): Promise<T> {
   const url = host.replace(/\/$/, '') + path;
-  // HISTORIAL follows the proven balance.ts/positions.ts strategy: direct Date.now().
-  // Do not apply the calibrated REST offset because history has a stricter time window.
+  // HISTORIAL signs exactly like the proven balance.ts/positions.ts code.
+  // Keep the server-clock calibration out of this stricter history flow.
   const signed = buildSignedHeadersAtTimestamp(c, path, Date.now());
+  const requestStartedAt = Date.now();
   const res = await fetch(url, {
     method: 'GET',
     headers: signed.headers,
     redirect: 'error',
   });
+  const responseReceivedAt = Date.now();
+  const serverDate = res.headers.get('date');
   const text = await res.text();
-  if (!res.ok) throw new Error(`HTTP ${res.status}: ${text}`);
+  if (!res.ok) {
+    const roundTripMs = responseReceivedAt - requestStartedAt;
+    const query = path.includes('?') ? path.slice(path.indexOf('?') + 1) : '';
+    const params = new URLSearchParams(query);
+    const range = params.has('from') || params.has('to')
+      ? ` | from=${params.get('from') ?? 'no enviado'} | to=${params.get('to') ?? 'no enviado'}`
+      : '';
+    const diagnostics = [
+      `endpoint=${path.split('?')[0]}`,
+      `timestamp enviado=${signed.timestamp}`,
+      `hora local al enviar=${requestStartedAt}`,
+      `hora local al recibir=${responseReceivedAt}`,
+      `tiempo de solicitud=${roundTripMs} ms`,
+      serverDate ? `fecha del servidor=${serverDate}` : 'fecha del servidor=no disponible',
+    ].join(' | ');
+    throw new Error(`HTTP ${res.status}: ${text}\\nDiagnóstico HISTORIAL: ${diagnostics}${range}`);
+  }
   return JSON.parse(text) as T;
 }
 async function fetchHistoryPages(
@@ -680,14 +699,19 @@ export async function getTradingHistory(
     throw new Error('Exness no informó los límites de antigüedad y rango del historial. No se enviaron consultas históricas.');
   }
 
-  const now = new Date();
-  const start = new Date(now.getTime() - ageDays * 24 * 60 * 60 * 1000);
+  // Exness can reject a history window whose upper bound is ahead of its
+  // server clock. The phone's clock can differ by a few seconds even when
+  // signed GET requests work, so end the requested range 5 seconds in the past.
+  // This is only a history-query boundary; signed timestamps remain Date.now().
+  const historyEndMs = Date.now() - 5000;
+  const start = new Date(historyEndMs - ageDays * 24 * 60 * 60 * 1000);
+  const historyEnd = new Date(historyEndMs);
   const maxRangeMs = rangeDays * 24 * 60 * 60 * 1000;
   const pastOrders: Record<string, unknown>[] = [];
   const deals: Record<string, unknown>[] = [];
 
-  for (let cursor = start.getTime(); cursor < now.getTime();) {
-    const next = Math.min(cursor + maxRangeMs, now.getTime());
+  for (let cursor = start.getTime(); cursor < historyEnd.getTime();) {
+    const next = Math.min(cursor + maxRangeMs, historyEnd.getTime());
     const from = new Date(cursor);
     const to = new Date(next);
     // Keep the two history endpoints sequential. Exness can return
