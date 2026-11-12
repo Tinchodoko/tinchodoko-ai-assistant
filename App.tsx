@@ -244,12 +244,6 @@ export default function App() {
   }
   const historySymbols=historyData?Array.from(new Set([...historyData.positions.map(x=>String(x.instrument??'')),...historyData.activeOrders.map(x=>String(x.instrument??'')),...historyData.pastOrders.map(x=>{const o=x.order&&typeof x.order==='object'?x.order as Record<string,unknown>:x;return String(o.instrument??'');}),...historyData.deals.map(x=>{const d=x.deal&&typeof x.deal==='object'?x.deal as Record<string,unknown>:x;return String(d.instrument??'');})].filter(x=>x&&x!=='undefined'))).sort():[];
   const selectedActivePositions=(historyData?.positions??[]).filter(x=>!historyPair||x.instrument===historyPair);
-  const accountFloatingPnl = (() => {
-    const b=Number(balance), e=Number(equity);
-    if (!Number.isFinite(b)||!Number.isFinite(e)) return null;
-    return e-b;
-  })();
-  function positionPnl(item:Record<string,unknown>): number|null {
   const selectedActiveOrders=(historyData?.activeOrders??[]).filter(x=>String(x.order_type??'').toLowerCase()!=='sltp'&&(!historyPair||x.instrument===historyPair));
   const selectedPastOrders=(historyData?.pastOrders??[]).filter(x=>{const o=x.order&&typeof x.order==='object'?x.order as Record<string,unknown>:x;return !historyPair||o.instrument===historyPair;});
   function beginEdit(target:'position'|'order', targetId:string, field:'stop_loss_price'|'take_profit_price', previous:string, instrument:string, otherField:'stop_loss_price'|'take_profit_price', otherValue:string) {
