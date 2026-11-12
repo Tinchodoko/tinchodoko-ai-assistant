@@ -84,6 +84,7 @@ export default function App() {
   const [historyPair,setHistoryPair]=useState('');
   const [historyMenuOpen,setHistoryMenuOpen]=useState(false);
   const [historyLoading,setHistoryLoading]=useState(false);
+  const historyLoadingRef=useRef(false);
   const [historyError,setHistoryError]=useState('');
   const [historyAutoRefresh,setHistoryAutoRefresh]=useState(false);
   const historyAutoRefreshRef=useRef(false);
@@ -197,6 +198,8 @@ export default function App() {
       setLast(null);
       autoRefreshRef.current=false;
       setAutoRefresh(false);
+      historyAutoRefreshRef.current=false;
+      setHistoryAutoRefresh(false);
       setScreen('connection');
     } catch(e) {
       setStatus('offline'); Alert.alert('Conexión fallida',e instanceof Error?e.message:String(e));
@@ -255,7 +258,8 @@ export default function App() {
       setHistoryStatus('offline');
       return;
     }
-    if (historyLoading && automatic) return;
+    if (historyLoadingRef.current && automatic) return;
+    historyLoadingRef.current=true;
     setHistoryLoading(true);
     if (!automatic) setHistoryError('');
     try {
@@ -270,7 +274,7 @@ export default function App() {
         setHistoryError(e instanceof Error?e.message:String(e));
         setHistoryStatus('offline');
       }
-    } finally { setHistoryLoading(false); }
+    } finally { historyLoadingRef.current=false; setHistoryLoading(false); }
   }
   const historyMinInterval=historyIntervalUnit==='seconds'?5:1;
   const historyMaxInterval=historyIntervalUnit==='seconds'?60:10;
@@ -511,10 +515,10 @@ export default function App() {
   return <SafeAreaView style={s.safe}>
     <View style={s.header}><Text style={s.title}>Tinchodoko AI Assistant</Text><View style={[s.dot,status==='online'?s.green:status==='connecting'?s.yellow:s.red]}/></View>
     <View style={s.tabs}>
-      <Pressable onPress={()=>setScreen('connection')} style={[s.tab,screen==='connection'&&s.active]}><Text style={s.tabText}>CONEXIÓN</Text></Pressable>
-      <Pressable onPress={()=>setScreen('profile')} style={[s.tab,screen==='profile'&&s.active]}><Text style={s.tabText}>PROFILE</Text></Pressable>
-      <Pressable onPress={openHistory} style={[s.tab,screen==='history'&&s.active]}><Text style={s.tabText}>HISTORIAL</Text></Pressable>
-      <Pressable onPress={()=>setScreen('app')} style={[s.tab,screen==='app'&&s.active]}><Text style={s.tabText}>APP</Text></Pressable>
+      <Pressable onPress={()=>{setIntervalMenu(false);setHistoryMenuOpen(false);setHistoryIntervalMenu(false);setScreen('connection');}} style={[s.tab,screen==='connection'&&s.active]}><Text style={s.tabText}>CONEXIÓN</Text></Pressable>
+      <Pressable onPress={()=>{setHistoryMenuOpen(false);setHistoryIntervalMenu(false);setScreen('profile');}} style={[s.tab,screen==='profile'&&s.active]}><Text style={s.tabText}>PROFILE</Text></Pressable>
+      <Pressable onPress={()=>{setIntervalMenu(false);openHistory();}} style={[s.tab,screen==='history'&&s.active]}><Text style={s.tabText}>HISTORIAL</Text></Pressable>
+      <Pressable onPress={()=>{setIntervalMenu(false);setHistoryMenuOpen(false);setHistoryIntervalMenu(false);setScreen('app');}} style={[s.tab,screen==='app'&&s.active]}><Text style={s.tabText}>APP</Text></Pressable>
     </View>
 
     {screen==='connection' ? <ScrollView contentContainerStyle={s.content}>
