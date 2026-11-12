@@ -191,7 +191,11 @@ async function getJson<T>(
         const requestMidpoint = requestStartedAt + (
           responseReceivedAt - requestStartedAt
         ) / 2;
-        serverClockOffsetMs = Math.round(serverTime - requestMidpoint);
+        // HTTP Date has whole-second precision and represents the server's current second.
+        // Center that one-second interval (+500 ms) before estimating the offset.
+        // This avoids signing requests ~500 ms early when the Date header is
+        // interpreted as the exact start of the second.
+        serverClockOffsetMs = Math.round(serverTime + 500 - requestMidpoint);
         hasServerClockOffset = true;
         continue;
       }
@@ -267,7 +271,8 @@ async function requestJson<T>(
 
     if (timestampRejected && Number.isFinite(serverTime) && attempt < 2) {
       const midpoint = requestStartedAt + (responseReceivedAt - requestStartedAt) / 2;
-      serverClockOffsetMs = Math.round(serverTime - midpoint);
+      // Same half-second centering used by read-only GET retries.
+      serverClockOffsetMs = Math.round(serverTime + 500 - midpoint);
       hasServerClockOffset = true;
       continue;
     }
