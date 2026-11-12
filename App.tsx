@@ -3,6 +3,7 @@ import { ActivityIndicator, Alert, AppState, Image, Linking, Pressable, SafeArea
 import { connectToExness, getAccountSnapshot, getTradingHistory, openExnessAccountStream, modifyActiveOrder, createPositionSltp, cancelActiveOrder, closePosition, getAvailableInstruments, getInstrumentConditions, openExnessTickStream, openMarketPosition, placeLimitOrder, type Credentials, type TradingHistoryData, type ExnessInstrumentConditions, type ExnessTick } from './src/exness';
 import { loadCredentials, saveCredentials } from './src/storage';
 import { BUILD_INFO } from './src/buildInfo';
+import { BUILD_HISTORY_FALLBACK } from './src/buildHistory';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as IntentLauncher from 'expo-intent-launcher';
 import * as SecureStore from 'expo-secure-store';
@@ -419,33 +420,37 @@ export default function App() {
   useEffect(()=>{
     if(screen!=='app') return;
     let cancelled=false;
-    setBuildRunsLoading(true);
+    // Always have the complete V0-current registry available locally.
+    // GitHub Actions is only used to refresh it with newer runs/statuses.
+    setBuildRuns(BUILD_HISTORY_FALLBACK);
+    setBuildRunsLoading(false);
     const loadAllBuildRuns=async()=>{
       try{
         const allRuns:any[]=[];
-        let page=1;
-        while(page<=20&&!cancelled){
-          const response=await fetch(`https://api.github.com/repos/Tinchodoko/tinchodoko-ai-assistant/actions/runs?per_page=100&page=${page}&_=${Date.now()}`,{headers:{Accept:'application/vnd.github+json','Cache-Control':'no-cache'}});
-          if(!response.ok) throw new Error(`GitHub HTTP ${response.status}`);
+        for(let page=1;page<=20&&!cancelled;page++){
+          const response=await fetch(\`https://api.github.com/repos/Tinchodoko/tinchodoko-ai-assistant/actions/runs?per_page=100&page=\${page}&_=${Date.now()}\`,{headers:{Accept:'application/vnd.github+json','Cache-Control':'no-cache'}});
+          if(!response.ok) throw new Error(\`GitHub HTTP ${response.status}\`);
           const data=await response.json();
           const pageRuns=Array.isArray(data.workflow_runs)?data.workflow_runs:[];
           allRuns.push(...pageRuns);
           if(pageRuns.length<100) break;
-          page++;
         }
         if(!cancelled){
           const byBuild=new Map<number,{run_number:number;conclusion:string|null;status:string;display_title:string}>();
+          for(const fallback of BUILD_HISTORY_FALLBACK) byBuild.set(fallback.run_number,fallback);
           for(const run of allRuns){
             const runNumber=Number(run.run_number);
             if(!Number.isFinite(runNumber)) continue;
             byBuild.set(runNumber,{run_number:runNumber,conclusion:run.conclusion??null,status:String(run.status??'unknown'),display_title:String(run.display_title??run.name??'Build')});
           }
+          const currentBuild=Number(BUILD_INFO.build);
+          if(Number.isFinite(currentBuild)&&!byBuild.has(currentBuild)){
+            byBuild.set(currentBuild,{run_number:currentBuild,conclusion:'success',status:'completed',display_title:'Build actual'});
+          }
           setBuildRuns([...byBuild.values()].sort((a,b)=>b.run_number-a.run_number));
         }
       }catch{
-        if(!cancelled)setBuildRuns([]);
-      }finally{
-        if(!cancelled)setBuildRunsLoading(false);
+        // Keep the bundled V0-current registry. Never replace it with an empty list.
       }
     };
     void loadAllBuildRuns();
