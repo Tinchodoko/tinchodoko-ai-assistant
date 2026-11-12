@@ -664,7 +664,7 @@ export default function App() {
     }
     const base=Number(tradeAction.basePrice);
     if(tradeAction.target==='position' && Number.isFinite(base) && (tradeAction.field==='stop_loss_price'||tradeAction.field==='take_profit_price')){
-      const pos=historyData?.activePositions?.find(p=>String(p.position_id??'')===String(tradeAction.positionId??''));
+      const pos=historyData?.positions.find((p: Record<string, unknown>)=>String(p.position_id??'')===String(tradeAction.positionId??''));
       const buyDirection=String(pos?.direction??'').toLowerCase()==='buy';
       const price=Number(value);
       const valid=tradeAction.field==='take_profit_price' ? (buyDirection ? price>base : price<base) : (buyDirection ? price<base : price>base);
