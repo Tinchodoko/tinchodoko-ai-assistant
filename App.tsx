@@ -681,7 +681,7 @@ export default function App() {
             onLayout={e=>{setSliderWidth(e.nativeEvent.layout.width);sliderTrackRef.current?.measureInWindow(x=>setSliderLeft(x));}}
             onStartShouldSetResponder={()=>true}
             onMoveShouldSetResponder={()=>true}
-            onResponderGrant={e=>setSliderFromLocation(e.nativeEvent.pageX,sliderWidth)}
+            onResponderGrant={e=>{swipeStart.current=null;setSliderFromLocation(e.nativeEvent.pageX,sliderWidth);}}
             onResponderMove={e=>setSliderFromLocation(e.nativeEvent.pageX,sliderWidth)}
           >
             <View style={s.sliderRail}/>
@@ -724,7 +724,7 @@ export default function App() {
           <View ref={historySliderTrackRef} style={[s.sliderTrack,s.sliderEnabled]}
             onLayout={e=>{setHistorySliderWidth(e.nativeEvent.layout.width);historySliderTrackRef.current?.measureInWindow(x=>setHistorySliderLeft(x));}}
             onStartShouldSetResponder={()=>true} onMoveShouldSetResponder={()=>true}
-            onResponderGrant={e=>setHistorySliderFromLocation(e.nativeEvent.pageX,historySliderWidth)} onResponderMove={e=>setHistorySliderFromLocation(e.nativeEvent.pageX,historySliderWidth)}>
+            onResponderGrant={e=>{swipeStart.current=null;setHistorySliderFromLocation(e.nativeEvent.pageX,historySliderWidth);}} onResponderMove={e=>setHistorySliderFromLocation(e.nativeEvent.pageX,historySliderWidth)}>
             <View style={s.sliderRail}/><View style={[s.sliderFill,{width:historySliderThumbPosition-9}]}/><View style={[s.sliderThumb,{left:historySliderThumbPosition}]}/>
           </View><Text style={s.sliderMax}>{historyIntervalUnit==='seconds'?'60S':'10M'}</Text>
         </View>
@@ -769,7 +769,7 @@ export default function App() {
           <Pressable onPress={()=>setCancelledOrdersExpanded(v=>!v)} style={s.historySectionToggle}><Text style={s.historySection}>ÓRDENES CANCELADAS ({pastOrderGroups.cancelled.length})</Text><Text style={s.sectionChevron}>{cancelledOrdersExpanded?'⌄':'›'}</Text></Pressable>
           {cancelledOrdersExpanded&&(pastOrderGroups.cancelled.length?pastOrderGroups.cancelled.slice().reverse().map(renderPastOrderCard):<Text style={s.emptyHistory}>No hay órdenes canceladas.</Text>)}
         </>}
-      </>}}
+      </>}
     </ScrollView> : <ScrollView contentContainerStyle={s.content} onTouchStart={handleSwipeStart} onTouchEnd={handleSwipeEnd}>
       <Text style={s.h1}>APP</Text>
       <View style={s.card}>
@@ -789,7 +789,7 @@ export default function App() {
       </Pressable>
       <Text style={s.meta}>REGISTRO DE CAMBIOS</Text>
       <View style={s.card}>
-        {buildRuns.length ? buildRuns.slice(0,40).map(run=><View key={run.run_number} style={s.buildRow}><Text style={run.conclusion==='success'?s.buildSuccess:run.conclusion==='failure'||run.conclusion==='cancelled'?s.buildFailure:s.buildPending}>#V{run.run_number}</Text><Text style={s.change}>{run.display_title}</Text></View>) : (BUILD_INFO.changelog.length ? BUILD_INFO.changelog : ['#V0 — Historial inicial']).map((entry,i)=><Text key={i} style={s.change}>{entry}</Text>)}
+        {buildRuns.length ? buildRuns.slice(0,40).map(run=><View key={run.run_number} style={s.buildRow}><Text style={run.conclusion==='success'?s.buildSuccess:run.conclusion==='failure'||run.conclusion==='timed_out'?s.buildFailure:s.buildPending}>#V{run.run_number}</Text><Text style={s.change}>{run.display_title}</Text></View>) : (BUILD_INFO.changelog.length ? BUILD_INFO.changelog : ['#V0 — Historial inicial']).map((entry,i)=><Text key={i} style={s.change}>{entry}</Text>)}
       </View>
     </ScrollView>}
   {renderTradeModals()}
