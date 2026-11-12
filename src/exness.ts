@@ -692,6 +692,7 @@ export async function getTradingHistory(
   }
 
   const accountId = encodeURIComponent(c.accountId.trim());
+  historyServerNowMs = 0;
   const [snapshot, limitsResponse] = await Promise.all([
     getHistoryJson<Record<string, unknown>>(
       accessPoint,
@@ -723,9 +724,9 @@ export async function getTradingHistory(
 
   // Build the history window against Exness' server clock, not the phone clock.
   // The HTTP Date header has one-second precision, so keep a 60-second safety
-  // margin inside the maximum history age. Each individual request uses the
-  // configured maximum range exactly (the documented upper bound is inclusive). 
-  // The upper bound is exclusive and stays safely behind the server's current time.
+  // margin inside the maximum history age. Each individual request is capped
+  // at the configured maximum range; the API's "to" timestamp is exclusive.
+  // The upper bound stays safely behind the server's current time.
   const dayMs = 24 * 60 * 60 * 1000;
   const serverNowMs = historyServerNowMs || Date.now();
   const historyEndMs = serverNowMs - 5000;
