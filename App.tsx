@@ -83,6 +83,8 @@ export default function App() {
   const [historyMode,setHistoryMode]=useState<'active'|'past'>('active');
   const [historyPair,setHistoryPair]=useState('');
   const [historyMenuOpen,setHistoryMenuOpen]=useState(false);
+  const [positionsExpanded,setPositionsExpanded]=useState(true);
+  const [pendingExpanded,setPendingExpanded]=useState(true);
   const [historyLoading,setHistoryLoading]=useState(false);
   const historyLoadingRef=useRef(false);
   const [historyError,setHistoryError]=useState('');
@@ -302,10 +304,16 @@ export default function App() {
     return ()=>clearInterval(timer);
   },[historyAutoRefresh,accessPoint,historyMode,historyIntervalUnit,historyIntervalValue]);
   function openHistory() {
+    // Entrar a HISTORIAL nunca dispara consultas: la primera sincronización
+    // queda bajo control del usuario mediante ACTUALIZAR HISTORIAL.
     setScreen('history');
-    if (!historyData && !historyLoading) void loadHistory('active');
   }
   function historyValue(item:Record<string,unknown>,key:string,fallback='—') { const value=item[key]; return value===undefined||value===null||value===''?fallback:String(value); }
+  function configuredPrice(item:Record<string,unknown>|undefined,key:'stop_loss_price'|'take_profit_price') {
+    if (!item) return 'NO CONFIGURADO';
+    const value=item[key];
+    return value===undefined||value===null||value===''||Number(value)===0?'NO CONFIGURADO':String(value);
+  }
   function historyDate(item:Record<string,unknown>,...keys:string[]) {
     for(const key of keys){const raw=item[key];if(typeof raw==='string'||typeof raw==='number'){const d=new Date(raw);if(!Number.isNaN(d.getTime()))return d.toLocaleString('es-AR',{timeZone:'America/Argentina/Buenos_Aires'});}}
     return 'Fecha no disponible';
@@ -586,7 +594,7 @@ export default function App() {
       <Text style={!autoRefresh?s.offlineText:streamStatus==='connected'?s.onlineText:s.offlineText}>Sincronización automática: {autoRefresh?streamStatus:'detenida'}</Text>
       <Text style={status==='online'?s.onlineText:s.offlineText}>Estado: {status}</Text>
       {!!accessPoint && <Text style={s.ap}>Access Point: {accessPoint}</Text>}
-    </ScrollView> : screen==='history' ? <ScrollView contentContainerStyle={s.content} onTouchStart={()=>{setHistoryMenuOpen(false);setHistoryIntervalMenu(false);}}>
+    </ScrollView> : screen==='history' ? <ScrollView contentContainerStyle={s.content}>
       <Text style={s.h1}>HISTORIAL</Text><Text style={s.sub}>Consultá las posiciones activas, órdenes pendientes y operaciones pasadas de tu cuenta.</Text>
       {historyMode==='active'&&<>
         <Text style={s.label}>SELECCIONE SU PAR</Text>
@@ -594,8 +602,8 @@ export default function App() {
         {historyMenuOpen&&<View style={s.menu}>{historySymbols.length===0?<Text style={s.menuEmpty}>No hay pares registrados.</Text>:historySymbols.map(symbol=><Pressable key={symbol} onPress={()=>{setHistoryPair(symbol);setHistoryMenuOpen(false);}} style={s.menuItem}><Text style={s.menuText}>{symbol}</Text></Pressable>)}</View>}
       </>}
       <View style={s.historyModes}>
-        <Pressable onPress={()=>{setHistoryMode('active');setHistoryData(null);setHistoryPair('');void loadHistory('active');}} style={[s.historyMode,historyMode==='active'&&s.historyModeSelected]}><Text style={[s.historyModeText,historyMode==='active'&&s.historyModeTextSelected]}>ACTIVAS</Text></Pressable>
-        <Pressable onPress={()=>{setHistoryMode('past');setHistoryData(null);setHistoryPair('');void loadHistory('past');}} style={[s.historyMode,historyMode==='past'&&s.historyModeSelected]}><Text style={[s.historyModeText,historyMode==='past'&&s.historyModeTextSelected]}>PASADAS</Text></Pressable>
+        <Pressable onPress={()=>{setHistoryMode('active');setHistoryData(null);setHistoryPair('');setHistoryMenuOpen(false);}} style={[s.historyMode,historyMode==='active'&&s.historyModeSelected]}><Text style={[s.historyModeText,historyMode==='active'&&s.historyModeTextSelected]}>ACTIVAS</Text></Pressable>
+        <Pressable onPress={()=>{setHistoryMode('past');setHistoryData(null);setHistoryPair('');setHistoryMenuOpen(false);}} style={[s.historyMode,historyMode==='past'&&s.historyModeSelected]}><Text style={[s.historyModeText,historyMode==='past'&&s.historyModeTextSelected]}>PASADAS</Text></Pressable>
       </View>
       <Pressable disabled={historyLoading} onPress={()=>void loadHistory(historyMode)} style={[s.refresh,historyLoading&&s.disabled]}>{historyLoading?<ActivityIndicator/>:<Text style={s.refreshText}>↻  ACTUALIZAR HISTORIAL</Text>}</Pressable>
       <View style={s.intervalCard}>
@@ -623,27 +631,28 @@ export default function App() {
       {historyLoading&&<ActivityIndicator color="#fff"/>}{!!historyError&&<Text style={s.offlineText}>{historyError}</Text>}
       {!historyLoading&&!historyError&&!historyData&&<Text style={s.emptyHistory}>Conectá tu cuenta para consultar el historial.</Text>}
       {!!historyData&&historyMode==='active'&&<>
-        <Text style={s.historySection}>POSICIONES ABIERTAS ({selectedActivePositions.length})</Text>
-        {selectedActivePositions.length===0?<Text style={s.emptyHistory}>No hay posiciones abiertas para este par.</Text>:selectedActivePositions.map((item,index)=>{
+        <Pressable onPress={()=>setPositionsExpanded(v=>!v)} style={s.historySectionToggle}><Text style={s.historySection}>POSICIONES ABIERTAS ({selectedActivePositions.length})</Text><Text style={s.sectionChevron}>{positionsExpanded?'⌄':'›'}</Text></Pressable>
+        {positionsExpanded&&(selectedActivePositions.length===0?<Text style={s.emptyHistory}>No hay posiciones abiertas para este par.</Text>:selectedActivePositions.map((item,index)=>{
           const buy=String(item.direction??'').toLowerCase()==='buy'; const sltp=historyData.activeOrders.find(o=>String(o.position_id??'')===String(item.position_id??'')&&String(o.order_type??'').toLowerCase()==='sltp');
           return <View key={String(item.position_id??index)} style={s.historyCard}>
             <View style={s.historyCardHeader}><Text style={s.historyPair}>{historyValue(item,'instrument')}</Text><Text style={buy?s.pnlPositive:s.pnlNegative}>{buy?'BUY':'SELL'}</Text></View>
             <Info label="ID POSICIÓN" value={historyValue(item,'position_id')}/><Info label="VOLUMEN" value={historyValue(item,'volume')}/><Info label="PRECIO DE APERTURA" value={historyValue(item,'open_price')}/><Info label="ESTADO" value={historyValue(item,'state')}/>
-            <View style={s.editableRow}><Text style={s.infoLabel}>STOP LOSS</Text><View style={s.editableValue}><Text style={s.infoValue}>{sltp?historyValue(sltp,'stop_loss_price'):'—'}</Text>{sltp&&<Pressable onPress={()=>beginEdit('position',String(sltp.order_id??''),'stop_loss_price',historyValue(sltp,'stop_loss_price'),String(item.instrument??''),'take_profit_price',historyValue(sltp,'take_profit_price'))}><Text style={s.pencil}>✎</Text></Pressable>}</View></View>
-            <View style={s.editableRow}><Text style={s.infoLabel}>TAKE PROFIT</Text><View style={s.editableValue}><Text style={s.infoValue}>{sltp?historyValue(sltp,'take_profit_price'):'—'}</Text>{sltp&&<Pressable onPress={()=>beginEdit('position',String(sltp.order_id??''),'take_profit_price',historyValue(sltp,'take_profit_price'),String(item.instrument??''),'stop_loss_price',historyValue(sltp,'stop_loss_price'))}><Text style={s.pencil}>✎</Text></Pressable>}</View></View>
+            <View style={s.editableRow}><Text style={s.infoLabel}>STOP LOSS</Text><View style={s.editableValue}><Text style={s.infoValue}>{configuredPrice(sltp,'stop_loss_price')}</Text><Pressable onPress={()=>beginEdit('position',String(sltp?.order_id??''),'stop_loss_price',configuredPrice(sltp,'stop_loss_price'),String(item.instrument??''),'take_profit_price',configuredPrice(sltp,'take_profit_price'))}><Text style={s.pencil}>✎</Text></Pressable></View></View>
+            <View style={s.editableRow}><Text style={s.infoLabel}>TAKE PROFIT</Text><View style={s.editableValue}><Text style={s.infoValue}>{configuredPrice(sltp,'take_profit_price')}</Text><Pressable onPress={()=>beginEdit('position',String(sltp?.order_id??''),'take_profit_price',configuredPrice(sltp,'take_profit_price'),String(item.instrument??''),'stop_loss_price',configuredPrice(sltp,'stop_loss_price'))}><Text style={s.pencil}>✎</Text></Pressable></View></View>
             <Info label="APERTURA" value={historyDate(item,'create_time')}/>
             <View style={s.cardActionRow}><Pressable onPress={()=>beginClose('position',String(item.position_id??''),String(item.instrument??''),null)} style={s.closeButton}><Text style={s.closeButtonText}>✕</Text></Pressable></View>
           </View>;
-        })}
-        <Text style={s.historySection}>ÓRDENES PENDIENTES ({selectedActiveOrders.length})</Text>
-        {selectedActiveOrders.length===0?<Text style={s.emptyHistory}>No hay órdenes pendientes para este par.</Text>:selectedActiveOrders.map((item,index)=><View key={String(item.order_id??index)} style={s.historyCard}>
+        }))}
+        <Pressable onPress={()=>setPendingExpanded(v=>!v)} style={s.historySectionToggle}><Text style={s.historySection}>ÓRDENES PENDIENTES ({selectedActiveOrders.length})</Text><Text style={s.sectionChevron}>{pendingExpanded?'⌄':'›'}</Text></Pressable>
+        {pendingExpanded&&(selectedActiveOrders.length===0?<Text style={s.emptyHistory}>No hay órdenes pendientes para este par.</Text>:selectedActiveOrders.map((item,index)=><View key={String(item.order_id??index)} style={s.historyCard}>
           <View style={s.historyCardHeader}><Text style={s.historyPair}>{historyValue(item,'instrument')}</Text><Text style={s.pendingText}>PENDIENTE</Text></View>
           <Info label="ID ORDEN" value={historyValue(item,'order_id')}/><Info label="TIPO" value={historyValue(item,'order_type')}/><Info label="DIRECCIÓN" value={historyValue(item,'direction')}/><Info label="VOLUMEN" value={historyValue(item,'volume')}/><View style={s.editableRow}><Text style={s.infoLabel}>PRECIO DE ENTRADA</Text><View style={s.editableValue}><Text style={s.infoValue}>{historyValue(item,'price')}</Text><Pressable onPress={()=>beginEdit('order',String(item.order_id??''),'price',historyValue(item,'price'),String(item.instrument??''))}><Text style={s.pencil}>✎</Text></Pressable></View></View>
-          <View style={s.editableRow}><Text style={s.infoLabel}>STOP LOSS</Text><View style={s.editableValue}><Text style={s.infoValue}>{historyValue(item,'stop_loss_price')}</Text><Pressable onPress={()=>beginEdit('order',String(item.order_id??''),'stop_loss_price',historyValue(item,'stop_loss_price'),String(item.instrument??''),'take_profit_price',historyValue(item,'take_profit_price'))}><Text style={s.pencil}>✎</Text></Pressable></View></View>
-          <View style={s.editableRow}><Text style={s.infoLabel}>TAKE PROFIT</Text><View style={s.editableValue}><Text style={s.infoValue}>{historyValue(item,'take_profit_price')}</Text><Pressable onPress={()=>beginEdit('order',String(item.order_id??''),'take_profit_price',historyValue(item,'take_profit_price'),String(item.instrument??''),'stop_loss_price',historyValue(item,'stop_loss_price'))}><Text style={s.pencil}>✎</Text></Pressable></View></View>
+          <View style={s.editableRow}><Text style={s.infoLabel}>STOP LOSS</Text><View style={s.editableValue}><Text style={s.infoValue}>{configuredPrice(item,'stop_loss_price')}</Text><Pressable onPress={()=>beginEdit('order',String(item.order_id??''),'stop_loss_price',historyValue(item,'stop_loss_price'),String(item.instrument??''),'take_profit_price',historyValue(item,'take_profit_price'))}><Text style={s.pencil}>✎</Text></Pressable></View></View>
+          <View style={s.editableRow}><Text style={s.infoLabel}>TAKE PROFIT</Text><View style={s.editableValue}><Text style={s.infoValue}>{configuredPrice(item,'take_profit_price')}</Text><Pressable onPress={()=>beginEdit('order',String(item.order_id??''),'take_profit_price',historyValue(item,'take_profit_price'),String(item.instrument??''),'stop_loss_price',historyValue(item,'stop_loss_price'))}><Text style={s.pencil}>✎</Text></Pressable></View></View>
           <Info label="CREADA" value={historyDate(item,'create_time')}/>
           <View style={s.cardActionRow}><Pressable onPress={()=>beginClose('order',String(item.order_id??''),String(item.instrument??''),null)} style={s.closeButton}><Text style={s.closeButtonText}>✕</Text></Pressable></View>
         </View>)}
+        )}
       </>}
       {!!historyData&&historyMode==='past'&&<>
         <Text style={s.historySection}>ÓRDENES FINALIZADAS ({selectedPastOrders.length})</Text>
@@ -700,5 +709,5 @@ const s=StyleSheet.create({
  saveIntervalButton:{minHeight:46,borderRadius:10,borderWidth:1,borderColor:'#3b4350',alignItems:'center',justifyContent:'center',backgroundColor:'#151a22'},saveIntervalText:{color:'#fff',fontWeight:'900',fontSize:12},
  intervalCard:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:14,padding:17,gap:12},intervalHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},clockButton:{width:40,height:40,borderRadius:20,alignItems:'center',justifyContent:'center'},clockOn:{color:'#28d17c',fontSize:25,fontWeight:'900'},clockOff:{color:'#e05252',fontSize:22,fontWeight:'900'},intervalTitle:{color:'#fff',fontSize:14,fontWeight:'800'},select:{minHeight:44,borderWidth:1,borderColor:'#3b4350',borderRadius:9,paddingHorizontal:12,flexDirection:'row',alignItems:'center',justifyContent:'space-between',backgroundColor:'#0f131a'},selectText:{color:'#fff',fontWeight:'700'},selectArrow:{color:'#9da6b5',fontSize:12},menu:{borderWidth:1,borderColor:'#3b4350',borderRadius:9,backgroundColor:'#0f131a',overflow:'hidden'},menuItem:{paddingHorizontal:13,paddingVertical:12},menuText:{color:'#fff',fontWeight:'700'},sliderRow:{flexDirection:'row',alignItems:'center',gap:8},sliderMin:{color:'#9da6b5',fontSize:11,fontWeight:'800'},sliderMax:{color:'#9da6b5',fontSize:11,fontWeight:'800'},sliderTrack:{flex:1,height:32,borderRadius:16,backgroundColor:'transparent',position:'relative',justifyContent:'center'},sliderEnabled:{opacity:1},sliderDisabled:{opacity:0.4},sliderRail:{position:'absolute',left:9,right:9,top:13,height:6,borderRadius:3,backgroundColor:'#303744'},sliderFill:{position:'absolute',left:9,top:13,height:6,borderRadius:3,backgroundColor:'#fff'},sliderThumb:{position:'absolute',top:7,width:18,height:18,borderRadius:9,backgroundColor:'#fff',marginLeft:-9},intervalValue:{color:'#9da6b5',fontSize:11,fontWeight:'700'},
   modalBackdrop:{position:'absolute',top:0,left:0,right:0,bottom:0,zIndex:100,backgroundColor:'rgba(0,0,0,0.72)',alignItems:'center',justifyContent:'center',padding:22},modalCard:{width:'100%',backgroundColor:'#151a22',borderWidth:1,borderColor:'#3b4350',borderRadius:15,padding:18,gap:12},modalTitle:{color:'#fff',fontSize:18,fontWeight:'900'},modalSub:{color:'#9da6b5',lineHeight:20},modalLabel:{color:'#8f98a8',fontSize:11,fontWeight:'900'},modalBig:{color:'#fff',fontSize:16,fontWeight:'900'},modalInput:{color:'#fff',backgroundColor:'#0f131a',borderWidth:1,borderColor:'#3b4350',borderRadius:9,padding:13,fontSize:16},modalButtons:{flexDirection:'row',gap:10,marginTop:5},modalCancel:{flex:1,minHeight:46,borderRadius:9,borderWidth:1,borderColor:'#3b4350',alignItems:'center',justifyContent:'center'},modalCancelText:{color:'#dce1e9',fontWeight:'900'},modalConfirm:{flex:1,minHeight:46,borderRadius:9,backgroundColor:'#fff',alignItems:'center',justifyContent:'center'},modalConfirmText:{color:'#0b0e13',fontWeight:'900'},editableRow:{gap:5},editableValue:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},pencil:{color:'#fff',fontSize:19,fontWeight:'900',paddingHorizontal:8},cardActionRow:{alignItems:'flex-end',marginTop:2},closeButton:{width:34,height:34,borderRadius:17,borderWidth:1,borderColor:'#3b4350',alignItems:'center',justifyContent:'center'},closeButtonText:{color:'#e05252',fontSize:16,fontWeight:'900'},
-  historyModes:{flexDirection:'row',gap:10},historyMode:{flex:1,minHeight:48,borderWidth:1,borderColor:'#3b4350',borderRadius:10,alignItems:'center',justifyContent:'center',backgroundColor:'#151a22'},historyModeSelected:{backgroundColor:'#fff',borderColor:'#fff'},historyModeText:{color:'#dce1e9',fontWeight:'900'},historyModeTextSelected:{color:'#0b0e13'},historySection:{color:'#fff',fontSize:13,fontWeight:'900',marginTop:5},historyCard:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:13,padding:15,gap:12},historyCardHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},historyPair:{color:'#fff',fontSize:17,fontWeight:'900'},pendingText:{color:'#f0b429',fontWeight:'900'},emptyHistory:{color:'#9da6b5',textAlign:'center',paddingVertical:18},menuEmpty:{color:'#9da6b5',padding:13}
+  historyModes:{flexDirection:'row',gap:10},historyMode:{flex:1,minHeight:48,borderWidth:1,borderColor:'#3b4350',borderRadius:10,alignItems:'center',justifyContent:'center',backgroundColor:'#151a22'},historyModeSelected:{backgroundColor:'#fff',borderColor:'#fff'},historyModeText:{color:'#dce1e9',fontWeight:'900'},historyModeTextSelected:{color:'#0b0e13'},historySection:{color:'#fff',fontSize:13,fontWeight:'900',marginTop:5},historySectionToggle:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',paddingVertical:4},sectionChevron:{color:'#fff',fontSize:25,fontWeight:'900',paddingHorizontal:8},historyCard:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:13,padding:15,gap:12},historyCardHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},historyPair:{color:'#fff',fontSize:17,fontWeight:'900'},pendingText:{color:'#f0b429',fontWeight:'900'},emptyHistory:{color:'#9da6b5',textAlign:'center',paddingVertical:18},menuEmpty:{color:'#9da6b5',padding:13}
 });
