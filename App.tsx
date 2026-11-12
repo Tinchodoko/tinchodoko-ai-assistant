@@ -257,7 +257,13 @@ export default function App() {
   }
 
 
-  async function loadHistory(mode: 'active'|'past' = historyMode, automatic=false) {
+  async function loadHistory(mode: 'active'|'past' = historyMode, automatic=false, allowWithoutPair=false) {
+    if (!historyPair && !allowWithoutPair) {
+      setHistoryData(null);
+      setHistoryError('Seleccioná un par o MOSTRAR TODO para consultar las órdenes.');
+      setHistoryStatus('offline');
+      return;
+    }
     if (!accessPoint || !c.apiKey || !c.secret || !c.accountId) {
       setHistoryError('Primero conectá tu cuenta de Exness desde CONEXIÓN.');
       setHistoryStatus('offline');
@@ -300,11 +306,11 @@ export default function App() {
     finally { setHistorySavingInterval(false); }
   }
   useEffect(()=>{
-    if (!historyAutoRefresh || !accessPoint) return;
+    if (!historyAutoRefresh || !accessPoint || !historyPair) return;
     const intervalMs=(historyIntervalUnit==='seconds'?historyIntervalValue:historyIntervalValue*60)*1000;
     const timer=setInterval(()=>{ if (historyAutoRefreshRef.current) void loadHistory(historyMode,true); },intervalMs);
     return ()=>clearInterval(timer);
-  },[historyAutoRefresh,accessPoint,historyMode,historyIntervalUnit,historyIntervalValue]);
+  },[historyAutoRefresh,accessPoint,historyMode,historyPair,historyIntervalUnit,historyIntervalValue]);
   function openHistory() {
     // Entrar a HISTORIAL nunca dispara consultas: la primera sincronización
     // queda bajo control del usuario mediante ACTUALIZAR HISTORIAL.
@@ -321,10 +327,12 @@ export default function App() {
     return 'Fecha no disponible';
   }
   const historySymbols=historyData?Array.from(new Set([...historyData.positions.map(x=>String(x.instrument??'')),...historyData.activeOrders.map(x=>String(x.instrument??'')),...historyData.pastOrders.map(x=>{const o=x.order&&typeof x.order==='object'?x.order as Record<string,unknown>:x;return String(o.instrument??'');}),...historyData.deals.map(x=>{const d=x.deal&&typeof x.deal==='object'?x.deal as Record<string,unknown>:x;return String(d.instrument??'');})].filter(x=>x&&x!=='undefined'))).sort():[];
-  const selectedActivePositions=(historyData?.positions??[]).filter(x=>!historyPair||x.instrument===historyPair);
-  const selectedActiveOrders=(historyData?.activeOrders??[]).filter(x=>String(x.order_type??'').toLowerCase()!=='sltp'&&(!historyPair||x.instrument===historyPair));
-  // PASADAS es el historial completo: no depende de ningún par seleccionado.
-  const selectedPastOrders=historyData?.pastOrders??[];
+  const selectedActivePositions=(historyData?.positions??[]).filter(x=>historyPair==='*'||x.instrument===historyPair);
+  const selectedActiveOrders=(historyData?.activeOrders??[]).filter(x=>String(x.order_type??'').toLowerCase()!=='sltp'&&(historyPair==='*'||x.instrument===historyPair));
+  const selectedPastOrders=(historyData?.pastOrders??[]).filter(item=>{
+    const order=item.order&&typeof item.order==='object'?item.order as Record<string,unknown>:item;
+    return historyPair==='*'||String(order.instrument??'')===historyPair;
+  });
   function beginEdit(target:'position'|'order', targetId:string, field:'price'|'stop_loss_price'|'take_profit_price', previous:string, instrument:string, otherField?:'stop_loss_price'|'take_profit_price', otherValue?:string, positionId?:string) {
     const cleanId=targetId.trim();
     const cleanPositionId=(positionId??'').trim();
@@ -609,16 +617,21 @@ export default function App() {
       {!!accessPoint && <Text style={s.ap}>Access Point: {accessPoint}</Text>}
     </ScrollView> : screen==='history' ? <ScrollView contentContainerStyle={s.content}>
       <Text style={s.h1}>HISTORIAL</Text><Text style={s.sub}>Consultá las posiciones activas, órdenes pendientes y operaciones pasadas de tu cuenta.</Text>
-      {historyMode==='active'&&<>
-        <Text style={s.label}>SELECCIONE SU PAR</Text>
-        <Pressable onPress={()=>setHistoryMenuOpen(!historyMenuOpen)} style={s.select}><Text style={s.selectText}>{historyPair||'Seleccione un par'}</Text><Text style={s.selectArrow}>{historyMenuOpen?'▲':'▼'}</Text></Pressable>
-        {historyMenuOpen&&<View style={s.menu}>{historySymbols.length===0?<Text style={s.menuEmpty}>No hay pares registrados.</Text>:historySymbols.map(symbol=><Pressable key={symbol} onPress={()=>{setHistoryPair(symbol);setHistoryMenuOpen(false);}} style={s.menuItem}><Text style={s.menuText}>{symbol}</Text></Pressable>)}</View>}
-      </>}
+      <Text style={s.label}>SELECCIONE SU PAR</Text>
+      <Pressable onPress={()=>{
+        const opening=!historyMenuOpen;
+        setHistoryMenuOpen(opening);
+        if(opening&&!historyData&&!historyLoading) void loadHistory(historyMode,false,true);
+      }} style={s.select}><Text style={s.selectText}>{historyPair==='*'?'MOSTRAR TODO':historyPair||'Seleccione un par'}</Text><Text style={s.selectArrow}>{historyMenuOpen?'▲':'▼'}</Text></Pressable>
+      {historyMenuOpen&&<View style={s.menu}>
+        <Pressable onPress={()=>{setHistoryPair('*');setHistoryMenuOpen(false);}} style={s.menuItem}><Text style={s.menuText}>MOSTRAR TODO</Text></Pressable>
+        {historySymbols.length===0?<Text style={s.menuEmpty}>Buscando pares disponibles...</Text>:historySymbols.map(symbol=><Pressable key={symbol} onPress={()=>{setHistoryPair(symbol);setHistoryMenuOpen(false);}} style={s.menuItem}><Text style={s.menuText}>{symbol}</Text></Pressable>)}
+      </View>}
       <View style={s.historyModes}>
         <Pressable onPress={()=>{setHistoryMode('active');setHistoryData(null);setHistoryPair('');setHistoryMenuOpen(false);}} style={[s.historyMode,historyMode==='active'&&s.historyModeSelected]}><Text style={[s.historyModeText,historyMode==='active'&&s.historyModeTextSelected]}>ACTIVAS</Text></Pressable>
         <Pressable onPress={()=>{setHistoryMode('past');setHistoryData(null);setHistoryPair('');setHistoryMenuOpen(false);}} style={[s.historyMode,historyMode==='past'&&s.historyModeSelected]}><Text style={[s.historyModeText,historyMode==='past'&&s.historyModeTextSelected]}>PASADAS</Text></Pressable>
       </View>
-      <Pressable disabled={historyLoading} onPress={()=>void loadHistory(historyMode)} style={[s.refresh,historyLoading&&s.disabled]}>{historyLoading?<ActivityIndicator/>:<Text style={s.refreshText}>↻  ACTUALIZAR HISTORIAL</Text>}</Pressable>
+      <Pressable disabled={historyLoading||!historyPair} onPress={()=>void loadHistory(historyMode)} style={[s.refresh,(historyLoading||!historyPair)&&s.disabled]}>{historyLoading?<ActivityIndicator/>:<Text style={s.refreshText}>↻  ACTUALIZAR HISTORIAL</Text>}</Pressable>
       <View style={s.intervalCard}>
         <View style={s.intervalHeader}><Text style={s.meta}>AUTORREFRESCO</Text><Pressable onPress={()=>{const next=!historyAutoRefresh;historyAutoRefreshRef.current=next;setHistoryAutoRefresh(next);}} style={s.clockButton}><Text style={historyAutoRefresh?s.clockOn:s.clockOff}>{historyAutoRefresh?'◷':'✕'}</Text></Pressable></View>
         <Text style={s.intervalTitle}>Coloca el intervalo</Text>
@@ -642,8 +655,8 @@ export default function App() {
       <Text style={s.meta}>ÚLTIMA ACTUALIZACIÓN</Text><Text style={s.time}>{dateText(historyLastSync)}</Text>
       <Text style={historyStatus==='online'?s.onlineText:s.offlineText}>Estado: {historyStatus}</Text>
       {historyLoading&&<ActivityIndicator color="#fff"/>}{!!historyError&&<Text style={s.offlineText}>{historyError}</Text>}
-      {!historyLoading&&!historyError&&!historyData&&<Text style={s.emptyHistory}>Conectá tu cuenta para consultar el historial.</Text>}
-      {!!historyData&&historyMode==='active'&&<>
+      {!historyLoading&&!historyError&&(!historyData||!historyPair)&&<Text style={s.emptyHistory}>Seleccioná un par o MOSTRAR TODO para visualizar las órdenes.</Text>}
+      {!!historyData&&!!historyPair&&historyMode==='active'&&<>
         <Pressable onPress={()=>setPositionsExpanded(v=>!v)} style={s.historySectionToggle}><Text style={s.historySection}>POSICIONES ABIERTAS ({selectedActivePositions.length})</Text><Text style={s.sectionChevron}>{positionsExpanded?'⌄':'›'}</Text></Pressable>
         {positionsExpanded&&(selectedActivePositions.length===0?<Text style={s.emptyHistory}>No hay posiciones abiertas para este par.</Text>:selectedActivePositions.map((item,index)=>{
           const buy=String(item.direction??'').toLowerCase()==='buy'; const sltp=historyData.activeOrders.find(o=>String(o.position_id??'')===String(item.position_id??'')&&String(o.order_type??'').toLowerCase()==='sltp');
@@ -666,7 +679,7 @@ export default function App() {
           <View style={s.cardActionRow}><Pressable onPress={()=>beginClose('order',String(item.order_id??''),String(item.instrument??''),null)} style={s.closeButton}><Text style={s.closeButtonText}>✕</Text></Pressable></View>
         </View>))}
       </>}
-      {!!historyData&&historyMode==='past'&&<>
+      {!!historyData&&!!historyPair&&historyMode==='past'&&<>
         <Text style={s.historySection}>ÓRDENES FINALIZADAS ({selectedPastOrders.length})</Text>
         {selectedPastOrders.length===0?<Text style={s.emptyHistory}>No hay órdenes pasadas para este par en el período permitido por Exness.</Text>:[...selectedPastOrders].reverse().map((item,index)=>{
           const order=item.order&&typeof item.order==='object'?item.order as Record<string,unknown>:item; const state=String(order.state??order.order_state??'').toUpperCase();
