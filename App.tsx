@@ -15,7 +15,7 @@ type TradeAction = {
   kind: 'edit' | 'close';
   target: 'position' | 'order';
   targetId: string;
-  field?: 'stop_loss_price' | 'take_profit_price';
+  field?: 'price' | 'stop_loss_price' | 'take_profit_price';
   previous?: string;
   value?: string;
   otherField?: 'stop_loss_price' | 'take_profit_price';
@@ -85,6 +85,17 @@ export default function App() {
   const [historyMenuOpen,setHistoryMenuOpen]=useState(false);
   const [historyLoading,setHistoryLoading]=useState(false);
   const [historyError,setHistoryError]=useState('');
+  const [historyAutoRefresh,setHistoryAutoRefresh]=useState(false);
+  const historyAutoRefreshRef=useRef(false);
+  const [historyIntervalUnit,setHistoryIntervalUnit]=useState<'seconds'|'minutes'>('seconds');
+  const [historyIntervalValue,setHistoryIntervalValue]=useState(5);
+  const [historyIntervalMenu,setHistoryIntervalMenu]=useState(false);
+  const [historySliderWidth,setHistorySliderWidth]=useState(1);
+  const [historySliderLeft,setHistorySliderLeft]=useState(0);
+  const historySliderTrackRef=useRef<View>(null);
+  const [historySavingInterval,setHistorySavingInterval]=useState(false);
+  const [historyLastSync,setHistoryLastSync]=useState<Date|null>(null);
+  const [historyStatus,setHistoryStatus]=useState<'offline'|'online'>('offline');
   const [tradeAction,setTradeAction]=useState<TradeAction|null>(null);
   const [tradeConfirm,setTradeConfirm]=useState<TradeAction|null>(null);
   const [tradeBusy,setTradeBusy]=useState(false);
@@ -104,6 +115,20 @@ export default function App() {
           }
         }
       } catch { /* Ignore invalid saved interval and keep 5 seconds. */ }
+    }).catch(()=>{});
+    SecureStore.getItemAsync('tinchodoko.history.refreshInterval').then(raw=>{
+      if (!raw) return;
+      try {
+        const saved=JSON.parse(raw) as {unit?:'seconds'|'minutes';value?:number};
+        if ((saved.unit==='seconds'||saved.unit==='minutes') && Number.isInteger(saved.value)) {
+          const min=saved.unit==='seconds'?5:1;
+          const max=saved.unit==='seconds'?60:10;
+          if (saved.value!>=min && saved.value!<=max) {
+            setHistoryIntervalUnit(saved.unit);
+            setHistoryIntervalValue(saved.value!);
+          }
+        }
+      } catch { /* Keep the history default at five seconds. */ }
     }).catch(()=>{});
     void cleanupInstalledUpdateApks();
   },[]);
@@ -224,15 +249,53 @@ export default function App() {
   }
 
 
-  async function loadHistory(mode: 'active'|'past' = historyMode) {
-    if (!accessPoint || !c.apiKey || !c.secret || !c.accountId) { setHistoryError('Primero conectá tu cuenta de Exness desde CONEXIÓN.'); return; }
-    setHistoryLoading(true); setHistoryError('');
+  async function loadHistory(mode: 'active'|'past' = historyMode, automatic=false) {
+    if (!accessPoint || !c.apiKey || !c.secret || !c.accountId) {
+      setHistoryError('Primero conectá tu cuenta de Exness desde CONEXIÓN.');
+      setHistoryStatus('offline');
+      return;
+    }
+    if (historyLoading && automatic) return;
+    setHistoryLoading(true);
+    if (!automatic) setHistoryError('');
     try {
-      const data=await getTradingHistory(c,accessPoint,mode); setHistoryData(data);
-      const symbols=Array.from(new Set([...data.positions.map(x=>String(x.instrument??'')),...data.activeOrders.map(x=>String(x.instrument??'')),...data.pastOrders.map(x=>{const o=x.order&&typeof x.order==='object'?x.order as Record<string,unknown>:x;return String(o.instrument??'');}),...data.deals.map(x=>{const d=x.deal&&typeof x.deal==='object'?x.deal as Record<string,unknown>:x;return String(d.instrument??'');})].filter(x=>x&&x!=='undefined')));
-      setHistoryPair(current=>current&&symbols.includes(current)?current:symbols[0]||'');
-    } catch(e) { setHistoryError(e instanceof Error?e.message:String(e)); } finally { setHistoryLoading(false); }
+      const data=await getTradingHistory(c,accessPoint,mode);
+      if (automatic && !historyAutoRefreshRef.current) return;
+      setHistoryData(data);
+      setHistoryStatus('online');
+      setHistoryLastSync(new Date());
+      setHistoryError('');
+    } catch(e) {
+      if (!automatic || historyAutoRefreshRef.current) {
+        setHistoryError(e instanceof Error?e.message:String(e));
+        setHistoryStatus('offline');
+      }
+    } finally { setHistoryLoading(false); }
   }
+  const historyMinInterval=historyIntervalUnit==='seconds'?5:1;
+  const historyMaxInterval=historyIntervalUnit==='seconds'?60:10;
+  const historyIntervalLabel=historyIntervalUnit==='seconds' ? String(historyIntervalValue).padStart(2,'0')+'S' : historyIntervalValue+'M';
+  const historySliderThumbPosition=9+((historyIntervalValue-historyMinInterval)/(historyMaxInterval-historyMinInterval))*Math.max(1,historySliderWidth-18);
+  function setHistorySliderFromLocation(pageX:number,width:number) {
+    const usableWidth=Math.max(1,width-18);
+    const localX=pageX-historySliderLeft;
+    const ratio=Math.max(0,Math.min(1,(localX-9)/usableWidth));
+    setHistoryIntervalValue(Math.round(historyMinInterval+ratio*(historyMaxInterval-historyMinInterval)));
+  }
+  async function saveHistoryInterval() {
+    setHistorySavingInterval(true);
+    try {
+      await SecureStore.setItemAsync('tinchodoko.history.refreshInterval',JSON.stringify({unit:historyIntervalUnit,value:historyIntervalValue}));
+      Alert.alert('Intervalo guardado','El intervalo de HISTORIAL ahora es '+historyIntervalLabel+'.');
+    } catch(e) { Alert.alert('No se pudo guardar el intervalo',e instanceof Error?e.message:String(e)); }
+    finally { setHistorySavingInterval(false); }
+  }
+  useEffect(()=>{
+    if (!historyAutoRefresh || !accessPoint) return;
+    const intervalMs=(historyIntervalUnit==='seconds'?historyIntervalValue:historyIntervalValue*60)*1000;
+    const timer=setInterval(()=>{ if (historyAutoRefreshRef.current) void loadHistory(historyMode,true); },intervalMs);
+    return ()=>clearInterval(timer);
+  },[historyAutoRefresh,accessPoint,historyMode,historyIntervalUnit,historyIntervalValue]);
   function openHistory() {
     setScreen('history');
     if (!historyData && !historyLoading) void loadHistory('active');
@@ -246,10 +309,10 @@ export default function App() {
   const selectedActivePositions=(historyData?.positions??[]).filter(x=>!historyPair||x.instrument===historyPair);
   const selectedActiveOrders=(historyData?.activeOrders??[]).filter(x=>String(x.order_type??'').toLowerCase()!=='sltp'&&(!historyPair||x.instrument===historyPair));
   const selectedPastOrders=(historyData?.pastOrders??[]).filter(x=>{const o=x.order&&typeof x.order==='object'?x.order as Record<string,unknown>:x;return !historyPair||o.instrument===historyPair;});
-  function beginEdit(target:'position'|'order', targetId:string, field:'stop_loss_price'|'take_profit_price', previous:string, instrument:string, otherField:'stop_loss_price'|'take_profit_price', otherValue:string) {
+  function beginEdit(target:'position'|'order', targetId:string, field:'price'|'stop_loss_price'|'take_profit_price', previous:string, instrument:string, otherField?:'stop_loss_price'|'take_profit_price', otherValue?:string) {
     const cleanId=targetId.trim();
     if (!/^\d{1,20}$/.test(cleanId)) {
-      Alert.alert('No se puede modificar', 'Exness no devolvió un ID de orden válido para este SL/TP.');
+      Alert.alert('No se puede modificar', 'Exness no devolvió un ID de orden válido para este precio.');
       return;
     }
     setTradeAction({kind:'edit',target,targetId:cleanId,field,previous,instrument,value:previous==='—'?'':previous,otherField,otherValue:otherValue==='—'?'':otherValue});
@@ -424,7 +487,7 @@ export default function App() {
   const renderTradeModals = () => <>
     {tradeAction?.kind==='edit' && <View style={s.modalBackdrop}>
       <View style={s.modalCard}>
-        <Text style={s.modalTitle}>Modificar {tradeAction.field==='take_profit_price'?'TP':'SL'}</Text>
+        <Text style={s.modalTitle}>Modificar {tradeAction.field==='price'?'precio de entrada':tradeAction.field==='take_profit_price'?'TP':'SL'}</Text>
         <Text style={s.modalSub}>{tradeAction.instrument||'Instrumento'} · {tradeAction.targetId}</Text>
         <Text style={s.modalLabel}>NUEVO VALOR</Text>
         <TextInput autoFocus keyboardType="decimal-pad" value={tradeAction.value??''} onChangeText={value=>setTradeAction(x=>x?{...x,value}:x)} style={s.modalInput} placeholder="Ej. 1.08500" placeholderTextColor="#6f7785"/>
@@ -435,7 +498,7 @@ export default function App() {
       <View style={s.modalCard}>
         {tradeConfirm.kind==='edit' ? <>
           <Text style={s.modalTitle}>Confirmar modificación</Text>
-          <Text style={s.modalSub}>Se modificará el {tradeConfirm.field==='take_profit_price'?'TP':'SL'} de</Text>
+          <Text style={s.modalSub}>Se modificará {tradeConfirm.field==='price'?'el precio de entrada':tradeConfirm.field==='take_profit_price'?'el TP':'el SL'} de</Text>
           <Text style={s.modalBig}>{tradeConfirm.previous||'No disponible'} → {tradeConfirm.value}</Text>
         </> : <>
           <Text style={s.modalTitle}>Cerrar la orden {tradeConfirm.targetId}</Text>
@@ -462,7 +525,7 @@ export default function App() {
       {field('ACCOUNT','accountId')}
       <Pressable disabled={busy} onPress={connect} style={[s.button,busy&&s.disabled]}>{busy?<ActivityIndicator/>:<Text style={s.buttonText}>CONECTAR</Text>}</Pressable>
       <Text style={status==='online'?s.onlineText:s.offlineText}>Estado: {status}</Text>
-    </ScrollView> : screen==='profile' ? <ScrollView contentContainerStyle={s.content}>
+    </ScrollView> : screen==='profile' ? <ScrollView contentContainerStyle={s.content} onTouchStart={()=>setIntervalMenu(false)}>
       <Text style={s.h1}>PROFILE</Text>
       <View style={s.card}>
         <Info label="APIKEY" value={c.apiKey?'••••••••••••':'—'}/>
@@ -517,7 +580,7 @@ export default function App() {
       <Text style={!autoRefresh?s.offlineText:streamStatus==='connected'?s.onlineText:s.offlineText}>Sincronización automática: {autoRefresh?streamStatus:'detenida'}</Text>
       <Text style={status==='online'?s.onlineText:s.offlineText}>Estado: {status}</Text>
       {!!accessPoint && <Text style={s.ap}>Access Point: {accessPoint}</Text>}
-    </ScrollView> : screen==='history' ? <ScrollView contentContainerStyle={s.content}>
+    </ScrollView> : screen==='history' ? <ScrollView contentContainerStyle={s.content} onTouchStart={()=>{setHistoryMenuOpen(false);setHistoryIntervalMenu(false);}}>
       <Text style={s.h1}>HISTORIAL</Text><Text style={s.sub}>Consultá las posiciones activas, órdenes pendientes y operaciones pasadas de tu cuenta.</Text>
       <Text style={s.label}>SELECCIONE SU PAR</Text>
       <Pressable onPress={()=>setHistoryMenuOpen(v=>!v)} style={s.select}><Text style={s.selectText}>{historyPair||'Seleccione un par'}</Text><Text style={s.selectArrow}>{historyMenuOpen?'▲':'▼'}</Text></Pressable>
@@ -527,6 +590,28 @@ export default function App() {
         <Pressable onPress={()=>{setHistoryMode('past');setHistoryData(null);setHistoryPair('');void loadHistory('past');}} style={[s.historyMode,historyMode==='past'&&s.historyModeSelected]}><Text style={[s.historyModeText,historyMode==='past'&&s.historyModeTextSelected]}>PASADAS</Text></Pressable>
       </View>
       <Pressable disabled={historyLoading} onPress={()=>void loadHistory(historyMode)} style={[s.refresh,historyLoading&&s.disabled]}>{historyLoading?<ActivityIndicator/>:<Text style={s.refreshText}>↻  ACTUALIZAR HISTORIAL</Text>}</Pressable>
+      <View style={s.intervalCard}>
+        <View style={s.intervalHeader}><Text style={s.meta}>AUTORREFRESCO</Text><Pressable onPress={()=>{const next=!historyAutoRefresh;historyAutoRefreshRef.current=next;setHistoryAutoRefresh(next);}} style={s.clockButton}><Text style={historyAutoRefresh?s.clockOn:s.clockOff}>{historyAutoRefresh?'◷':'✕'}</Text></Pressable></View>
+        <Text style={s.intervalTitle}>Coloca el intervalo</Text>
+        <Pressable onPress={()=>setHistoryIntervalMenu(x=>!x)} style={s.select}><Text style={s.selectText}>{historyIntervalValue} {historyIntervalUnit}</Text><Text style={s.selectArrow}>{historyIntervalMenu?'▲':'▼'}</Text></Pressable>
+        {historyIntervalMenu&&<View style={s.menu}>
+          <Pressable onPress={()=>{setHistoryIntervalUnit('seconds');setHistoryIntervalValue(Math.min(historyIntervalValue,60));setHistoryIntervalMenu(false);}} style={s.menuItem}><Text style={s.menuText}>seconds</Text></Pressable>
+          <Pressable onPress={()=>{setHistoryIntervalUnit('minutes');setHistoryIntervalValue(Math.min(Math.max(historyIntervalValue,1),10));setHistoryIntervalMenu(false);}} style={s.menuItem}><Text style={s.menuText}>minutes</Text></Pressable>
+        </View>}
+        <View style={s.sliderRow}><Text style={s.sliderMin}>{historyIntervalUnit==='seconds'?'05S':'1M'}</Text>
+          <View ref={historySliderTrackRef} style={[s.sliderTrack,!historyAutoRefresh?s.sliderEnabled:s.sliderDisabled]}
+            onLayout={e=>{setHistorySliderWidth(e.nativeEvent.layout.width);historySliderTrackRef.current?.measureInWindow(x=>setHistorySliderLeft(x));}}
+            onStartShouldSetResponder={()=>!historyAutoRefresh} onMoveShouldSetResponder={()=>!historyAutoRefresh}
+            onResponderGrant={e=>setHistorySliderFromLocation(e.nativeEvent.pageX,historySliderWidth)} onResponderMove={e=>setHistorySliderFromLocation(e.nativeEvent.pageX,historySliderWidth)}>
+            <View style={s.sliderRail}/><View style={[s.sliderFill,{width:historySliderThumbPosition-9}]}/><View style={[s.sliderThumb,{left:historySliderThumbPosition}]}/>
+          </View><Text style={s.sliderMax}>{historyIntervalUnit==='seconds'?'60S':'10M'}</Text>
+        </View>
+        <Text style={s.intervalValue}>Seleccionado: {historyIntervalLabel} · {historyAutoRefresh?'activo':'desactivado'}</Text>
+      </View>
+      <Pressable disabled={historySavingInterval} onPress={saveHistoryInterval} style={[s.saveIntervalButton,historySavingInterval&&s.disabled]}>{historySavingInterval?<ActivityIndicator/>:<Text style={s.saveIntervalText}>GUARDAR INTERVALO</Text>}</Pressable>
+      <Text style={historyAutoRefresh?historyStatus==='online'?s.onlineText:s.offlineText:s.offlineText}>{historyAutoRefresh?'SINCRONIZACIÓN AUTOMÁTICA ACTIVADA':'SINCRONIZACIÓN AUTOMÁTICA DETENIDA'}</Text>
+      <Text style={s.meta}>ÚLTIMA ACTUALIZACIÓN</Text><Text style={s.time}>{dateText(historyLastSync)}</Text>
+      <Text style={historyStatus==='online'?s.onlineText:s.offlineText}>Estado: {historyStatus}</Text>
       {historyLoading&&<ActivityIndicator color="#fff"/>}{!!historyError&&<Text style={s.offlineText}>{historyError}</Text>}
       {!historyLoading&&!historyError&&!historyData&&<Text style={s.emptyHistory}>Conectá tu cuenta para consultar el historial.</Text>}
       {!!historyData&&historyMode==='active'&&<>
@@ -545,7 +630,7 @@ export default function App() {
         <Text style={s.historySection}>ÓRDENES PENDIENTES ({selectedActiveOrders.length})</Text>
         {selectedActiveOrders.length===0?<Text style={s.emptyHistory}>No hay órdenes pendientes para este par.</Text>:selectedActiveOrders.map((item,index)=><View key={String(item.order_id??index)} style={s.historyCard}>
           <View style={s.historyCardHeader}><Text style={s.historyPair}>{historyValue(item,'instrument')}</Text><Text style={s.pendingText}>PENDIENTE</Text></View>
-          <Info label="ID ORDEN" value={historyValue(item,'order_id')}/><Info label="TIPO" value={historyValue(item,'order_type')}/><Info label="DIRECCIÓN" value={historyValue(item,'direction')}/><Info label="VOLUMEN" value={historyValue(item,'volume')}/><Info label="PRECIO" value={historyValue(item,'price')}/>
+          <Info label="ID ORDEN" value={historyValue(item,'order_id')}/><Info label="TIPO" value={historyValue(item,'order_type')}/><Info label="DIRECCIÓN" value={historyValue(item,'direction')}/><Info label="VOLUMEN" value={historyValue(item,'volume')}/><View style={s.editableRow}><Text style={s.infoLabel}>PRECIO DE ENTRADA</Text><View style={s.editableValue}><Text style={s.infoValue}>{historyValue(item,'price')}</Text><Pressable onPress={()=>beginEdit('order',String(item.order_id??''),'price',historyValue(item,'price'),String(item.instrument??''))}><Text style={s.pencil}>✎</Text></Pressable></View></View>
           <View style={s.editableRow}><Text style={s.infoLabel}>STOP LOSS</Text><View style={s.editableValue}><Text style={s.infoValue}>{historyValue(item,'stop_loss_price')}</Text><Pressable onPress={()=>beginEdit('order',String(item.order_id??''),'stop_loss_price',historyValue(item,'stop_loss_price'),String(item.instrument??''),'take_profit_price',historyValue(item,'take_profit_price'))}><Text style={s.pencil}>✎</Text></Pressable></View></View>
           <View style={s.editableRow}><Text style={s.infoLabel}>TAKE PROFIT</Text><View style={s.editableValue}><Text style={s.infoValue}>{historyValue(item,'take_profit_price')}</Text><Pressable onPress={()=>beginEdit('order',String(item.order_id??''),'take_profit_price',historyValue(item,'take_profit_price'),String(item.instrument??''),'stop_loss_price',historyValue(item,'stop_loss_price'))}><Text style={s.pencil}>✎</Text></Pressable></View></View>
           <Info label="CREADA" value={historyDate(item,'create_time')}/>
