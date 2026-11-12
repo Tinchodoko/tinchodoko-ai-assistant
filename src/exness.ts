@@ -723,14 +723,15 @@ export async function getTradingHistory(
 
   // Build the history window against Exness' server clock, not the phone clock.
   // The HTTP Date header has one-second precision, so keep a 60-second safety
-  // margin inside both the maximum history age and each maximum range.
+  // margin inside the maximum history age. Each individual request uses the
+  // configured maximum range exactly (the documented upper bound is inclusive). 
   // The upper bound is exclusive and stays safely behind the server's current time.
   const dayMs = 24 * 60 * 60 * 1000;
   const serverNowMs = historyServerNowMs || Date.now();
   const historyEndMs = serverNowMs - 5000;
   const start = new Date(historyEndMs - ageDays * dayMs + 60_000);
   const historyEnd = new Date(historyEndMs);
-  const maxRangeMs = Math.max(60_000, rangeDays * dayMs - 60_000);
+  const maxRangeMs = rangeDays * dayMs;
   const pastOrders: Record<string, unknown>[] = [];
   const deals: Record<string, unknown>[] = [];
 
