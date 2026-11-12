@@ -1,3 +1,4 @@
+- #V107 — Fix history timestamp path and avoid rate-limit bursts
 - #V106 — Use direct timestamp for Exness history requests
 - #V105 — Show complete past history without pair selector
 - #V103 — fix(android): correctly inject immersive mode into MainActivity
