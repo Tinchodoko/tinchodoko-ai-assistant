@@ -389,7 +389,7 @@ export default function App() {
     const order=item.order&&typeof item.order==='object'?item.order as Record<string,unknown>:item;
     return historyPair==='*'||String(order.instrument??'')===historyPair;
   });
-  const pastOrderGroups=selectedPastOrders.reduce((groups,item)=>{
+  const pastOrderGroups=selectedPastOrders.reduce<{buy:typeof selectedPastOrders;sell:typeof selectedPastOrders;cancelled:typeof selectedPastOrders}>((groups,item)=>{
     const order=item.order&&typeof item.order==='object'?item.order as Record<string,unknown>:item;
     const state=String(order.state??order.order_state??'').toUpperCase();
     const direction=String(order.direction??'').toLowerCase();
