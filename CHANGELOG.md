@@ -1,3 +1,4 @@
+- #V128 — Add visual asset icons to open and pending trade pairs
 - #V127 — Fix chronological build history sorting
 - #V125 — Fix TypeScript typing for past order groups
 - #V120 — Remove unused stream status display state
