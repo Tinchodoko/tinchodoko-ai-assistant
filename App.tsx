@@ -63,8 +63,8 @@ export default function App() {
   const [last,setLast]=useState<Date|null>(null);
   const [busy,setBusy]=useState(false);
   const [streamStatus,setStreamStatus]=useState<'off'|'connecting'|'connected'|'disconnected'|'error'>('off');
-  const [autoRefresh,setAutoRefresh]=useState(true);
-  const autoRefreshRef=useRef(true);
+  const [autoRefresh,setAutoRefresh]=useState(false);
+  const autoRefreshRef=useRef(false);
   const [intervalUnit,setIntervalUnit]=useState<'seconds'|'minutes'>('seconds');
   const [intervalValue,setIntervalValue]=useState(5);
   const [intervalMenu,setIntervalMenu]=useState(false);
@@ -167,7 +167,10 @@ export default function App() {
       // account Access Point. Balance is not requested during connection.
       const r=await connectToExness(c);
       setBalance('—'); setEquity('—'); setUsedMargin('—'); setAccessPoint(r.accessPoint); setStatus('online');
-      setLast(null); setScreen('profile');
+      setLast(null);
+      autoRefreshRef.current=false;
+      setAutoRefresh(false);
+      setScreen('connection');
     } catch(e) {
       setStatus('offline'); Alert.alert('Conexión fallida',e instanceof Error?e.message:String(e));
     } finally { setBusy(false); }
@@ -242,7 +245,12 @@ export default function App() {
   const selectedActiveOrders=(historyData?.activeOrders??[]).filter(x=>String(x.order_type??'').toLowerCase()!=='sltp'&&(!historyPair||x.instrument===historyPair));
   const selectedPastOrders=(historyData?.pastOrders??[]).filter(x=>{const o=x.order&&typeof x.order==='object'?x.order as Record<string,unknown>:x;return !historyPair||o.instrument===historyPair;});
   function beginEdit(target:'position'|'order', targetId:string, field:'stop_loss_price'|'take_profit_price', previous:string, instrument:string) {
-    setTradeAction({kind:'edit',target,targetId,field,previous,instrument,value:previous==='—'?'':previous});
+    const cleanId=targetId.trim();
+    if (!/^\d{1,20}$/.test(cleanId)) {
+      Alert.alert('No se puede modificar', 'Exness no devolvió un ID de orden válido para este SL/TP.');
+      return;
+    }
+    setTradeAction({kind:'edit',target,targetId:cleanId,field,previous,instrument,value:previous==='—'?'':previous});
   }
   function beginClose(target:'position'|'order', targetId:string, instrument:string, pnl:number|null) {
     setTradeConfirm({kind:'close',target,targetId,instrument,pnl});
