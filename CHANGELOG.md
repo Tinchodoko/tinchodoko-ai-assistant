@@ -1,3 +1,4 @@
+- #V103 — fix(android): correctly inject immersive mode into MainActivity
 - #V100 — fix(history): preserve selector toggle and reset stale account pair
 - #V97 — fix(exness): write SHA-256 digest to output buffer for signed mutations
 - #V92 — fix(history): show floating PnL for single active position
