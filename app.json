@@ -10,10 +10,15 @@
       "versionCode": 1,
       "permissions": [
         "REQUEST_INSTALL_PACKAGES"
-      ]
+      ],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#070B1D"
+      }
     },
     "plugins": [
       "./plugins/withImmersiveMode"
-    ]
+    ],
+    "icon": "./assets/icon.png"
   }
 }
