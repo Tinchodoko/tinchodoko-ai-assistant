@@ -428,7 +428,7 @@ export default function App() {
       try{
         const allRuns:any[]=[];
         for(let page=1;page<=20&&!cancelled;page++){
-          const response=await fetch(\`https://api.github.com/repos/Tinchodoko/tinchodoko-ai-assistant/actions/runs?per_page=100&page=\${page}&_=${Date.now()}\`,{headers:{Accept:'application/vnd.github+json','Cache-Control':'no-cache'}});
+          const response=await fetch(`https://api.github.com/repos/Tinchodoko/tinchodoko-ai-assistant/actions/runs?per_page=100&page=${page}&_=${Date.now()}`,{headers:{Accept:'application/vnd.github+json','Cache-Control':'no-cache'}});
           if(!response.ok) throw new Error(\`GitHub HTTP ${response.status}\`);
           const data=await response.json();
           const pageRuns=Array.isArray(data.workflow_runs)?data.workflow_runs:[];
