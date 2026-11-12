@@ -195,6 +195,7 @@ export default function App() {
       // account Access Point. Balance is not requested during connection.
       const r=await connectToExness(c);
       setBalance('—'); setEquity('—'); setUsedMargin('—'); setAccessPoint(r.accessPoint); setStatus('online');
+      setHistoryPair(''); setHistoryData(null); setHistoryLastSync(null); setHistoryStatus('offline');
       setLast(null);
       autoRefreshRef.current=false;
       setAutoRefresh(false);
@@ -550,7 +551,7 @@ export default function App() {
           </Pressable>
         </View>
         <Text style={s.intervalTitle}>Coloca el intervalo</Text>
-        <Pressable onPress={()=>setIntervalMenu(x=>!x)} style={s.select}>
+        <Pressable onPress={()=>setIntervalMenu(!intervalMenu)} style={s.select}>
           <Text style={s.selectText}>{intervalValue} {intervalUnit}</Text><Text style={s.selectArrow}>{intervalMenu?'▲':'▼'}</Text>
         </Pressable>
         {intervalMenu && <View style={s.menu}>
@@ -587,7 +588,7 @@ export default function App() {
     </ScrollView> : screen==='history' ? <ScrollView contentContainerStyle={s.content} onTouchStart={()=>{setHistoryMenuOpen(false);setHistoryIntervalMenu(false);}}>
       <Text style={s.h1}>HISTORIAL</Text><Text style={s.sub}>Consultá las posiciones activas, órdenes pendientes y operaciones pasadas de tu cuenta.</Text>
       <Text style={s.label}>SELECCIONE SU PAR</Text>
-      <Pressable onPress={()=>setHistoryMenuOpen(v=>!v)} style={s.select}><Text style={s.selectText}>{historyPair||'Seleccione un par'}</Text><Text style={s.selectArrow}>{historyMenuOpen?'▲':'▼'}</Text></Pressable>
+      <Pressable onPress={()=>setHistoryMenuOpen(!historyMenuOpen)} style={s.select}><Text style={s.selectText}>{historyPair||'Seleccione un par'}</Text><Text style={s.selectArrow}>{historyMenuOpen?'▲':'▼'}</Text></Pressable>
       {historyMenuOpen&&<View style={s.menu}>{historySymbols.length===0?<Text style={s.menuEmpty}>No hay pares registrados.</Text>:historySymbols.map(symbol=><Pressable key={symbol} onPress={()=>{setHistoryPair(symbol);setHistoryMenuOpen(false);}} style={s.menuItem}><Text style={s.menuText}>{symbol}</Text></Pressable>)}</View>}
       <View style={s.historyModes}>
         <Pressable onPress={()=>{setHistoryMode('active');setHistoryData(null);setHistoryPair('');void loadHistory('active');}} style={[s.historyMode,historyMode==='active'&&s.historyModeSelected]}><Text style={[s.historyModeText,historyMode==='active'&&s.historyModeTextSelected]}>ACTIVAS</Text></Pressable>
@@ -597,7 +598,7 @@ export default function App() {
       <View style={s.intervalCard}>
         <View style={s.intervalHeader}><Text style={s.meta}>AUTORREFRESCO</Text><Pressable onPress={()=>{const next=!historyAutoRefresh;historyAutoRefreshRef.current=next;setHistoryAutoRefresh(next);}} style={s.clockButton}><Text style={historyAutoRefresh?s.clockOn:s.clockOff}>{historyAutoRefresh?'◷':'✕'}</Text></Pressable></View>
         <Text style={s.intervalTitle}>Coloca el intervalo</Text>
-        <Pressable onPress={()=>setHistoryIntervalMenu(x=>!x)} style={s.select}><Text style={s.selectText}>{historyIntervalValue} {historyIntervalUnit}</Text><Text style={s.selectArrow}>{historyIntervalMenu?'▲':'▼'}</Text></Pressable>
+        <Pressable onPress={()=>setHistoryIntervalMenu(!historyIntervalMenu)} style={s.select}><Text style={s.selectText}>{historyIntervalValue} {historyIntervalUnit}</Text><Text style={s.selectArrow}>{historyIntervalMenu?'▲':'▼'}</Text></Pressable>
         {historyIntervalMenu&&<View style={s.menu}>
           <Pressable onPress={()=>{setHistoryIntervalUnit('seconds');setHistoryIntervalValue(Math.min(historyIntervalValue,60));setHistoryIntervalMenu(false);}} style={s.menuItem}><Text style={s.menuText}>seconds</Text></Pressable>
           <Pressable onPress={()=>{setHistoryIntervalUnit('minutes');setHistoryIntervalValue(Math.min(Math.max(historyIntervalValue,1),10));setHistoryIntervalMenu(false);}} style={s.menuItem}><Text style={s.menuText}>minutes</Text></Pressable>
