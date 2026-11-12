@@ -664,8 +664,7 @@ export default function App() {
           <View style={s.editableRow}><Text style={s.infoLabel}>TAKE PROFIT</Text><View style={s.editableValue}><Text style={s.infoValue}>{configuredPrice(item,'take_profit_price')}</Text><Pressable onPress={()=>beginEdit('order',String(item.order_id??''),'take_profit_price',historyValue(item,'take_profit_price'),String(item.instrument??''),'stop_loss_price',historyValue(item,'stop_loss_price'))}><Text style={s.pencil}>✎</Text></Pressable></View></View>
           <Info label="CREADA" value={historyDate(item,'create_time')}/>
           <View style={s.cardActionRow}><Pressable onPress={()=>beginClose('order',String(item.order_id??''),String(item.instrument??''),null)} style={s.closeButton}><Text style={s.closeButtonText}>✕</Text></Pressable></View>
-        </View>)}
-        )}
+        </View>))}
       </>}
       {!!historyData&&historyMode==='past'&&<>
         <Text style={s.historySection}>ÓRDENES FINALIZADAS ({selectedPastOrders.length})</Text>
