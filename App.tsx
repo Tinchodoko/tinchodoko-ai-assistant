@@ -71,6 +71,8 @@ export default function App() {
   const autoRefreshRef=useRef(false);
   const [intervalUnit,setIntervalUnit]=useState<'seconds'|'minutes'>('seconds');
   const [intervalValue,setIntervalValue]=useState(5);
+  const [appliedIntervalUnit,setAppliedIntervalUnit]=useState<'seconds'|'minutes'>('seconds');
+  const [appliedIntervalValue,setAppliedIntervalValue]=useState(5);
   const [intervalMenu,setIntervalMenu]=useState(false);
   const [sliderWidth,setSliderWidth]=useState(1);
   const [sliderLeft,setSliderLeft]=useState(0);
@@ -83,7 +85,7 @@ export default function App() {
   const [downloadingUpdate,setDownloadingUpdate]=useState(false);
   const [historyData,setHistoryData]=useState<TradingHistoryData|null>(null);
   const [historyMode,setHistoryMode]=useState<'active'|'past'>('active');
-  const [historyPair,setHistoryPair]=useState('');
+  const [historyPair,setHistoryPair]=useState('*');
   const [historyMenuOpen,setHistoryMenuOpen]=useState(false);
   const [positionsExpanded,setPositionsExpanded]=useState(true);
   const [pendingExpanded,setPendingExpanded]=useState(true);
@@ -94,6 +96,8 @@ export default function App() {
   const historyAutoRefreshRef=useRef(false);
   const [historyIntervalUnit,setHistoryIntervalUnit]=useState<'seconds'|'minutes'>('seconds');
   const [historyIntervalValue,setHistoryIntervalValue]=useState(5);
+  const [appliedHistoryIntervalUnit,setAppliedHistoryIntervalUnit]=useState<'seconds'|'minutes'>('seconds');
+  const [appliedHistoryIntervalValue,setAppliedHistoryIntervalValue]=useState(5);
   const [historyIntervalMenu,setHistoryIntervalMenu]=useState(false);
   const [historySliderWidth,setHistorySliderWidth]=useState(1);
   const [historySliderLeft,setHistorySliderLeft]=useState(0);
@@ -117,6 +121,8 @@ export default function App() {
           if (saved.value!>=min && saved.value!<=max) {
             setIntervalUnit(saved.unit);
             setIntervalValue(saved.value!);
+            setAppliedIntervalUnit(saved.unit);
+            setAppliedIntervalValue(saved.value!);
           }
         }
       } catch { /* Ignore invalid saved interval and keep 5 seconds. */ }
@@ -131,6 +137,8 @@ export default function App() {
           if (saved.value!>=min && saved.value!<=max) {
             setHistoryIntervalUnit(saved.unit);
             setHistoryIntervalValue(saved.value!);
+            setAppliedHistoryIntervalUnit(saved.unit);
+            setAppliedHistoryIntervalValue(saved.value!);
           }
         }
       } catch { /* Keep the history default at five seconds. */ }
@@ -186,10 +194,10 @@ export default function App() {
 
   useEffect(()=>{
     if (!accessPoint || !autoRefresh) return;
-    const intervalMs = (intervalUnit==='seconds' ? intervalValue : intervalValue*60) * 1000;
+    const intervalMs = (appliedIntervalUnit==='seconds' ? appliedIntervalValue : appliedIntervalValue*60) * 1000;
     const timer = setInterval(()=>{ void refresh(true); }, intervalMs);
     return ()=>clearInterval(timer);
-  },[accessPoint,autoRefresh,intervalUnit,intervalValue]);
+  },[accessPoint,autoRefresh,appliedIntervalUnit,appliedIntervalValue]);
 
   async function connect() {
     setBusy(true); setStatus('connecting');
@@ -199,7 +207,7 @@ export default function App() {
       // account Access Point. Balance is not requested during connection.
       const r=await connectToExness(c);
       setBalance('—'); setEquity('—'); setUsedMargin('—'); setAccessPoint(r.accessPoint); setStatus('online');
-      setHistoryPair(''); setHistoryData(null); setHistoryLastSync(null); setHistoryStatus('offline');
+      setHistoryPair('*'); setHistoryData(null); setHistoryLastSync(null); setHistoryStatus('offline');
       setLast(null);
       autoRefreshRef.current=false;
       setAutoRefresh(false);
@@ -232,6 +240,8 @@ export default function App() {
     setSavingInterval(true);
     try {
       await SecureStore.setItemAsync('tinchodoko.profile.refreshInterval',JSON.stringify({unit:intervalUnit,value:intervalValue}));
+      setAppliedIntervalUnit(intervalUnit);
+      setAppliedIntervalValue(intervalValue);
       Alert.alert('Intervalo guardado',`El intervalo predeterminado ahora es ${intervalLabel}.`);
     } catch(e) {
       Alert.alert('No se pudo guardar el intervalo',e instanceof Error?e.message:String(e));
@@ -301,16 +311,18 @@ export default function App() {
     setHistorySavingInterval(true);
     try {
       await SecureStore.setItemAsync('tinchodoko.history.refreshInterval',JSON.stringify({unit:historyIntervalUnit,value:historyIntervalValue}));
+      setAppliedHistoryIntervalUnit(historyIntervalUnit);
+      setAppliedHistoryIntervalValue(historyIntervalValue);
       Alert.alert('Intervalo guardado','El intervalo de HISTORIAL ahora es '+historyIntervalLabel+'.');
     } catch(e) { Alert.alert('No se pudo guardar el intervalo',e instanceof Error?e.message:String(e)); }
     finally { setHistorySavingInterval(false); }
   }
   useEffect(()=>{
     if (!historyAutoRefresh || !accessPoint || !historyPair) return;
-    const intervalMs=(historyIntervalUnit==='seconds'?historyIntervalValue:historyIntervalValue*60)*1000;
+    const intervalMs=(appliedHistoryIntervalUnit==='seconds'?appliedHistoryIntervalValue:appliedHistoryIntervalValue*60)*1000;
     const timer=setInterval(()=>{ if (historyAutoRefreshRef.current) void loadHistory(historyMode,true); },intervalMs);
     return ()=>clearInterval(timer);
-  },[historyAutoRefresh,accessPoint,historyMode,historyPair,historyIntervalUnit,historyIntervalValue]);
+  },[historyAutoRefresh,accessPoint,historyMode,historyPair,appliedHistoryIntervalUnit,appliedHistoryIntervalValue]);
   function openHistory() {
     // Entrar a HISTORIAL nunca dispara consultas: la primera sincronización
     // queda bajo control del usuario mediante ACTUALIZAR HISTORIAL.
@@ -325,6 +337,24 @@ export default function App() {
   function historyDate(item:Record<string,unknown>,...keys:string[]) {
     for(const key of keys){const raw=item[key];if(typeof raw==='string'||typeof raw==='number'){const d=new Date(raw);if(!Number.isNaN(d.getTime()))return d.toLocaleString('es-AR',{timeZone:'America/Argentina/Buenos_Aires'});}}
     return 'Fecha no disponible';
+  }
+  function historyOrderPnl(order:Record<string,unknown>) {
+    const orderId=String(order.order_id??'');
+    if(!orderId) return 'NO DISPONIBLE';
+    const related=(historyData?.deals??[]).map(item=>item.deal&&typeof item.deal==='object'?item.deal as Record<string,unknown>:item)
+      .filter(deal=>String(deal.order_id??'')===orderId);
+    if(!related.length) return 'NO DISPONIBLE';
+    let total=0,hasValue=false,currency='';
+    for(const deal of related) {
+      const profit=deal.profit&&typeof deal.profit==='object'?deal.profit as Record<string,unknown>:{};
+      const amount=Number(profit.amount);
+      if(Number.isFinite(amount)){total+=amount;hasValue=true;}
+      const commission=Number(deal.commission);
+      if(deal.commission!==undefined&&deal.commission!==null&&deal.commission!==''&&Number.isFinite(commission)){total+=commission;hasValue=true;}
+      if(!currency&&typeof profit.currency==='string') currency=profit.currency;
+    }
+    if(!hasValue) return 'NO DISPONIBLE';
+    return `${total>=0?'+':''}${total.toFixed(2)}${currency?' '+currency:''}`;
   }
   const historySymbols=historyData?Array.from(new Set([...historyData.positions.map(x=>String(x.instrument??'')),...historyData.activeOrders.map(x=>String(x.instrument??'')),...historyData.pastOrders.map(x=>{const o=x.order&&typeof x.order==='object'?x.order as Record<string,unknown>:x;return String(o.instrument??'');}),...historyData.deals.map(x=>{const d=x.deal&&typeof x.deal==='object'?x.deal as Record<string,unknown>:x;return String(d.instrument??'');})].filter(x=>x&&x!=='undefined'))).sort():[];
   const selectedActivePositions=(historyData?.positions??[]).filter(x=>historyPair==='*'||x.instrument===historyPair);
@@ -547,7 +577,7 @@ export default function App() {
     <View style={s.header}><Text style={s.title}>Tinchodoko AI Assistant</Text><View style={[s.dot,status==='online'?s.green:status==='connecting'?s.yellow:s.red]}/></View>
     <View style={s.tabs}>
       <Pressable onPress={()=>{setIntervalMenu(false);setHistoryMenuOpen(false);setHistoryIntervalMenu(false);setScreen('connection');}} style={[s.tab,screen==='connection'&&s.active]}><Text style={s.tabText}>CONEXIÓN</Text></Pressable>
-      <Pressable onPress={()=>{setHistoryMenuOpen(false);setHistoryIntervalMenu(false);setScreen('profile');}} style={[s.tab,screen==='profile'&&s.active]}><Text style={s.tabText}>PROFILE</Text></Pressable>
+      <Pressable onPress={()=>{setHistoryMenuOpen(false);setHistoryIntervalMenu(false);setScreen('profile');}} style={[s.tab,screen==='profile'&&s.active]}><Text style={s.tabText}>BALANCE</Text></Pressable>
       <Pressable onPress={()=>{setIntervalMenu(false);openHistory();}} style={[s.tab,screen==='history'&&s.active]}><Text style={s.tabText}>HISTORIAL</Text></Pressable>
       <Pressable onPress={()=>{setIntervalMenu(false);setHistoryMenuOpen(false);setHistoryIntervalMenu(false);setScreen('app');}} style={[s.tab,screen==='app'&&s.active]}><Text style={s.tabText}>APP</Text></Pressable>
     </View>
@@ -560,12 +590,10 @@ export default function App() {
       {field('ACCOUNT','accountId')}
       <Pressable disabled={busy} onPress={connect} style={[s.button,busy&&s.disabled]}>{busy?<ActivityIndicator/>:<Text style={s.buttonText}>CONECTAR</Text>}</Pressable>
       <Text style={status==='online'?s.onlineText:s.offlineText}>Estado: {status}</Text>
+      {status==='online'&&!!accessPoint&&<Text style={s.ap}>URL DE ACCESS POINT: {accessPoint}</Text>}
     </ScrollView> : screen==='profile' ? <ScrollView contentContainerStyle={s.content} onTouchStart={()=>setIntervalMenu(false)}>
-      <Text style={s.h1}>PROFILE</Text>
+      <Text style={s.h1}>BALANCE</Text>
       <View style={s.card}>
-        <Info label="APIKEY" value={c.apiKey?'••••••••••••':'—'}/>
-        <Info label="SECRET" value={c.secret?'••••••••••••':'—'}/>
-        <Info label="GATEWAY" value={c.gatewayUrl}/>
         <Info label="ACCOUNT" value={c.accountId||'—'}/>
         <Info label="BALANCE" value={balance}/>
         <Info label="EQUITY" value={equity}/> 
@@ -592,10 +620,10 @@ export default function App() {
           <Text style={s.sliderMin}>{intervalUnit==='seconds'?'05S':'1M'}</Text>
           <View
             ref={sliderTrackRef}
-            style={[s.sliderTrack,!autoRefresh?s.sliderEnabled:s.sliderDisabled]}
+            style={[s.sliderTrack,s.sliderEnabled]}
             onLayout={e=>{setSliderWidth(e.nativeEvent.layout.width);sliderTrackRef.current?.measureInWindow(x=>setSliderLeft(x));}}
-            onStartShouldSetResponder={()=>!autoRefresh}
-            onMoveShouldSetResponder={()=>!autoRefresh}
+            onStartShouldSetResponder={()=>true}
+            onMoveShouldSetResponder={()=>true}
             onResponderGrant={e=>setSliderFromLocation(e.nativeEvent.pageX,sliderWidth)}
             onResponderMove={e=>setSliderFromLocation(e.nativeEvent.pageX,sliderWidth)}
           >
@@ -612,9 +640,8 @@ export default function App() {
       </Pressable>
 
       <Text style={s.meta}>ÚLTIMA ACTUALIZACIÓN</Text><Text style={s.time}>{dateText(last)}</Text>
-      <Text style={!autoRefresh?s.offlineText:streamStatus==='connected'?s.onlineText:s.offlineText}>Sincronización automática: {autoRefresh?streamStatus:'detenida'}</Text>
+      <Text style={autoRefresh?s.onlineText:s.offlineText}>{autoRefresh?'SINCRONIZACIÓN AUTOMÁTICA ACTIVADA':'SINCRONIZACIÓN AUTOMÁTICA DETENIDA'}</Text>
       <Text style={status==='online'?s.onlineText:s.offlineText}>Estado: {status}</Text>
-      {!!accessPoint && <Text style={s.ap}>Access Point: {accessPoint}</Text>}
     </ScrollView> : screen==='history' ? <ScrollView contentContainerStyle={s.content}>
       <Text style={s.h1}>HISTORIAL</Text><Text style={s.sub}>Consultá las posiciones activas, órdenes pendientes y operaciones pasadas de tu cuenta.</Text>
       <Text style={s.label}>SELECCIONE SU PAR</Text>
@@ -622,14 +649,14 @@ export default function App() {
         const opening=!historyMenuOpen;
         setHistoryMenuOpen(opening);
         if(opening&&!historyData&&!historyLoading) void loadHistory(historyMode,false,true);
-      }} style={s.select}><Text style={s.selectText}>{historyPair==='*'?'MOSTRAR TODO':historyPair||'Seleccione un par'}</Text><Text style={s.selectArrow}>{historyMenuOpen?'▲':'▼'}</Text></Pressable>
+      }} style={s.select}><Text style={s.selectText}>{historyPair==='*'?'MOSTRAR TODO':historyPair||'MOSTRAR TODO'}</Text><Text style={s.selectArrow}>{historyMenuOpen?'▲':'▼'}</Text></Pressable>
       {historyMenuOpen&&<View style={s.menu}>
         <Pressable onPress={()=>{setHistoryPair('*');setHistoryMenuOpen(false);}} style={s.menuItem}><Text style={s.menuText}>MOSTRAR TODO</Text></Pressable>
         {historySymbols.length===0?<Text style={s.menuEmpty}>Buscando pares disponibles...</Text>:historySymbols.map(symbol=><Pressable key={symbol} onPress={()=>{setHistoryPair(symbol);setHistoryMenuOpen(false);}} style={s.menuItem}><Text style={s.menuText}>{symbol}</Text></Pressable>)}
       </View>}
       <View style={s.historyModes}>
-        <Pressable onPress={()=>{setHistoryMode('active');setHistoryData(null);setHistoryPair('');setHistoryError('');setHistoryMenuOpen(false);}} style={[s.historyMode,historyMode==='active'&&s.historyModeSelected]}><Text style={[s.historyModeText,historyMode==='active'&&s.historyModeTextSelected]}>ACTIVAS</Text></Pressable>
-        <Pressable onPress={()=>{setHistoryMode('past');setHistoryData(null);setHistoryPair('');setHistoryError('');setHistoryMenuOpen(false);}} style={[s.historyMode,historyMode==='past'&&s.historyModeSelected]}><Text style={[s.historyModeText,historyMode==='past'&&s.historyModeTextSelected]}>PASADAS</Text></Pressable>
+        <Pressable onPress={()=>{setHistoryMode('active');setHistoryData(null);setHistoryPair('*');setHistoryError('');setHistoryMenuOpen(false);}} style={[s.historyMode,historyMode==='active'&&s.historyModeSelected]}><Text style={[s.historyModeText,historyMode==='active'&&s.historyModeTextSelected]}>ACTIVAS</Text></Pressable>
+        <Pressable onPress={()=>{setHistoryMode('past');setHistoryData(null);setHistoryPair('*');setHistoryError('');setHistoryMenuOpen(false);}} style={[s.historyMode,historyMode==='past'&&s.historyModeSelected]}><Text style={[s.historyModeText,historyMode==='past'&&s.historyModeTextSelected]}>PASADAS</Text></Pressable>
       </View>
       <Pressable disabled={historyLoading||!historyPair} onPress={()=>void loadHistory(historyMode)} style={[s.refresh,(historyLoading||!historyPair)&&s.disabled]}>{historyLoading?<ActivityIndicator/>:<Text style={s.refreshText}>↻  ACTUALIZAR HISTORIAL</Text>}</Pressable>
       <View style={s.intervalCard}>
@@ -641,9 +668,9 @@ export default function App() {
           <Pressable onPress={()=>{setHistoryIntervalUnit('minutes');setHistoryIntervalValue(Math.min(Math.max(historyIntervalValue,1),10));setHistoryIntervalMenu(false);}} style={s.menuItem}><Text style={s.menuText}>minutes</Text></Pressable>
         </View>}
         <View style={s.sliderRow}><Text style={s.sliderMin}>{historyIntervalUnit==='seconds'?'05S':'1M'}</Text>
-          <View ref={historySliderTrackRef} style={[s.sliderTrack,!historyAutoRefresh?s.sliderEnabled:s.sliderDisabled]}
+          <View ref={historySliderTrackRef} style={[s.sliderTrack,s.sliderEnabled]}
             onLayout={e=>{setHistorySliderWidth(e.nativeEvent.layout.width);historySliderTrackRef.current?.measureInWindow(x=>setHistorySliderLeft(x));}}
-            onStartShouldSetResponder={()=>!historyAutoRefresh} onMoveShouldSetResponder={()=>!historyAutoRefresh}
+            onStartShouldSetResponder={()=>true} onMoveShouldSetResponder={()=>true}
             onResponderGrant={e=>setHistorySliderFromLocation(e.nativeEvent.pageX,historySliderWidth)} onResponderMove={e=>setHistorySliderFromLocation(e.nativeEvent.pageX,historySliderWidth)}>
             <View style={s.sliderRail}/><View style={[s.sliderFill,{width:historySliderThumbPosition-9}]}/><View style={[s.sliderThumb,{left:historySliderThumbPosition}]}/>
           </View><Text style={s.sliderMax}>{historyIntervalUnit==='seconds'?'60S':'10M'}</Text>
@@ -682,10 +709,15 @@ export default function App() {
       {!!historyData&&!!historyPair&&historyMode==='past'&&<>
         <Text style={s.historySection}>ÓRDENES FINALIZADAS ({selectedPastOrders.length})</Text>
         {selectedPastOrders.length===0?<Text style={s.emptyHistory}>No hay órdenes pasadas para este par en el período permitido por Exness.</Text>:[...selectedPastOrders].reverse().map((item,index)=>{
-          const order=item.order&&typeof item.order==='object'?item.order as Record<string,unknown>:item; const state=String(order.state??order.order_state??'').toUpperCase();
+          const order=item.order&&typeof item.order==='object'?item.order as Record<string,unknown>:item;
+          const state=String(order.state??order.order_state??'').toUpperCase();
+          const direction=String(order.direction??'').toLowerCase();
+          const stateStyle=state==='FILLED'?(direction==='buy'?s.pnlPositive:s.pnlNegative):s.pendingText;
           return <View key={String(order.order_id??index)} style={s.historyCard}>
-            <View style={s.historyCardHeader}><Text style={s.historyPair}>{historyValue(order,'instrument')}</Text><Text style={state==='FILLED'?s.pnlPositive:s.pendingText}>{state||'FINALIZADA'}</Text></View>
-            <Info label="ID ORDEN" value={historyValue(order,'order_id')}/><Info label="DIRECCIÓN" value={historyValue(order,'direction')}/><Info label="VOLUMEN" value={historyValue(order,'volume')}/><Info label="PRECIO" value={historyValue(order,'price')}/><Info label="MOTIVO" value={historyValue(order,'reason')}/><Info label="FECHA" value={historyDate(item,'event_time')}/>
+            <View style={s.historyCardHeader}><Text style={s.historyPair}>{historyValue(order,'instrument')}</Text><Text style={stateStyle}>{state||'FINALIZADA'}</Text></View>
+            <Info label="ID ORDEN" value={historyValue(order,'order_id')}/><Info label="DIRECCIÓN" value={historyValue(order,'direction')}/><Info label="VOLUMEN" value={historyValue(order,'volume')}/><Info label="PRECIO DE ENTRADA" value={historyValue(order,'price')}/>
+            <Info label="STOP LOSS" value={configuredPrice(order,'stop_loss_price')}/><Info label="TAKE PROFIT" value={configuredPrice(order,'take_profit_price')}/>
+            <Info label="PNL" value={state==='FILLED'?historyOrderPnl(order):'—'}/><Info label="FECHA Y HORA" value={historyDate(item,'event_time')}/>
           </View>;
         })}
       </>}
