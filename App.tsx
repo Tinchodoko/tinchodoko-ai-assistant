@@ -89,6 +89,11 @@ export default function App() {
   const [historyMenuOpen,setHistoryMenuOpen]=useState(false);
   const [positionsExpanded,setPositionsExpanded]=useState(true);
   const [pendingExpanded,setPendingExpanded]=useState(true);
+  const [buyOrdersExpanded,setBuyOrdersExpanded]=useState(true);
+  const [sellOrdersExpanded,setSellOrdersExpanded]=useState(true);
+  const [cancelledOrdersExpanded,setCancelledOrdersExpanded]=useState(true);
+  const [buildRuns,setBuildRuns]=useState<Array<{run_number:number;conclusion:string|null;status:string;display_title:string}>>([]);
+  const swipeStart=useRef<{x:number;y:number}|null>(null);
   const [historyLoading,setHistoryLoading]=useState(false);
   const historyLoadingRef=useRef(false);
   const [historyError,setHistoryError]=useState('');
@@ -284,7 +289,7 @@ export default function App() {
     setHistoryLoading(true);
     if (!automatic) setHistoryError('');
     try {
-      const data=await getTradingHistory(c,accessPoint,mode);
+      const data=await getTradingHistory(c,accessPoint,'all');
       if (automatic && !historyAutoRefreshRef.current) return;
       setHistoryData(data);
       setHistoryStatus('online');
@@ -318,11 +323,32 @@ export default function App() {
     finally { setHistorySavingInterval(false); }
   }
   useEffect(()=>{
-    if (!historyAutoRefresh || !accessPoint || !historyPair) return;
+    if (!historyAutoRefresh || !accessPoint || !historyData) return;
     const intervalMs=(appliedHistoryIntervalUnit==='seconds'?appliedHistoryIntervalValue:appliedHistoryIntervalValue*60)*1000;
     const timer=setInterval(()=>{ if (historyAutoRefreshRef.current) void loadHistory(historyMode,true); },intervalMs);
     return ()=>clearInterval(timer);
-  },[historyAutoRefresh,accessPoint,historyMode,historyPair,appliedHistoryIntervalUnit,appliedHistoryIntervalValue]);
+  },[historyAutoRefresh,accessPoint,!!historyData,historyMode,appliedHistoryIntervalUnit,appliedHistoryIntervalValue]);
+
+  useEffect(()=>{
+    if(screen!=='app') return;
+    let cancelled=false;
+    fetch(`https://api.github.com/repos/Tinchodoko/tinchodoko-ai-assistant/actions/runs?per_page=100&_=${Date.now()}`,{headers:{Accept:'application/vnd.github+json','Cache-Control':'no-cache'}})
+      .then(response=>{if(!response.ok) throw new Error(`GitHub HTTP ${response.status}`);return response.json();})
+      .then(data=>{if(!cancelled&&Array.isArray(data.workflow_runs)) setBuildRuns(data.workflow_runs.map((run:any)=>({run_number:Number(run.run_number),conclusion:run.conclusion??null,status:String(run.status??'unknown'),display_title:String(run.display_title??run.name??'Build')})).filter((run:any)=>Number.isFinite(run.run_number)));})
+      .catch(()=>{if(!cancelled)setBuildRuns([]);});
+    return ()=>{cancelled=true;};
+  },[screen]);
+
+  function handleSwipeStart(event:any) { swipeStart.current={x:event.nativeEvent.pageX,y:event.nativeEvent.pageY}; }
+  function handleSwipeEnd(event:any) {
+    const start=swipeStart.current; swipeStart.current=null; if(!start)return;
+    const dx=event.nativeEvent.pageX-start.x,dy=event.nativeEvent.pageY-start.y;
+    if(Math.abs(dx)<75||Math.abs(dx)<Math.abs(dy)*1.25)return;
+    const steps: Array<{screen:Screen;mode?:'active'|'past'}>=[{screen:'connection'},{screen:'profile'},{screen:'history',mode:'active'},{screen:'history',mode:'past'},{screen:'app'}];
+    const current=steps.findIndex(step=>step.screen===screen&&(step.screen!=='history'||step.mode===historyMode));
+    const next=steps[Math.max(0,Math.min(steps.length-1,current+(dx<0?1:-1)))];
+    if(next){setScreen(next.screen);if(next.mode)setHistoryMode(next.mode);setHistoryMenuOpen(false);setIntervalMenu(false);setHistoryIntervalMenu(false);}
+  }
   function openHistory() {
     // Entrar a HISTORIAL nunca dispara consultas: la primera sincronización
     // queda bajo control del usuario mediante ACTUALIZAR HISTORIAL.
@@ -363,6 +389,37 @@ export default function App() {
     const order=item.order&&typeof item.order==='object'?item.order as Record<string,unknown>:item;
     return historyPair==='*'||String(order.instrument??'')===historyPair;
   });
+  const pastOrderGroups=selectedPastOrders.reduce((groups,item)=>{
+    const order=item.order&&typeof item.order==='object'?item.order as Record<string,unknown>:item;
+    const state=String(order.state??order.order_state??'').toUpperCase();
+    const direction=String(order.direction??'').toLowerCase();
+    if(/CANCEL|REJECT|EXPIRE/.test(state)) groups.cancelled.push(item);
+    else if(direction==='buy') groups.buy.push(item);
+    else if(direction==='sell') groups.sell.push(item);
+    else groups.cancelled.push(item);
+    return groups;
+  },{buy:[] as typeof selectedPastOrders,sell:[] as typeof selectedPastOrders,cancelled:[] as typeof selectedPastOrders});
+  function historyPnlStyle(value:string):TextStyle|undefined {
+    const amount=Number(value.replace(/[^0-9+-.]/g,''));
+    if(!Number.isFinite(amount)) return undefined;
+    if(amount===0) return s.pnlZero;
+    return amount>0?s.pnlPositive:s.pnlNegative;
+  }
+  function renderPastOrderCard(item:any,index:number) {
+    const order=item.order&&typeof item.order==='object'?item.order as Record<string,unknown>:item;
+    const state=String(order.state??order.order_state??'').toUpperCase();
+    const direction=String(order.direction??'').toLowerCase();
+    const pnl=state==='FILLED'?historyOrderPnl(order):'—';
+    const stateStyle=state==='FILLED'?(direction==='buy'?s.pnlPositive:s.pnlNegative):s.pendingText;
+    return <View key={String(order.order_id??index)} style={s.historyCard}>
+      <View style={s.historyCardHeader}><Text style={s.historyPair}>{historyValue(order,'instrument')}</Text><Text style={stateStyle}>{state||'FINALIZADA'}</Text></View>
+      <Info label="ID ORDEN" value={historyValue(order,'order_id')}/>
+      <View style={s.info}><Text style={s.infoLabel}>DIRECCIÓN</Text><Text style={[s.infoValue,direction==='buy'?s.pnlPositive:direction==='sell'?s.pnlNegative:undefined]}>{historyValue(order,'direction')}</Text></View>
+      <Info label="VOLUMEN" value={historyValue(order,'volume')}/><Info label="PRECIO DE ENTRADA" value={historyValue(order,'price')}/>
+      <Info label="STOP LOSS" value={configuredPrice(order,'stop_loss_price')}/><Info label="TAKE PROFIT" value={configuredPrice(order,'take_profit_price')}/>
+      <Info label="PNL" value={pnl} valueStyle={historyPnlStyle(pnl)}/><Info label="FECHA Y HORA" value={historyDate(item,'event_time')}/>
+    </View>;
+  }
   function beginEdit(target:'position'|'order', targetId:string, field:'price'|'stop_loss_price'|'take_profit_price', previous:string, instrument:string, otherField?:'stop_loss_price'|'take_profit_price', otherValue?:string, positionId?:string) {
     const cleanId=targetId.trim();
     const cleanPositionId=(positionId??'').trim();
@@ -582,7 +639,7 @@ export default function App() {
       <Pressable onPress={()=>{setIntervalMenu(false);setHistoryMenuOpen(false);setHistoryIntervalMenu(false);setScreen('app');}} style={[s.tab,screen==='app'&&s.active]}><Text style={s.tabText}>APP</Text></Pressable>
     </View>
 
-    {screen==='connection' ? <ScrollView contentContainerStyle={s.content}>
+    {screen==='connection' ? <ScrollView contentContainerStyle={s.content} onTouchStart={handleSwipeStart} onTouchEnd={handleSwipeEnd}>
       <Text style={s.h1}>Conexión</Text><Text style={s.sub}>Credenciales para conexión con Exness.</Text>
       {field('GATEWAY URL','gatewayUrl')}
       {field('API KEY','apiKey',true,apiVisible,()=>setApiVisible(!apiVisible))}
@@ -591,7 +648,7 @@ export default function App() {
       <Pressable disabled={busy} onPress={connect} style={[s.button,busy&&s.disabled]}>{busy?<ActivityIndicator/>:<Text style={s.buttonText}>CONECTAR</Text>}</Pressable>
       <Text style={status==='online'?s.onlineText:s.offlineText}>Estado: {status}</Text>
       {status==='online'&&!!accessPoint&&<Text style={s.ap}>URL DE ACCESS POINT: {accessPoint}</Text>}
-    </ScrollView> : screen==='profile' ? <ScrollView contentContainerStyle={s.content} onTouchStart={()=>setIntervalMenu(false)}>
+    </ScrollView>  : screen==='profile' ? <ScrollView contentContainerStyle={s.content} onTouchStart={e=>{handleSwipeStart(e);setIntervalMenu(false);}} onTouchEnd={handleSwipeEnd}>
       <Text style={s.h1}>BALANCE</Text>
       <View style={s.card}>
         <Info label="ACCOUNT" value={c.accountId||'—'}/>
@@ -642,23 +699,19 @@ export default function App() {
       <Text style={s.meta}>ÚLTIMA ACTUALIZACIÓN</Text><Text style={s.time}>{dateText(last)}</Text>
       <Text style={autoRefresh?s.onlineText:s.offlineText}>{autoRefresh?'SINCRONIZACIÓN AUTOMÁTICA ACTIVADA':'SINCRONIZACIÓN AUTOMÁTICA DETENIDA'}</Text>
       <Text style={status==='online'?s.onlineText:s.offlineText}>Estado: {status}</Text>
-    </ScrollView> : screen==='history' ? <ScrollView contentContainerStyle={s.content}>
+    </ScrollView>  : screen==='history' ? <ScrollView contentContainerStyle={s.content} onTouchStart={handleSwipeStart} onTouchEnd={handleSwipeEnd}>
       <Text style={s.h1}>HISTORIAL</Text><Text style={s.sub}>Consultá las posiciones activas, órdenes pendientes y operaciones pasadas de tu cuenta.</Text>
       <Text style={s.label}>SELECCIONE SU PAR</Text>
-      <Pressable onPress={()=>{
-        const opening=!historyMenuOpen;
-        setHistoryMenuOpen(opening);
-        if(opening&&!historyData&&!historyLoading) void loadHistory(historyMode,false,true);
-      }} style={s.select}><Text style={s.selectText}>{historyPair==='*'?'MOSTRAR TODO':historyPair||'MOSTRAR TODO'}</Text><Text style={s.selectArrow}>{historyMenuOpen?'▲':'▼'}</Text></Pressable>
+      <Pressable disabled={!historyData||historyLoading} onPress={()=>setHistoryMenuOpen(!historyMenuOpen)} style={[s.select,(!historyData||historyLoading)&&s.disabled]}><Text style={s.selectText}>{historyPair==='*'?'MOSTRAR TODO':historyPair||'MOSTRAR TODO'}</Text><Text style={s.selectArrow}>{historyMenuOpen?'▲':'▼'}</Text></Pressable>
       {historyMenuOpen&&<View style={s.menu}>
         <Pressable onPress={()=>{setHistoryPair('*');setHistoryMenuOpen(false);}} style={s.menuItem}><Text style={s.menuText}>MOSTRAR TODO</Text></Pressable>
         {historySymbols.length===0?<Text style={s.menuEmpty}>Buscando pares disponibles...</Text>:historySymbols.map(symbol=><Pressable key={symbol} onPress={()=>{setHistoryPair(symbol);setHistoryMenuOpen(false);}} style={s.menuItem}><Text style={s.menuText}>{symbol}</Text></Pressable>)}
       </View>}
       <View style={s.historyModes}>
-        <Pressable onPress={()=>{setHistoryMode('active');setHistoryData(null);setHistoryPair('*');setHistoryError('');setHistoryMenuOpen(false);}} style={[s.historyMode,historyMode==='active'&&s.historyModeSelected]}><Text style={[s.historyModeText,historyMode==='active'&&s.historyModeTextSelected]}>ACTIVAS</Text></Pressable>
-        <Pressable onPress={()=>{setHistoryMode('past');setHistoryData(null);setHistoryPair('*');setHistoryError('');setHistoryMenuOpen(false);}} style={[s.historyMode,historyMode==='past'&&s.historyModeSelected]}><Text style={[s.historyModeText,historyMode==='past'&&s.historyModeTextSelected]}>PASADAS</Text></Pressable>
+        <Pressable onPress={()=>{setHistoryMode('active');setHistoryError('');setHistoryMenuOpen(false);}} style={[s.historyMode,historyMode==='active'&&s.historyModeSelected]}><Text style={[s.historyModeText,historyMode==='active'&&s.historyModeTextSelected]}>ACTIVAS</Text></Pressable>
+        <Pressable onPress={()=>{setHistoryMode('past');setHistoryError('');setHistoryMenuOpen(false);}} style={[s.historyMode,historyMode==='past'&&s.historyModeSelected]}><Text style={[s.historyModeText,historyMode==='past'&&s.historyModeTextSelected]}>PASADAS</Text></Pressable>
       </View>
-      <Pressable disabled={historyLoading||!historyPair} onPress={()=>void loadHistory(historyMode)} style={[s.refresh,(historyLoading||!historyPair)&&s.disabled]}>{historyLoading?<ActivityIndicator/>:<Text style={s.refreshText}>↻  ACTUALIZAR HISTORIAL</Text>}</Pressable>
+      <Pressable disabled={historyLoading} onPress={()=>void loadHistory(historyMode)} style={[s.refresh,historyLoading&&s.disabled]}>{historyLoading?<ActivityIndicator/>:<Text style={s.refreshText}>↻  ACTUALIZAR HISTORIAL</Text>}</Pressable>
       <View style={s.intervalCard}>
         <View style={s.intervalHeader}><Text style={s.meta}>AUTORREFRESCO</Text><Pressable onPress={()=>{const next=!historyAutoRefresh;historyAutoRefreshRef.current=next;setHistoryAutoRefresh(next);}} style={s.clockButton}><Text style={historyAutoRefresh?s.clockOn:s.clockOff}>{historyAutoRefresh?'◷':'✕'}</Text></Pressable></View>
         <Text style={s.intervalTitle}>Coloca el intervalo</Text>
@@ -708,20 +761,16 @@ export default function App() {
       </>}
       {!!historyData&&!!historyPair&&historyMode==='past'&&<>
         <Text style={s.historySection}>ÓRDENES FINALIZADAS ({selectedPastOrders.length})</Text>
-        {selectedPastOrders.length===0?<Text style={s.emptyHistory}>No hay órdenes pasadas para este par en el período permitido por Exness.</Text>:[...selectedPastOrders].reverse().map((item,index)=>{
-          const order=item.order&&typeof item.order==='object'?item.order as Record<string,unknown>:item;
-          const state=String(order.state??order.order_state??'').toUpperCase();
-          const direction=String(order.direction??'').toLowerCase();
-          const stateStyle=state==='FILLED'?(direction==='buy'?s.pnlPositive:s.pnlNegative):s.pendingText;
-          return <View key={String(order.order_id??index)} style={s.historyCard}>
-            <View style={s.historyCardHeader}><Text style={s.historyPair}>{historyValue(order,'instrument')}</Text><Text style={stateStyle}>{state||'FINALIZADA'}</Text></View>
-            <Info label="ID ORDEN" value={historyValue(order,'order_id')}/><Info label="DIRECCIÓN" value={historyValue(order,'direction')}/><Info label="VOLUMEN" value={historyValue(order,'volume')}/><Info label="PRECIO DE ENTRADA" value={historyValue(order,'price')}/>
-            <Info label="STOP LOSS" value={configuredPrice(order,'stop_loss_price')}/><Info label="TAKE PROFIT" value={configuredPrice(order,'take_profit_price')}/>
-            <Info label="PNL" value={state==='FILLED'?historyOrderPnl(order):'—'}/><Info label="FECHA Y HORA" value={historyDate(item,'event_time')}/>
-          </View>;
-        })}
-      </>}
-    </ScrollView> : <ScrollView contentContainerStyle={s.content}>
+        {selectedPastOrders.length===0?<Text style={s.emptyHistory}>No hay órdenes pasadas para este par en el período permitido por Exness.</Text>:<>
+          <Pressable onPress={()=>setBuyOrdersExpanded(v=>!v)} style={s.historySectionToggle}><Text style={s.historySection}>ÓRDENES BUY ({pastOrderGroups.buy.length})</Text><Text style={s.sectionChevron}>{buyOrdersExpanded?'⌄':'›'}</Text></Pressable>
+          {buyOrdersExpanded&&(pastOrderGroups.buy.length?pastOrderGroups.buy.slice().reverse().map(renderPastOrderCard):<Text style={s.emptyHistory}>No hay órdenes BUY finalizadas.</Text>)}
+          <Pressable onPress={()=>setSellOrdersExpanded(v=>!v)} style={s.historySectionToggle}><Text style={s.historySection}>ÓRDENES SELL ({pastOrderGroups.sell.length})</Text><Text style={s.sectionChevron}>{sellOrdersExpanded?'⌄':'›'}</Text></Pressable>
+          {sellOrdersExpanded&&(pastOrderGroups.sell.length?pastOrderGroups.sell.slice().reverse().map(renderPastOrderCard):<Text style={s.emptyHistory}>No hay órdenes SELL finalizadas.</Text>)}
+          <Pressable onPress={()=>setCancelledOrdersExpanded(v=>!v)} style={s.historySectionToggle}><Text style={s.historySection}>ÓRDENES CANCELADAS ({pastOrderGroups.cancelled.length})</Text><Text style={s.sectionChevron}>{cancelledOrdersExpanded?'⌄':'›'}</Text></Pressable>
+          {cancelledOrdersExpanded&&(pastOrderGroups.cancelled.length?pastOrderGroups.cancelled.slice().reverse().map(renderPastOrderCard):<Text style={s.emptyHistory}>No hay órdenes canceladas.</Text>)}
+        </>}
+      </>}}
+    </ScrollView> : <ScrollView contentContainerStyle={s.content} onTouchStart={handleSwipeStart} onTouchEnd={handleSwipeEnd}>
       <Text style={s.h1}>APP</Text>
       <View style={s.card}>
         <Info label="NOMBRE DE APP" value={BUILD_INFO.appName}/>
@@ -740,7 +789,7 @@ export default function App() {
       </Pressable>
       <Text style={s.meta}>REGISTRO DE CAMBIOS</Text>
       <View style={s.card}>
-        {(BUILD_INFO.changelog.length ? BUILD_INFO.changelog : ['#V0 — Historial inicial']).map((entry,i)=><Text key={i} style={s.change}>{entry}</Text>)}
+        {buildRuns.length ? buildRuns.slice(0,40).map(run=><View key={run.run_number} style={s.buildRow}><Text style={run.conclusion==='success'?s.buildSuccess:run.conclusion==='failure'||run.conclusion==='cancelled'?s.buildFailure:s.buildPending}>#V{run.run_number}</Text><Text style={s.change}>{run.display_title}</Text></View>) : (BUILD_INFO.changelog.length ? BUILD_INFO.changelog : ['#V0 — Historial inicial']).map((entry,i)=><Text key={i} style={s.change}>{entry}</Text>)}
       </View>
     </ScrollView>}
   {renderTradeModals()}
@@ -759,10 +808,10 @@ const s=StyleSheet.create({
  row:{flexDirection:'row',backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:10},input:{flex:1,color:'#fff',padding:13,minHeight:48},eye:{width:48,alignItems:'center',justifyContent:'center'},
  button:{minHeight:50,borderRadius:10,backgroundColor:'#fff',alignItems:'center',justifyContent:'center'},buttonText:{color:'#0b0e13',fontWeight:'900'},disabled:{opacity:.5},
  onlineText:{color:'#28d17c',textAlign:'center',fontWeight:'800'},offlineText:{color:'#e05252',textAlign:'center',fontWeight:'800'},
- card:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:14,padding:17,gap:17},info:{gap:5},infoLabel:{color:'#8f98a8',fontSize:11,fontWeight:'900'},infoValue:{color:'#fff',fontSize:15,fontWeight:'600'},pnlPositive:{color:'#28d17c',fontWeight:'900'},pnlNegative:{color:'#e05252',fontWeight:'900'},
+ card:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:14,padding:17,gap:17},info:{gap:5},infoLabel:{color:'#8f98a8',fontSize:11,fontWeight:'900'},infoValue:{color:'#fff',fontSize:15,fontWeight:'600'},pnlPositive:{color:'#28d17c',fontWeight:'900'},pnlNegative:{color:'#e05252',fontWeight:'900'},pnlZero:{color:'#f0a52b',fontWeight:'900'},
  refresh:{minHeight:48,borderRadius:10,borderWidth:1,borderColor:'#3b4350',alignItems:'center',justifyContent:'center'},refreshText:{color:'#fff',fontWeight:'900'},
  meta:{color:'#8f98a8',fontSize:11,fontWeight:'900'},time:{color:'#fff',fontWeight:'600',marginTop:-9},ap:{color:'#707988',fontSize:11},
- githubButton:{minHeight:54,borderRadius:12,borderWidth:1,borderColor:'#3b4350',paddingHorizontal:16,flexDirection:'row',alignItems:'center',gap:12},githubLogo:{width:24,height:24},githubText:{color:'#fff',fontWeight:'900',flex:1},githubVersion:{color:'#9da6b5',fontWeight:'800'},change:{color:'#dce1e9',fontSize:13,lineHeight:20},
+ githubButton:{minHeight:54,borderRadius:12,borderWidth:1,borderColor:'#3b4350',paddingHorizontal:16,flexDirection:'row',alignItems:'center',gap:12},githubLogo:{width:24,height:24},githubText:{color:'#fff',fontWeight:'900',flex:1},githubVersion:{color:'#9da6b5',fontWeight:'800'},change:{color:'#dce1e9',fontSize:13,lineHeight:20},buildRow:{flexDirection:'row',alignItems:'flex-start',gap:10},buildSuccess:{color:'#28d17c',fontSize:13,fontWeight:'900',minWidth:58},buildFailure:{color:'#e05252',fontSize:13,fontWeight:'900',minWidth:58},buildPending:{color:'#9da6b5',fontSize:13,fontWeight:'900',minWidth:58},
  saveIntervalButton:{minHeight:46,borderRadius:10,borderWidth:1,borderColor:'#3b4350',alignItems:'center',justifyContent:'center',backgroundColor:'#151a22'},saveIntervalText:{color:'#fff',fontWeight:'900',fontSize:12},
  intervalCard:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:14,padding:17,gap:12},intervalHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},clockButton:{width:40,height:40,borderRadius:20,alignItems:'center',justifyContent:'center'},clockOn:{color:'#28d17c',fontSize:25,fontWeight:'900'},clockOff:{color:'#e05252',fontSize:22,fontWeight:'900'},intervalTitle:{color:'#fff',fontSize:14,fontWeight:'800'},select:{minHeight:44,borderWidth:1,borderColor:'#3b4350',borderRadius:9,paddingHorizontal:12,flexDirection:'row',alignItems:'center',justifyContent:'space-between',backgroundColor:'#0f131a'},selectText:{color:'#fff',fontWeight:'700'},selectArrow:{color:'#9da6b5',fontSize:12},menu:{borderWidth:1,borderColor:'#3b4350',borderRadius:9,backgroundColor:'#0f131a',overflow:'hidden'},menuItem:{paddingHorizontal:13,paddingVertical:12},menuText:{color:'#fff',fontWeight:'700'},sliderRow:{flexDirection:'row',alignItems:'center',gap:8},sliderMin:{color:'#9da6b5',fontSize:11,fontWeight:'800'},sliderMax:{color:'#9da6b5',fontSize:11,fontWeight:'800'},sliderTrack:{flex:1,height:32,borderRadius:16,backgroundColor:'transparent',position:'relative',justifyContent:'center'},sliderEnabled:{opacity:1},sliderDisabled:{opacity:0.4},sliderRail:{position:'absolute',left:9,right:9,top:13,height:6,borderRadius:3,backgroundColor:'#303744'},sliderFill:{position:'absolute',left:9,top:13,height:6,borderRadius:3,backgroundColor:'#fff'},sliderThumb:{position:'absolute',top:7,width:18,height:18,borderRadius:9,backgroundColor:'#fff',marginLeft:-9},intervalValue:{color:'#9da6b5',fontSize:11,fontWeight:'700'},
   modalBackdrop:{position:'absolute',top:0,left:0,right:0,bottom:0,zIndex:100,backgroundColor:'rgba(0,0,0,0.72)',alignItems:'center',justifyContent:'center',padding:22},modalCard:{width:'100%',backgroundColor:'#151a22',borderWidth:1,borderColor:'#3b4350',borderRadius:15,padding:18,gap:12},modalTitle:{color:'#fff',fontSize:18,fontWeight:'900'},modalSub:{color:'#9da6b5',lineHeight:20},modalLabel:{color:'#8f98a8',fontSize:11,fontWeight:'900'},modalBig:{color:'#fff',fontSize:16,fontWeight:'900'},modalInput:{color:'#fff',backgroundColor:'#0f131a',borderWidth:1,borderColor:'#3b4350',borderRadius:9,padding:13,fontSize:16},modalButtons:{flexDirection:'row',gap:10,marginTop:5},modalCancel:{flex:1,minHeight:46,borderRadius:9,borderWidth:1,borderColor:'#3b4350',alignItems:'center',justifyContent:'center'},modalCancelText:{color:'#dce1e9',fontWeight:'900'},modalConfirm:{flex:1,minHeight:46,borderRadius:9,backgroundColor:'#fff',alignItems:'center',justifyContent:'center'},modalConfirmText:{color:'#0b0e13',fontWeight:'900'},editableRow:{gap:5},editableValue:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},pencil:{color:'#fff',fontSize:19,fontWeight:'900',paddingHorizontal:8},cardActionRow:{alignItems:'flex-end',marginTop:2},closeButton:{width:34,height:34,borderRadius:17,borderWidth:1,borderColor:'#3b4350',alignItems:'center',justifyContent:'center'},closeButtonText:{color:'#e05252',fontSize:16,fontWeight:'900'},
