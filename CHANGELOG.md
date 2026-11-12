@@ -1,3 +1,4 @@
+- #V127 — Fix chronological build history sorting
 - #V125 — Fix TypeScript typing for past order groups
 - #V120 — Remove unused stream status display state
 - #V117 — Reset server clock before each history query
