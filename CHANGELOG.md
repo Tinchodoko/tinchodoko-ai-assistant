@@ -1,3 +1,4 @@
+- #V140 — Reconnect positions quote stream when app returns to foreground
 - #V138 — Fix Exness ticks WebSocket URL regex
 - #V134 — Use repository icon.png as Android app launcher icon
 - #V128 — Add visual asset icons to open and pending trade pairs
