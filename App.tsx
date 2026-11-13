@@ -4,6 +4,7 @@ import { connectToExness, getAccountSnapshot, getTradingHistory, openExnessAccou
 import { loadCredentials, saveCredentials } from './src/storage';
 import { BUILD_INFO } from './src/buildInfo';
 import { BUILD_HISTORY_FALLBACK } from './src/buildHistory';
+import MarketDataScreen from './src/MarketDataScreen';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as IntentLauncher from 'expo-intent-launcher';
 import * as SecureStore from 'expo-secure-store';
@@ -45,7 +46,7 @@ function PairIdentity({instrument}:{instrument:string}) {
 const RELEASES_URL = 'https://github.com/Tinchodoko/tinchodoko-ai-assistant/releases';
 const LATEST_RELEASE_API = 'https://api.github.com/repos/Tinchodoko/tinchodoko-ai-assistant/releases/latest';
 const UPDATE_MANIFEST_URL = 'https://raw.githubusercontent.com/Tinchodoko/tinchodoko-ai-assistant/main/update.json';
-type Screen = 'connection' | 'profile' | 'positions' | 'history' | 'app';
+type Screen = 'connection' | 'profile' | 'positions' | 'market' | 'history' | 'app';
 type TradeAction = {
   kind: 'edit' | 'close';
   target: 'position' | 'order';
@@ -480,7 +481,7 @@ export default function App() {
   },[]);
 
   useEffect(()=>{
-    if(screen!=='positions'||!accessPoint||!c.apiKey||!c.secret||!c.accountId)return;
+    if((screen!=='positions'&&screen!=='market')||!accessPoint||!c.apiKey||!c.secret||!c.accountId)return;
     let cancelled=false;setInstrumentLoading(true);setInstrumentError('');
     getAvailableInstruments(c,accessPoint).then(items=>{
       if(cancelled)return;setInstrumentList(items);
@@ -884,7 +885,8 @@ export default function App() {
     <View style={s.tabs}>
       <Pressable onPress={()=>{setIntervalMenu(false);setHistoryMenuOpen(false);setHistoryIntervalMenu(false);setScreen('connection');}} style={[s.tab,screen==='connection'&&s.active]}><Text style={s.tabText}>CONEXIÓN</Text></Pressable>
       <Pressable onPress={()=>{setHistoryMenuOpen(false);setHistoryIntervalMenu(false);setScreen('profile');}} style={[s.tab,screen==='profile'&&s.active]}><Text style={s.tabText}>BALANCE</Text></Pressable>
-      <Pressable onPress={()=>{setInstrumentMenuOpen(false);setInstrumentCategoryMenu(false);setScreen('positions');}} style={[s.tab,screen==='positions'&&s.active]}><Text style={s.tabText}>POSICIONES</Text></Pressable>\n      <Pressable onPress={()=>{setIntervalMenu(false);openHistory();}} style={[s.tab,screen==='history'&&s.active]}><Text style={s.tabText}>HISTORIAL</Text></Pressable>
+      <Pressable onPress={()=>{setInstrumentMenuOpen(false);setInstrumentCategoryMenu(false);setScreen('positions');}} style={[s.tab,screen==='positions'&&s.active]}><Text style={s.tabText}>POSICIONES</Text></Pressable>
+      <Pressable onPress={()=>{setInstrumentMenuOpen(false);setInstrumentCategoryMenu(false);setScreen('market');}} style={[s.tab,screen==='market'&&s.active]}><View style={s.marketTabIcon}><View style={s.marketCandleGreenWick}/><View style={s.marketCandleGreen}/><View style={s.marketCandleRedWick}/><View style={s.marketCandleRed}/></View></Pressable>\n      <Pressable onPress={()=>{setIntervalMenu(false);openHistory();}} style={[s.tab,screen==='history'&&s.active]}><Text style={s.tabText}>HISTORIAL</Text></Pressable>
       <Pressable onPress={()=>{setIntervalMenu(false);setHistoryMenuOpen(false);setHistoryIntervalMenu(false);setScreen('app');}} style={[s.tab,screen==='app'&&s.active]}><Text style={s.tabText}>APP</Text></Pressable>
     </View>
 
@@ -995,7 +997,7 @@ export default function App() {
         <Text style={s.sellText}>STOP LOSS</Text><TextInput value={limitStopLoss} onChangeText={setLimitStopLoss} keyboardType="decimal-pad" placeholder="Precio SL (opcional)" placeholderTextColor="#707988" style={s.orderInput}/>
         <Pressable disabled={positionSubmitting} onPress={()=>void submitLimitOrder()} style={[s.limitButton,positionSubmitting&&s.disabled]}>{positionSubmitting?<ActivityIndicator color="#0b0e13"/>:<Text style={s.limitButtonText}>ABRIR LIMIT ORDER</Text>}</Pressable>
       </View>
-}    </ScrollView> : screen==='history' ? <ScrollView contentContainerStyle={s.content} onTouchStart={handleSwipeStart} onTouchEnd={handleSwipeEnd}>
+}    </ScrollView> : screen==='market' ? <MarketDataScreen credentials={c} accessPoint={accessPoint} instruments={instrumentList} selectedInstrument={selectedInstrument} onSelectInstrument={setSelectedInstrument}/> : screen==='history' ? <ScrollView contentContainerStyle={s.content} onTouchStart={handleSwipeStart} onTouchEnd={handleSwipeEnd}>
       <Text style={s.h1}>HISTORIAL</Text><Text style={s.sub}>Consultá las posiciones activas, órdenes pendientes y operaciones pasadas de tu cuenta.</Text>
       <Text style={s.label}>SELECCIONE SU PAR</Text>
       <Pressable disabled={!historyData||historyLoading} onPress={()=>setHistoryMenuOpen(!historyMenuOpen)} style={[s.select,(!historyData||historyLoading)&&s.disabled]}><Text style={s.selectText}>{historyPair==='*'?'MOSTRAR TODO':historyPair||'MOSTRAR TODO'}</Text><Text style={s.selectArrow}>{historyMenuOpen?'▲':'▼'}</Text></Pressable>
@@ -1108,7 +1110,7 @@ function Info({label,value,valueStyle}:{label:string,value:string,valueStyle?:Te
 const s=StyleSheet.create({
  safe:{flex:1,backgroundColor:'#0b0e13'},header:{height:68,paddingHorizontal:20,flexDirection:'row',alignItems:'center',justifyContent:'space-between',borderBottomWidth:1,borderBottomColor:'#252b35'},
  title:{color:'#fff',fontSize:18,fontWeight:'800'},dot:{width:12,height:12,borderRadius:6},green:{backgroundColor:'#28d17c'},yellow:{backgroundColor:'#f0b429'},red:{backgroundColor:'#e05252'},
- tabs:{flexDirection:'row',borderBottomWidth:1,borderBottomColor:'#252b35'},tab:{flex:1,paddingHorizontal:3,paddingVertical:12,alignItems:'center',justifyContent:'center',minWidth:0},active:{borderBottomWidth:2,borderBottomColor:'#fff'},tabText:{color:'#dce1e9',fontWeight:'800',fontSize:11,letterSpacing:-0.2,includeFontPadding:false,textAlign:'center'},
+ tabs:{flexDirection:'row',borderBottomWidth:1,borderBottomColor:'#252b35'},tab:{flex:1,paddingHorizontal:3,paddingVertical:12,alignItems:'center',justifyContent:'center',minWidth:0},active:{borderBottomWidth:2,borderBottomColor:'#fff'},marketTabIcon:{height:22,width:30,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:4},marketCandleGreenWick:{position:'absolute',left:7,width:2,height:20,backgroundColor:'#28d17c'},marketCandleGreen:{width:7,height:11,backgroundColor:'#28d17c',borderRadius:1,marginTop:2},marketCandleRedWick:{position:'absolute',right:7,width:2,height:20,backgroundColor:'#e05252'},marketCandleRed:{width:7,height:14,backgroundColor:'#e05252',borderRadius:1,marginTop:-2},tabText:{color:'#dce1e9',fontWeight:'800',fontSize:11,letterSpacing:-0.2,includeFontPadding:false,textAlign:'center'},
  content:{padding:22,gap:15},h1:{color:'#fff',fontSize:26,fontWeight:'900'},sub:{color:'#9da6b5',lineHeight:21},field:{gap:7},label:{color:'#c8ced8',fontSize:12,fontWeight:'800'},
  row:{flexDirection:'row',backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:10},input:{flex:1,color:'#fff',padding:13,minHeight:48},eye:{width:48,alignItems:'center',justifyContent:'center'},
  button:{minHeight:50,borderRadius:10,backgroundColor:'#fff',alignItems:'center',justifyContent:'center'},buttonText:{color:'#0b0e13',fontWeight:'900'},disabled:{opacity:.5},
