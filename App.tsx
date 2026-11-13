@@ -62,6 +62,21 @@ type TradeAction = {
   basePrice?: number;
 };
 
+function formatSpread(instrument:string, bid:number, ask:number, digits:number):string {
+  const spread=Math.abs(ask-bid);
+  const kind=classifyExnessInstrument(instrument);
+  if(kind==='Forex') {
+    const normalized=instrument.toUpperCase().replace(/[^A-Z0-9]/g,'');
+    const quote=normalized.length>=6 ? normalized.slice(3,6) : '';
+    const pipSize=quote==='JPY' ? 0.01 : 0.0001;
+    const pips=spread/pipSize;
+    return `${pips.toFixed(1)} pips`;
+  }
+  if(kind==='Crypto') return `${spread.toFixed(Math.max(2,digits))} USD`;
+  if(kind==='Indices') return `${spread.toFixed(Math.max(1,digits))} puntos`;
+  return spread.toFixed(Math.max(2,digits));
+}
+
 function classifyExnessInstrument(symbol:string):'Crypto'|'Forex'|'Indices'|'ETC' {
   const value=symbol.toUpperCase().replace(/[^A-Z0-9]/g,'');
   const currencies=['USD','EUR','GBP','JPY','AUD','NZD','CAD','CHF','CNH','CNY','HKD','SGD','SEK','NOK','DKK','MXN','ZAR','TRY','PLN','INR','KRW','BRL','THB','HUF','CZK','ILS','AED','SAR'];
@@ -952,7 +967,7 @@ export default function App() {
           </View>
           <Info label="PRECIO ACTUAL" value={tick?((tick.bid+tick.ask)/2).toFixed(instrumentConditions?.point_digits??5):'Esperando cotización...'}/>
           <View style={s.quoteRow}><View style={s.quoteSide}><Text style={s.infoLabel}>BID</Text><Text style={s.bidText}>{tick?tick.bid.toFixed(instrumentConditions?.point_digits??5):'—'}</Text></View><View style={s.quoteSide}><Text style={s.infoLabel}>ASK</Text><Text style={s.askText}>{tick?tick.ask.toFixed(instrumentConditions?.point_digits??5):'—'}</Text></View></View>
-          <Info label="SPREAD" value={tick?(tick.ask-tick.bid).toFixed(instrumentConditions?.point_digits??5):'—'}/>
+          <Info label="SPREAD" value={tick?formatSpread(selectedInstrument,tick.bid,tick.ask,instrumentConditions?.point_digits??5):'—'}/>
         </View>
       </View>
       <View style={s.orderTabs}>
