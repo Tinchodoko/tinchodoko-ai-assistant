@@ -75,7 +75,7 @@ export default function MarketDataScreen({credentials,accessPoint,instruments,se
    {loaded&&<Text style={s.hint}>Configuración e historial guardados en el dispositivo.</Text>}
   </View>
   <View style={s.logHeader}><Text style={s.section}>HISTORIAL DE IMPORTACIONES</Text><Text style={s.muted}>{log.length}</Text></View>
-  {log.length===0?<View style={s.card}><Text style={s.muted}>Todavía no hay importaciones registradas.</Text></View>:log.map(item=><View key={item.id} style={s.logCard}><View style={s.logTop}><Text style={s.logSymbol}>{item.symbol}</Text><Text style={[s.status,item.status==='OK'?s.ok:item.status==='PARCIAL'?s.partial:s.fail]}>{item.status}</Text></View><Text style={s.logLine}>{item.timeframe} · '+item.received.toLocaleString('es-AR')+'/'+item.requested.toLocaleString('es-AR')+' velas · '+formatDate(item.at)}</Text>{item.message&&<Text style={s.error} numberOfLines={3}>{item.message}</Text>}</View>)}
+  {log.length===0?<View style={s.card}><Text style={s.muted}>Todavía no hay importaciones registradas.</Text></View>:log.map(item=><View key={item.id} style={s.logCard}><View style={s.logTop}><Text style={s.logSymbol}>{item.symbol}</Text><Text style={[s.status,item.status==='OK'?s.ok:item.status==='PARCIAL'?s.partial:s.fail]}>{item.status}</Text></View><Text style={s.logLine}>{item.timeframe} · {item.received.toLocaleString('es-AR')}/{item.requested.toLocaleString('es-AR')} velas · {formatDate(item.at)}</Text>{item.message&&<Text style={s.error} numberOfLines={3}>{item.message}</Text>}</View>)}
  </ScrollView>;
 }
 const s=StyleSheet.create({
