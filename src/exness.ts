@@ -1004,3 +1004,62 @@ export async function openExnessTickStream(
   ws.onclose = () => onStatus?.('disconnected');
   return ws;
 }
+
+
+export type MarketTimeframe = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4';
+export type ExnessCandle = { time:string; open:number; high:number; low:number; close:number; volume:number };
+type CandleLimitMethod = { api_operation_id?:string; path?:string; rate_limit?:{limit?:number;window_seconds?:number}; limits?:{max_candles_per_request?:number} };
+const MARKET_TIMEFRAME_MS:Record<MarketTimeframe,number>={M1:60000,M5:300000,M15:900000,M30:1800000,H1:3600000,H4:14400000};
+
+/** Read-only historical candle import. Uses Exness' effective per-request limit and sequential batches. */
+export async function getMarketCandles(c:Credentials,accessPoint:string,instrument:string,timeframe:MarketTimeframe,requestedCount:number):Promise<ExnessCandle[]> {
+ if(!accessPoint.trim())throw new Error('No hay Access Point. Conectá Exness primero.');
+ const symbol=instrument.trim();
+ if(!/^[A-Za-z0-9._-]{1,11}$/.test(symbol))throw new Error('Instrumento inválido para importar velas.');
+ if(!Object.prototype.hasOwnProperty.call(MARKET_TIMEFRAME_MS,timeframe))throw new Error('Timeframe no admitido.');
+ if(!Number.isInteger(requestedCount)||requestedCount<100||requestedCount>10000)throw new Error('Cantidad de velas fuera del rango permitido.');
+ const accountId=encodeURIComponent(c.accountId.trim());
+ const limits=await getJson<{limits?:{rest?:{methods?:CandleLimitMethod[]}}}>(accessPoint,'/v1/configuration/accounts/'+accountId+'/limits',c);
+ const methods=limits.limits?.rest?.methods??[];
+ const method=methods.find(x=>x.api_operation_id==='getCandleHistory')??methods.find(x=>x.path?.includes('/market-data/accounts/{account_id}/candles'));
+ const configured=Number(method?.limits?.max_candles_per_request);
+ if(!Number.isInteger(configured)||configured<1)throw new Error('Exness no informó max_candles_per_request para el histórico de velas. No se inició la descarga.');
+ const batchLimit=Math.min(configured,1000);
+ const rate=Math.max(1,Number(method?.rate_limit?.limit)||1);
+ const windowSeconds=Math.max(1,Number(method?.rate_limit?.window_seconds)||1);
+ const spacing=Math.ceil(windowSeconds*1000/rate);
+ const interval=MARKET_TIMEFRAME_MS[timeframe];
+ const buffer=Math.min(10,Math.max(1,Math.floor(batchLimit/10)));
+ const target=requestedCount+buffer;
+ let cursor=Date.now()+(hasServerClockOffset?serverClockOffsetMs:0)-target*interval;
+ const values=new Map<string,ExnessCandle>();
+ let requests=0;
+ const maxRequests=Math.ceil(target/batchLimit)+3;
+ while(values.size<target&&requests<maxRequests){
+  const amount=Math.min(batchLimit,target-values.size);
+  const query=new URLSearchParams({instrument:symbol,timeframe,price_type:'bid',from:new Date(cursor).toISOString(),count:String(amount)});
+  const path='/v1/market-data/accounts/'+accountId+'/candles?'+query.toString();
+  const response=await getJson<{candles?:unknown}>(accessPoint,path,c);
+  if(!Array.isArray(response.candles))throw new Error('Exness devolvió una respuesta de velas con formato inesperado.');
+  const batch=(response.candles as unknown[]).map(raw=>{
+   if(!raw||typeof raw!=='object')return null;
+   const item=raw as Record<string,unknown>;
+   const time=typeof item.time==='string'?item.time:'';
+   const open=Number(item.open),high=Number(item.high),low=Number(item.low),close=Number(item.close),volume=Number(item.volume??0);
+   if(!time||!Number.isFinite(Date.parse(time))||![open,high,low,close,volume].every(Number.isFinite)||high<low)return null;
+   return {time,open,high,low,close,volume} as ExnessCandle;
+  }).filter((item):item is ExnessCandle=>item!==null);
+  if(batch.length===0)break;
+  for(const candle of batch)values.set(candle.time,candle);
+  const latest=batch.reduce((best,item)=>Date.parse(item.time)>Date.parse(best.time)?item:best,batch[0]);
+  const next=Date.parse(latest.time)+interval;
+  if(!Number.isFinite(next)||next<=cursor)break;
+  cursor=next;
+  requests++;
+  if(values.size<target)await new Promise(resolve=>setTimeout(resolve,spacing));
+ }
+ const ordered=Array.from(values.values()).sort((a,b)=>Date.parse(a.time)-Date.parse(b.time));
+ const result=ordered.slice(-requestedCount);
+ if(result.length===0)throw new Error('Exness no devolvió velas para el instrumento y timeframe seleccionados.');
+ return result;
+}
