@@ -1,3 +1,4 @@
+- #V150 — Display spread in pips for Forex
 - #V149 — Fix TypeScript syntax in changelog GitHub fallback
 - #V145 — Fix active position validation typecheck
 - #V138 — Fix Exness ticks WebSocket URL regex
