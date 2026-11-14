@@ -463,7 +463,7 @@ export default function App() {
           if(Number.isFinite(currentBuild)&&!byBuild.has(currentBuild)){
             byBuild.set(currentBuild,{run_number:currentBuild,conclusion:'success',status:'completed',display_title:'Build actual'});
           }
-          setBuildRuns([...byBuild.values()].sort((a,b)=>b.run_number-a.run_number));
+          setBuildRuns([...byBuild.values()].sort((a,b)=>a.run_number-b.run_number));
         }
       }catch{
         // Keep the bundled V0-current registry. Never replace it with an empty list.
@@ -1093,10 +1093,6 @@ export default function App() {
             <Text style={run.conclusion==='success'?s.buildSuccess:run.conclusion==='failure'||run.conclusion==='timed_out'?s.buildFailure:s.buildPending}>#V{run.run_number}</Text>
             <Text style={s.buildDescription}>{run.display_title}</Text>
           </View>)}
-          <View style={s.buildCard}>
-            <Text style={s.buildPending}>#V0</Text>
-            <Text style={s.buildDescription}>Initial Android foundation: Connection and Profile screens.</Text>
-          </View>
         </>}
       </View>
     </ScrollView>}
