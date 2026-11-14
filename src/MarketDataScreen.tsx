@@ -77,8 +77,6 @@ export default function MarketDataScreen({credentials,accessPoint,instruments,se
   <Text style={s.title}>IMPORTACIÓN DE DATOS DE MERCADO</Text>
   <Text style={s.subtitle}>Importá un timeframe por operación. Las velas OHLC se guardan localmente en este dispositivo.</Text>
   <View style={s.card}>
-   <Text style={s.label}>PAR SELECCIONADO</Text>
-   <Pressable onPress={()=>setMenu(v=>!v)} style={s.select}><Text style={s.selectText}>{selectedInstrument||'SELECCIONAR INSTRUMENTO'}</Text><Text style={s.muted}>{menu?'▲':'▼'}</Text></Pressable>
    <View style={s.selectorTools}><Text style={s.label}>SELECCIONAR INSTRUMENTO</Text><Pressable onPress={()=>setAlphaOpen(v=>!v)} style={s.alphaButton}><Text style={s.alphaText}>{alpha??'aZ'}</Text></Pressable></View>
    {alphaOpen&&<View style={s.alphaPanel}><View style={s.alphaGrid}>{alphabet.map(letter=><Pressable key={letter} onPress={()=>{setAlpha(letter);setAlphaOpen(false);setMenu(true);}} style={s.alphaLetter}><Text style={s.alphaText}>{letter}</Text></Pressable>)}</View><Pressable onPress={()=>{setAlpha(null);setAlphaOpen(false);setMenu(true);}} style={s.alphaClear}><Text style={s.clearX}>✕</Text></Pressable></View>}
    <Pressable onPress={()=>setMenu(v=>!v)} style={s.select}><Text style={s.selectText}>{selectedInstrument||'SELECCIONAR INSTRUMENTO'}</Text><Text style={s.muted}>{menu?'▲':'▼'}</Text></Pressable>
@@ -95,7 +93,7 @@ export default function MarketDataScreen({credentials,accessPoint,instruments,se
    {loaded&&<Text style={s.hint}>Configuración e historial guardados en el dispositivo.</Text>}
   </View>
   <View style={s.logHeader}><Text style={s.section}>HISTORIAL DE IMPORTACIONES</Text><Text style={s.muted}>{log.length}</Text></View>
-  {log.length===0?<View style={s.card}><Text style={s.muted}>Todavía no hay importaciones registradas.</Text></View>:log.map(item=><View key={item.id} style={s.logCard}><View style={s.logTop}><Text style={s.logSymbol}>{item.symbol}</Text><Text style={[s.status,item.status==='OK'?s.ok:item.status==='PARCIAL'?s.partial:s.fail]}>{item.status}</Text></View><Text style={s.logLine}>{item.timeframe} · {item.received.toLocaleString('es-AR')}/{item.requested.toLocaleString('es-AR')} velas · {formatDate(item.at)}</Text>{item.message&&<Text style={s.error} numberOfLines={3}>{item.message}</Text>}</View>)}
+  {log.length===0?<View style={s.card}><Text style={s.muted}>Todavía no hay importaciones registradas.</Text></View>:log.map(item=><View key={item.id} style={s.logCard}><View style={s.logTop}><Text style={s.logSymbol}>{item.symbol}</Text><Text style={[s.status,item.status==='OK'?s.ok:item.status==='PARCIAL'?s.partial:s.fail]}>{item.status}</Text></View><Text style={s.logLine}>{item.timeframe} · {item.received.toLocaleString('es-AR')}/{item.requested.toLocaleString('es-AR')} velas · {formatDate(item.at)}</Text>{item.message&&<Text style={s.error} numberOfLines={3}>{item.message}</Text>}<View style={s.logActions}><Pressable onPress={()=>loadIndicators(item)} style={s.indicatorButton}><Text style={s.indicatorButtonText}>CALCULAR INDICADORES</Text></Pressable><Pressable onPress={()=>deleteImport(item)} style={s.deleteButton}><Text style={s.clearX}>✕</Text></Pressable></View></View>)}
  </ScrollView>;
 }
 const s=StyleSheet.create({
