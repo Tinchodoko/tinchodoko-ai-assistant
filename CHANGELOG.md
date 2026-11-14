@@ -1,3 +1,4 @@
+- #V156 — fix(market): satisfy React Native slider style typing
 - #V150 — Display spread in pips for Forex
 - #V149 — Fix TypeScript syntax in changelog GitHub fallback
 - #V145 — Fix active position validation typecheck
