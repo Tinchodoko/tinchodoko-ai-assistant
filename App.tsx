@@ -438,7 +438,23 @@ export default function App() {
     let cancelled=false;
     // Always have the complete V0-current registry available locally.
     // GitHub Actions is only used to refresh it with newer runs/statuses.
-    setBuildRuns(BUILD_HISTORY_FALLBACK);
+    const normalizedFallback = (() => {
+      const currentBuild = Number(BUILD_INFO.build);
+      if (!Number.isFinite(currentBuild) || currentBuild <= 0) return BUILD_HISTORY_FALLBACK;
+      const byBuild = new Map(BUILD_HISTORY_FALLBACK.map(run => [run.run_number, run]));
+      for (let runNumber = 0; runNumber <= currentBuild; runNumber++) {
+        if (!byBuild.has(runNumber)) {
+          byBuild.set(runNumber, {
+            run_number: runNumber,
+            conclusion: null,
+            status: 'unknown',
+            display_title: runNumber === 0 ? 'Initial Android foundation: Connection and Profile screens.' : 'Build #V' + runNumber,
+          });
+        }
+      }
+      return [...byBuild.values()].sort((a,b) => a.run_number - b.run_number);
+    })();
+    setBuildRuns(normalizedFallback);
     setBuildRunsLoading(false);
     const loadAllBuildRuns=async()=>{
       try{
