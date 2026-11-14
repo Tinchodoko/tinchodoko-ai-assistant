@@ -885,8 +885,9 @@ export default function App() {
     <View style={s.tabs}>
       <Pressable onPress={()=>{setIntervalMenu(false);setHistoryMenuOpen(false);setHistoryIntervalMenu(false);setScreen('connection');}} style={[s.tab,screen==='connection'&&s.active]}><Text style={s.tabText}>CONEXIÓN</Text></Pressable>
       <Pressable onPress={()=>{setHistoryMenuOpen(false);setHistoryIntervalMenu(false);setScreen('profile');}} style={[s.tab,screen==='profile'&&s.active]}><Text style={s.tabText}>BALANCE</Text></Pressable>
+      <Pressable onPress={()=>{setIntervalMenu(false);openHistory();}} style={[s.tab,screen==='history'&&s.active]}><Text style={s.tabText}>HISTORIAL</Text></Pressable>
       <Pressable onPress={()=>{setInstrumentMenuOpen(false);setInstrumentCategoryMenu(false);setScreen('positions');}} style={[s.tab,screen==='positions'&&s.active]}><Text style={s.tabText}>POSICIONES</Text></Pressable>
-      <Pressable onPress={()=>{setInstrumentMenuOpen(false);setInstrumentCategoryMenu(false);setScreen('market');}} style={[s.tab,screen==='market'&&s.active]}><View style={s.marketTabIcon}><View style={s.marketCandleGreenWick}/><View style={s.marketCandleGreen}/><View style={s.marketCandleRedWick}/><View style={s.marketCandleRed}/></View></Pressable>\n      <Pressable onPress={()=>{setIntervalMenu(false);openHistory();}} style={[s.tab,screen==='history'&&s.active]}><Text style={s.tabText}>HISTORIAL</Text></Pressable>
+      <Pressable onPress={()=>{setInstrumentMenuOpen(false);setInstrumentCategoryMenu(false);setScreen('market');}} style={[s.tab,screen==='market'&&s.active]}><View style={s.marketTabIcon}><View style={s.marketCandleGreenWick}/><View style={s.marketCandleGreen}/><View style={s.marketCandleRedWick}/><View style={s.marketCandleRed}/></View></Pressable>
       <Pressable onPress={()=>{setIntervalMenu(false);setHistoryMenuOpen(false);setHistoryIntervalMenu(false);setScreen('app');}} style={[s.tab,screen==='app'&&s.active]}><Text style={s.tabText}>APP</Text></Pressable>
     </View>
 
