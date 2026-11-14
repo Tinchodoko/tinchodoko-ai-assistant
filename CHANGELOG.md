@@ -1,3 +1,4 @@
+- #V158 — fix(app): reorder main tabs
 - #V156 — fix(market): satisfy React Native slider style typing
 - #V150 — Display spread in pips for Forex
 - #V149 — Fix TypeScript syntax in changelog GitHub fallback
