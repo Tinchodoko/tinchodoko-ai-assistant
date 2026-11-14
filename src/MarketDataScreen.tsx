@@ -3,6 +3,7 @@ import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Credentials } from './exness';
 import { getMarketCandles, type MarketTimeframe } from './exness';
+import { calculateIndicators, type IndicatorSnapshot } from './marketIndicators';
 
 type Props = { credentials: Credentials; accessPoint: string; instruments: string[]; selectedInstrument: string; onSelectInstrument: (symbol:string)=>void };
 type Config = Record<MarketTimeframe,number>;
@@ -15,7 +16,7 @@ const CONFIG_KEY='tinchodoko.market.import.config.v1';
 const LOG_KEY='tinchodoko.market.import.log.v1';
 const pad=(n:number)=>String(n).padStart(2,'0');
 function formatDate(ms:number){const d=new Date(ms);return pad(d.getDate())+pad(d.getMonth()+1)+d.getFullYear()+'-'+pad(d.getHours())+pad(d.getMinutes());}
-function datasetKey(account:string,symbol:string,tf:MarketTimeframe){return 'tinchodoko.market.candles.'+account+'.'+symbol+'.'+tf+'.v1';}
+function datasetKey(account:string,symbol:string,tf:MarketTimeframe,id?:string){return 'tinchodoko.market.candles.'+account+'.'+symbol+'.'+tf+(id?'.'+id:'')+'.v1';}
 
 export default function MarketDataScreen({credentials,accessPoint,instruments,selectedInstrument,onSelectInstrument}:Props){
  const [config,setConfig]=useState<Config>(DEFAULTS);
@@ -23,6 +24,11 @@ export default function MarketDataScreen({credentials,accessPoint,instruments,se
  const [log,setLog]=useState<LogItem[]>([]);
  const [busy,setBusy]=useState(false);
  const [menu,setMenu]=useState(false);
+ const [alphaOpen,setAlphaOpen]=useState(false);
+ const [alpha,setAlpha]=useState<string|null>(null);
+ const [indicatorTf,setIndicatorTf]=useState<MarketTimeframe|null>(null);
+ const [indicator,setIndicator]=useState<IndicatorSnapshot|null>(null);
+ const [indicatorSource,setIndicatorSource]=useState<LogItem|null>(null);
  const [width,setWidth]=useState(1);
  const [saving,setSaving]=useState(false);
  const [loaded,setLoaded]=useState(false);
@@ -31,11 +37,22 @@ export default function MarketDataScreen({credentials,accessPoint,instruments,se
  const max=tf?MAX[tf]:MIN;
  const fill=tf?Math.max(0,Math.min(1,(value-MIN)/(max-MIN))):0;
  const symbols=useMemo(()=>instruments.slice().sort((a,b)=>a.localeCompare(b)),[instruments]);
+ const filteredSymbols=useMemo(()=>alpha?symbols.filter(symbol=>symbol.toUpperCase().startsWith(alpha)):symbols,[symbols,alpha]);
+ const alphabet='ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
  function choose(next:MarketTimeframe){if(tf===next){setTf(null);return;}if(tf!==null){Alert.alert('IMPORTACIÓN INDIVIDUAL','IMPORTA SOLO UN TIMEFRAME');return;}setTf(next);}
  function slide(x:number){if(!tf)return;const ratio=Math.max(0,Math.min(1,x/Math.max(1,width)));const next=Math.max(MIN,Math.min(MAX[tf],Math.round((MIN+ratio*(MAX[tf]-MIN))/10)*10));setConfig(old=>({...old,[tf]:next}));}
  async function saveConfig(){setSaving(true);try{await AsyncStorage.setItem(CONFIG_KEY,JSON.stringify(config));Alert.alert('CONFIGURACIÓN GUARDADA','Las cantidades quedaron guardadas localmente.');}catch(e){Alert.alert('ERROR AL GUARDAR',e instanceof Error?e.message:String(e));}finally{setSaving(false);}}
  async function resetConfig(){setConfig(DEFAULTS);setTf('M1');try{await AsyncStorage.setItem(CONFIG_KEY,JSON.stringify(DEFAULTS));Alert.alert('CONFIGURACIÓN RESTABLECIDA','Se restauraron todos los valores predeterminados.');}catch(e){Alert.alert('ERROR AL RESTABLECER',e instanceof Error?e.message:String(e));}}
  async function saveLog(next:LogItem[]){const trimmed=next.slice(0,200);setLog(trimmed);await AsyncStorage.setItem(LOG_KEY,JSON.stringify(trimmed));}
+ async function deleteImport(item:LogItem){
+  Alert.alert('CONFIRMAR ELIMINACIÓN','DESEA ELIMINAR LA IMPORTACIÓN\\n'+item.symbol+'\\n'+item.timeframe+' - '+item.received+'/'+item.requested+' velas\\n'+formatDate(item.at),[
+   {text:'CANCELAR',style:'cancel'},
+   {text:'CONFIRMAR',style:'destructive',onPress:async()=>{try{await AsyncStorage.removeItem(datasetKey(credentials.accountId,item.symbol,item.timeframe,item.id));await AsyncStorage.removeItem(datasetKey(credentials.accountId,item.symbol,item.timeframe));const next=log.filter(x=>x.id!==item.id);await saveLog(next);if(indicatorSource?.id===item.id){setIndicator(null);setIndicatorSource(null);setIndicatorTf(null);}Alert.alert('IMPORTACIÓN ELIMINADA','Los datos de la importación fueron eliminados del dispositivo.');}catch(e){Alert.alert('ERROR AL ELIMINAR',e instanceof Error?e.message:String(e));}}}
+  ]);
+ }
+ async function loadIndicators(item:LogItem){
+  try{const raw=await AsyncStorage.getItem(datasetKey(credentials.accountId,item.symbol,item.timeframe,item.id));const fallback=raw?raw:await AsyncStorage.getItem(datasetKey(credentials.accountId,item.symbol,item.timeframe));if(!fallback){Alert.alert('DATOS NO DISPONIBLES','No se encontraron las velas de esta importación.');return;}const parsed=JSON.parse(fallback);const candles=Array.isArray(parsed.candles)?parsed.candles:[];if(candles.length<20){Alert.alert('DATOS INSUFICIENTES','Se necesitan al menos 20 velas para calcular los indicadores.');return;}setIndicator(calculateIndicators(candles));setIndicatorSource(item);setIndicatorTf(item.timeframe);}catch(e){Alert.alert('ERROR DE INDICADORES',e instanceof Error?e.message:String(e));}
+ }
  async function importData(){
   if(busy)return;
   if(!accessPoint||!credentials.apiKey||!credentials.secret||!credentials.accountId){Alert.alert('CUENTA NO CONECTADA','Primero conectá tu cuenta demo de Exness.');return;}
@@ -45,8 +62,8 @@ export default function MarketDataScreen({credentials,accessPoint,instruments,se
   try{
    const candles=await getMarketCandles(credentials,accessPoint,selectedInstrument,selectedTf,requested);
    const now=Date.now();
-   await AsyncStorage.setItem(datasetKey(credentials.accountId,selectedInstrument,selectedTf),JSON.stringify({symbol:selectedInstrument,timeframe:selectedTf,requested,received:candles.length,importedAt:now,candles}));
    const item:LogItem={id:String(now)+'-'+selectedInstrument+'-'+selectedTf,symbol:selectedInstrument,timeframe:selectedTf,requested,received:candles.length,at:now,status:candles.length===requested?'OK':'PARCIAL',message:candles.length===requested?undefined:'Exness devolvió '+candles.length+' de '+requested+' velas.'};
+   await AsyncStorage.setItem(datasetKey(credentials.accountId,selectedInstrument,selectedTf,item.id),JSON.stringify({id:item.id,symbol:selectedInstrument,timeframe:selectedTf,requested,received:candles.length,importedAt:now,candles}));
    await saveLog([item,...log]);
    Alert.alert(item.status==='OK'?'IMPORTACIÓN COMPLETADA':'IMPORTACIÓN PARCIAL',selectedInstrument+' '+selectedTf+': '+candles.length+'/'+requested+' velas guardadas localmente.');
   }catch(e){
@@ -62,7 +79,10 @@ export default function MarketDataScreen({credentials,accessPoint,instruments,se
   <View style={s.card}>
    <Text style={s.label}>PAR SELECCIONADO</Text>
    <Pressable onPress={()=>setMenu(v=>!v)} style={s.select}><Text style={s.selectText}>{selectedInstrument||'SELECCIONAR INSTRUMENTO'}</Text><Text style={s.muted}>{menu?'▲':'▼'}</Text></Pressable>
-   {menu&&<ScrollView style={s.symbolList} nestedScrollEnabled showsVerticalScrollIndicator keyboardShouldPersistTaps="handled">{symbols.length===0?<Text style={s.muted}>Conectá Exness y cargá los instrumentos desde POSICIONES.</Text>:symbols.map(symbol=><Pressable key={symbol} onPress={()=>{onSelectInstrument(symbol);setMenu(false);}} style={s.symbolOption}><Text style={s.selectText}>{symbol}</Text></Pressable>)}</ScrollView>}
+   <View style={s.selectorTools}><Text style={s.label}>SELECCIONAR INSTRUMENTO</Text><Pressable onPress={()=>setAlphaOpen(v=>!v)} style={s.alphaButton}><Text style={s.alphaText}>{alpha??'aZ'}</Text></Pressable></View>
+   {alphaOpen&&<View style={s.alphaPanel}><View style={s.alphaGrid}>{alphabet.map(letter=><Pressable key={letter} onPress={()=>{setAlpha(letter);setAlphaOpen(false);setMenu(true);}} style={s.alphaLetter}><Text style={s.alphaText}>{letter}</Text></Pressable>)}</View><Pressable onPress={()=>{setAlpha(null);setAlphaOpen(false);setMenu(true);}} style={s.alphaClear}><Text style={s.clearX}>✕</Text></Pressable></View>}
+   <Pressable onPress={()=>setMenu(v=>!v)} style={s.select}><Text style={s.selectText}>{selectedInstrument||'SELECCIONAR INSTRUMENTO'}</Text><Text style={s.muted}>{menu?'▲':'▼'}</Text></Pressable>
+   {menu&&<ScrollView style={s.symbolList} nestedScrollEnabled showsVerticalScrollIndicator keyboardShouldPersistTaps="handled">{filteredSymbols.length===0?<Text style={s.muted}>No hay instrumentos que comiencen con {alpha??'esta letra'}.</Text>:filteredSymbols.map(symbol=><Pressable key={symbol} onPress={()=>{onSelectInstrument(symbol);setMenu(false);}} style={s.symbolOption}><Text style={s.selectText}>{symbol}</Text></Pressable>)}</ScrollView>}
    <Text style={s.label}>TIMEFRAME</Text>
    <View style={s.timeframes}>{TFS.map(item=><Pressable key={item} onPress={()=>choose(item)} style={[s.timeframe,tf===item&&s.timeframeSelected]}><Text style={[s.tfText,tf===item&&s.tfTextSelected]}>{item}</Text></Pressable>)}</View>
    <Text style={s.hint}>Elegí uno. Para cambiar, tocá el timeframe activo para desmarcarlo y luego seleccioná otro.</Text>
@@ -88,5 +108,5 @@ const s=StyleSheet.create({
  track:{height:30,justifyContent:'center'},rail:{position:'absolute',left:0,right:0,height:6,borderRadius:3,backgroundColor:'#303744'},progress:{position:'absolute',left:0,height:6,borderRadius:3,backgroundColor:'#fff'},thumb:{position:'absolute',width:18,height:18,marginLeft:-9,borderRadius:9,backgroundColor:'#fff',borderWidth:2,borderColor:'#151a22'},
  range:{flexDirection:'row',justifyContent:'space-between'},actions:{flexDirection:'row',gap:8},secondary:{flex:1,minHeight:45,paddingHorizontal:7,borderWidth:1,borderColor:'#3b4350',borderRadius:9,alignItems:'center',justifyContent:'center',backgroundColor:'#0f131a'},secondaryText:{color:'#fff',fontSize:10,fontWeight:'900',textAlign:'center'},
  importButton:{minHeight:50,borderRadius:10,backgroundColor:'#fff',alignItems:'center',justifyContent:'center'},importText:{color:'#0b0e13',fontWeight:'900'},
- logHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},section:{color:'#fff',fontSize:13,fontWeight:'900'},logCard:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:12,padding:13,gap:7},logTop:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},logSymbol:{color:'#fff',fontSize:15,fontWeight:'900'},status:{fontSize:11,fontWeight:'900'},ok:{color:'#28d17c'},partial:{color:'#f0b429'},fail:{color:'#e05252'},logLine:{color:'#dce1e9',fontSize:12},error:{color:'#e05252',fontSize:11,lineHeight:16},muted:{color:'#9da6b5',fontSize:12,lineHeight:18},disabled:{opacity:0.45}
+ selectorTools:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},alphaButton:{width:42,height:32,borderWidth:1,borderColor:'#3b4350',borderRadius:8,alignItems:'center',justifyContent:'center',backgroundColor:'#0f131a'},alphaText:{color:'#fff',fontWeight:'900',fontSize:13},alphaPanel:{borderWidth:1,borderColor:'#3b4350',borderRadius:9,backgroundColor:'#0f131a',padding:8,flexDirection:'row',alignItems:'center',gap:8},alphaGrid:{flex:1,flexDirection:'row',flexWrap:'wrap',gap:5},alphaLetter:{width:25,height:25,borderWidth:1,borderColor:'#303744',borderRadius:6,alignItems:'center',justifyContent:'center'},alphaClear:{width:30,height:30,alignItems:'center',justifyContent:'center'},clearX:{color:'#e05252',fontSize:19,fontWeight:'900'},logHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},section:{color:'#fff',fontSize:13,fontWeight:'900'},logCard:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:12,padding:13,gap:7},logTop:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},logSymbol:{color:'#fff',fontSize:15,fontWeight:'900'},status:{fontSize:11,fontWeight:'900'},ok:{color:'#28d17c'},partial:{color:'#f0b429'},fail:{color:'#e05252'},logLine:{color:'#dce1e9',fontSize:12},error:{color:'#e05252',fontSize:11,lineHeight:16},muted:{color:'#9da6b5',fontSize:12,lineHeight:18},disabled:{opacity:0.45}
 });
