@@ -244,6 +244,13 @@ jobs:
             exit 0
           fi
           git commit -m "chore(build): record #V${BUILD_NUMBER} [skip ci]"
+          # The build-registry workflow may update another file in the working tree
+          # while this build is running. Keep those unrelated local changes out of
+          # the changelog commit and temporarily stash them before rebasing.
+          if ! git diff --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
+            git stash push --include-untracked -m "build-${BUILD_NUMBER}-unrelated-local-changes"
+          fi
+
 
           # A completed-build registry can update main concurrently with this step.
           # Rebase our generated changelog commit onto the newest main before pushing.
