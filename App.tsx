@@ -489,6 +489,8 @@ export default function App() {
     return ()=>{cancelled=true;};
   },[screen]);
 
+  const orderedBuildRuns=buildRuns.slice().sort((a,b)=>a.run_number-b.run_number);
+
   function handleSwipeStart(event:any) { swipeStart.current={x:event.nativeEvent.pageX,y:event.nativeEvent.pageY}; }
 
   useEffect(()=>{
@@ -1105,7 +1107,7 @@ export default function App() {
       <Text style={s.meta}>REGISTRO DE CAMBIOS</Text>
       <View style={s.buildHistory}>
         {buildRunsLoading?<View style={{alignItems:'center',paddingVertical:18,gap:8}}><ActivityIndicator color="#fff"/><Text style={s.buildDescription}>CARGANDO HISTORIAL DE BUILDS...</Text></View>:<>
-          {buildRuns.map(run=><View key={run.run_number} style={s.buildCard}>
+          {orderedBuildRuns.map(run=><View key={'build-'+run.run_number} style={s.buildCard}>
             <Text style={run.conclusion==='success'?s.buildSuccess:run.conclusion==='failure'||run.conclusion==='timed_out'?s.buildFailure:s.buildPending}>#V{run.run_number}</Text>
             <Text style={s.buildDescription}>{run.display_title}</Text>
           </View>)}
