@@ -1,3 +1,4 @@
+- #V196 — fix(ci): stash unrelated generated changes before changelog rebase
 - #V184 — Fix MACD toggle TypeScript error
 - #V177 — Fix indicator table JSX typecheck
 - #V173 — fix(market): type candle diagnostics and indicator values
