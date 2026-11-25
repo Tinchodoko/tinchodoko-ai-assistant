@@ -877,4 +877,124 @@ export const BUILD_HISTORY_FALLBACK: BuildHistoryEntry[] = [
     "status": "completed",
     "display_title": "Fix active position validation typecheck"
   }
+  {
+    "run_number": 146,
+    "conclusion": null,
+    "status": "unknown",
+    "display_title": "Build #V146"
+  },
+  {
+    "run_number": 147,
+    "conclusion": "cancelled",
+    "status": "completed",
+    "display_title": "Build #V147"
+  },
+  {
+    "run_number": 148,
+    "conclusion": "failure",
+    "status": "completed",
+    "display_title": "Build #V148"
+  },
+  {
+    "run_number": 149,
+    "conclusion": "success",
+    "status": "completed",
+    "display_title": "Display spread in pips for Forex"
+  },
+  {
+    "run_number": 150,
+    "conclusion": "success",
+    "status": "completed",
+    "display_title": "Display spread in pips for Forex"
+  },
+  {
+    "run_number": 151,
+    "conclusion": null,
+    "status": "unknown",
+    "display_title": "Build #V151"
+  },
+  {
+    "run_number": 152,
+    "conclusion": null,
+    "status": "unknown",
+    "display_title": "Build #V152"
+  },
+  {
+    "run_number": 153,
+    "conclusion": null,
+    "status": "unknown",
+    "display_title": "Build #V153"
+  },
+  {
+    "run_number": 154,
+    "conclusion": null,
+    "status": "unknown",
+    "display_title": "Build #V154"
+  },
+  {
+    "run_number": 155,
+    "conclusion": null,
+    "status": "unknown",
+    "display_title": "Build #V155"
+  },
+  {
+    "run_number": 156,
+    "conclusion": "success",
+    "status": "completed",
+    "display_title": "fix(market): satisfy React Native slider style typing"
+  },
+  {
+    "run_number": 157,
+    "conclusion": null,
+    "status": "unknown",
+    "display_title": "Build #V157"
+  },
+  {
+    "run_number": 158,
+    "conclusion": "success",
+    "status": "completed",
+    "display_title": "fix(app): reorder main tabs"
+  },
+  {
+    "run_number": 159,
+    "conclusion": "failure",
+    "status": "completed",
+    "display_title": "Build #V159 — fallida"
+  },
+  {
+    "run_number": 160,
+    "conclusion": "failure",
+    "status": "completed",
+    "display_title": "Build #V160 — fallida"
+  },
+  {
+    "run_number": 161,
+    "conclusion": "failure",
+    "status": "completed",
+    "display_title": "Build #V161 — fallida"
+  },
+  {
+    "run_number": 162,
+    "conclusion": "failure",
+    "status": "completed",
+    "display_title": "Build #V162 — fallida"
+  },
+  {
+    "run_number": 163,
+    "conclusion": "failure",
+    "status": "completed",
+    "display_title": "Build #V163 — fallida"
+  },
+  {
+    "run_number": 164,
+    "conclusion": "failure",
+    "status": "completed",
+    "display_title": "Build #V164 — fallida"
+  },
+  {
+    "run_number": 165,
+    "conclusion": "failure",
+    "status": "completed",
+    "display_title": "Build #V165 — fallida"
+  }
 ];
