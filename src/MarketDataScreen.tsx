@@ -182,16 +182,10 @@ async function editCandleQuantity(){const n=Number(candleDraft);if(!Number.isInt
    const filename=exportFilename(item.symbol,item.timeframe,item.at);
    let directoryUri=await AsyncStorage.getItem(EXPORT_DIRECTORY_KEY);
    let fileUri:string|undefined;
-   const openDownloadDirectory=async()=>{
+   const openExportDirectory=async()=>{
     const permission=await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
     if(!permission.granted)return null;
     const selectedUri=permission.directoryUri;
-    let decoded='';
-    try{decoded=decodeURIComponent(selectedUri).toLowerCase();}catch{decoded=selectedUri.toLowerCase();}
-    if(!decoded.includes(':download')&&!decoded.includes('/download')){
-     Alert.alert('CARPETA INCORRECTA','Seleccioná la carpeta Download para guardar el JSON.');
-     return null;
-    }
     await AsyncStorage.setItem(EXPORT_DIRECTORY_KEY,selectedUri);
     return selectedUri;
    };
@@ -204,18 +198,18 @@ async function editCandleQuantity(){const n=Number(candleDraft);if(!Number.isInt
     }
    }
    if(!fileUri){
-    directoryUri=await openDownloadDirectory();
+    directoryUri=await openExportDirectory();
     if(!directoryUri)return;
     try{
      fileUri=await FileSystem.StorageAccessFramework.createFileAsync(directoryUri,filename,'application/json');
     }catch{
      await AsyncStorage.removeItem(EXPORT_DIRECTORY_KEY);
-     Alert.alert('ERROR DE CARPETA','No se pudo crear el archivo en Download. Volvé a intentarlo y seleccioná Download.');
+     Alert.alert('ERROR DE CARPETA','No se pudo crear el archivo en la carpeta seleccionada. Volvé a intentarlo y elegí una carpeta permitida por Android.');
      return;
     }
    }
    await FileSystem.writeAsStringAsync(fileUri,json,{encoding:FileSystem.EncodingType.UTF8});
-   Alert.alert('EXPORTACIÓN COMPLETADA','JSON guardado en /Download como '+filename+'. Las IA no dependen de este archivo: el análisis usa los datos almacenados dentro de la aplicación.');
+   Alert.alert('EXPORTACIÓN COMPLETADA','JSON guardado como '+filename+'. Las IA no dependen de este archivo: el análisis usa los datos almacenados dentro de la aplicación.');
   }catch(e){Alert.alert('ERROR AL EXPORTAR',e instanceof Error?e.message:String(e));}
  }
  async function importData(){
