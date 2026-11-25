@@ -18,6 +18,7 @@ const MIN=200;
 const CONFIG_KEY='tinchodoko.market.import.config.v1';
 const LOG_KEY='tinchodoko.market.import.log.v1';
 const INDICATOR_CONFIG_KEY='tinchodoko.market.indicator.config.v1';
+const EXPORT_DIRECTORY_KEY='tinchodoko.market.export.downloadUri.v1';
 const pad=(n:number)=>String(n).padStart(2,'0');
 function formatDate(ms:number){const d=new Date(ms);return pad(d.getDate())+pad(d.getMonth()+1)+d.getFullYear()+'-'+pad(d.getHours())+pad(d.getMinutes());}
 function exportFilename(symbol:string,tf:MarketTimeframe,ms:number){const d=new Date(ms);return symbol+'-'+tf+'-'+pad(d.getDate())+pad(d.getMonth()+1)+d.getFullYear()+'-'+pad(d.getHours())+pad(d.getMinutes())+'.json';}
@@ -178,10 +179,34 @@ async function editCandleQuantity(){const n=Number(candleDraft);if(!Number.isInt
    };
    const json=JSON.stringify(payload,null,2);
    const filename=exportFilename(item.symbol,item.timeframe,item.at);
-   const downloadUri=FileSystem.StorageAccessFramework.getUriForDirectoryInRoot('Download');
-   const permission=await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync(downloadUri);
-   if(!permission.granted){return;}
-   const fileUri=await FileSystem.StorageAccessFramework.createFileAsync(permission.directoryUri,filename,'application/json');
+   let directoryUri=await AsyncStorage.getItem(EXPORT_DIRECTORY_KEY);
+   let fileUri:string|undefined;
+   if(directoryUri){
+    try{
+     fileUri=await FileSystem.StorageAccessFramework.createFileAsync(directoryUri,filename,'application/json');
+    }catch{
+     await AsyncStorage.removeItem(EXPORT_DIRECTORY_KEY);
+     directoryUri=null;
+    }
+   }
+   if(!fileUri){
+    const permission=await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+    if(!permission.granted){return;}
+    const selectedUri=permission.directoryUri;
+    const decoded=decodeURIComponent(selectedUri).toLowerCase();
+    if(!decoded.includes(':download')&&!decoded.includes('/download')){
+     Alert.alert('CARPETA INCORRECTA','Seleccioná la carpeta Download para guardar el JSON.');
+     return;
+    }
+    await AsyncStorage.setItem(EXPORT_DIRECTORY_KEY,selectedUri);
+    try{
+     fileUri=await FileSystem.StorageAccessFramework.createFileAsync(selectedUri,filename,'application/json');
+    }catch{
+     await AsyncStorage.removeItem(EXPORT_DIRECTORY_KEY);
+     Alert.alert('ERROR DE CARPETA','No se pudo crear el archivo en Download. Volvé a intentarlo y seleccioná Download.');
+     return;
+    }
+   }
    await FileSystem.writeAsStringAsync(fileUri,json,{encoding:FileSystem.EncodingType.UTF8});
    Alert.alert('EXPORTACIÓN COMPLETADA','JSON guardado en /Download como '+filename+'. Las IA no dependen de este archivo: el análisis usa los datos almacenados dentro de la aplicación.');
   }catch(e){Alert.alert('ERROR AL EXPORTAR',e instanceof Error?e.message:String(e));}
