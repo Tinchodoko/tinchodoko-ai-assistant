@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-25T22:31:45Z",
+  "generated_at": "2026-11-25T22:33:17Z",
   "workflow": "Android Release APK",
   "repository": "Tinchodoko/tinchodoko-ai-assistant",
   "builds": [
@@ -3458,14 +3458,14 @@
     {
       "run_number": 197,
       "run_id": 45713584275,
-      "status": "in_progress",
-      "conclusion": null,
+      "status": "completed",
+      "conclusion": "cancelled",
       "display_title": "feat(app): add build status filters",
       "event": "push",
       "branch": "main",
       "sha": "07f42a94c481429ad6fb81206db4dcf2425c2601",
       "created_at": "2026-11-25T22:28:56Z",
-      "updated_at": "2026-11-25T22:28:59Z",
+      "updated_at": "2026-11-25T22:31:11Z",
       "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45713584275",
       "failed_step": null,
       "failed_steps": []
@@ -3488,17 +3488,24 @@
     {
       "run_number": 199,
       "run_id": 45713750771,
-      "status": "pending",
-      "conclusion": null,
+      "status": "completed",
+      "conclusion": "failure",
       "display_title": "feat(market): draw indicators in OHLC chart",
       "event": "push",
       "branch": "main",
       "sha": "a2371d500d33097755822c6833232cc586a8a34a",
       "created_at": "2026-11-25T22:30:08Z",
-      "updated_at": "2026-11-25T22:30:09Z",
+      "updated_at": "2026-11-25T22:31:50Z",
       "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45713750771",
-      "failed_step": null,
-      "failed_steps": []
+      "failed_step": "TypeScript check",
+      "failed_steps": [
+        {
+          "job": "build",
+          "step": "TypeScript check",
+          "started_at": "2026-11-25T22:31:45Z",
+          "completed_at": "2026-11-25T22:31:47Z"
+        }
+      ]
     }
   ]
 }
