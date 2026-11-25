@@ -1,3 +1,4 @@
+- #V173 — fix(market): type candle diagnostics and indicator values
 - #V158 — fix(app): reorder main tabs
 - #V156 — fix(market): satisfy React Native slider style typing
 - #V150 — Display spread in pips for Forex
