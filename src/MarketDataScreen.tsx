@@ -208,9 +208,21 @@ export default function MarketDataScreen({credentials,accessPoint,instruments,se
    <ScrollView horizontal showsHorizontalScrollIndicator nestedScrollEnabled contentContainerStyle={s.tableWide}>
     <View>
      <View style={s.tableHeader}><TableCell label="FECHA/HORA" width={155}/><TableCell label="OPEN" width={90}/><TableCell label="HIGH" width={90}/><TableCell label="LOW" width={90}/><TableCell label="CLOSE" width={90}/><TableCell label="VOL" width={85}/><TableCell label="RSI14" width={90}/><TableCell label="ATR14" width={100}/><TableCell label="EMA20" width={105}/><TableCell label="EMA50" width={105}/><TableCell label="ADX14" width={90}/><TableCell label="MACD" width={105}/><TableCell label="MACD SIG" width={105}/><TableCell label="MACD HIST" width={105}/><TableCell label="BB UP" width={105}/><TableCell label="BB MID" width={105}/><TableCell label="BB LOW" width={105}/><TableCell label="BB WIDTH" width={105}/><TableCell label="Z-SCORE" width={100}/></View>
-     <FlatList data={indicatorRows.slice().reverse()} keyExtractor={(row,index)=>row.time+'-'+index} nestedScrollEnabled style={s.tableList} renderItem={({item})=><View style={s.tableRow}>
-      <TableCell value={new Date(item.time).toLocaleString('es-AR',{dateStyle:'short',timeStyle:'medium'})} width={155}/><TableCell value={String(item.open)} width={90}/><TableCell value={String(item.high)} width={90}/><TableCell value={String(item.low)} width={90}/><TableCell value={String(item.close)} width={90}/><TableCell value={String(item.volume)} width={85}/><TableCell value={indicatorValue(item.rsi14)} width={90}/><TableCell value={indicatorValue(item.atr14)} width={100}/><TableCell value={indicatorValue(item.ema20)} width={105}/><TableCell value={indicatorValue(item.ema50)} width={105}/><TableCell value={indicatorValue(item.adx14)} width={90}/><TableCell value={indicatorValue(item.macd)} width={105}/><TableCell value={indicatorValue(item.macdSignal)} width={105}/><TableCell value={indicatorValue(item.macdHistogram)} width={105}/><TableCell value={indicatorValue(item.bollingerUpper)} width={105}/><TableCell value={indicatorValue(item.bollingerMiddle)} width={105}/><TableCell value={indicatorValue(item.bollingerLower)} width={105}/><TableCell value={indicatorValue(item.bollingerWidth)} width={105}/><TableCell value={indicatorValue(item.zScore)} width={100}/>
-     </View>)}/>
+     <FlatList
+      data={indicatorRows.slice().reverse()}
+      keyExtractor={(row,index)=>row.time+'-'+index}
+      nestedScrollEnabled
+      style={s.tableList}
+      renderItem={({item}) => (
+       <View style={s.tableRow}>
+        <TableCell value={new Date(item.time).toLocaleString('es-AR',{dateStyle:'short',timeStyle:'medium'})} width={155}/>
+        <TableCell value={String(item.open)} width={90}/><TableCell value={String(item.high)} width={90}/><TableCell value={String(item.low)} width={90}/><TableCell value={String(item.close)} width={90}/><TableCell value={String(item.volume)} width={85}/>
+        <TableCell value={indicatorValue(item.rsi14)} width={90}/><TableCell value={indicatorValue(item.atr14)} width={100}/><TableCell value={indicatorValue(item.ema20)} width={105}/><TableCell value={indicatorValue(item.ema50)} width={105}/><TableCell value={indicatorValue(item.adx14)} width={90}/>
+        <TableCell value={indicatorValue(item.macd)} width={105}/><TableCell value={indicatorValue(item.macdSignal)} width={105}/><TableCell value={indicatorValue(item.macdHistogram)} width={105}/>
+        <TableCell value={indicatorValue(item.bollingerUpper)} width={105}/><TableCell value={indicatorValue(item.bollingerMiddle)} width={105}/><TableCell value={indicatorValue(item.bollingerLower)} width={105}/><TableCell value={indicatorValue(item.bollingerWidth)} width={105}/><TableCell value={indicatorValue(item.zScore)} width={100}/>
+       </View>
+      )}
+     />
     </View>
    </ScrollView>
   </View>}
