@@ -876,7 +876,7 @@ export const BUILD_HISTORY_FALLBACK: BuildHistoryEntry[] = [
     "conclusion": "success",
     "status": "completed",
     "display_title": "Fix active position validation typecheck"
-  }
+  },
   {
     "run_number": 146,
     "conclusion": null,
