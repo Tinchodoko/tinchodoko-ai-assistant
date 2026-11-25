@@ -156,6 +156,7 @@ export default function App() {
   const [cancelledOrdersExpanded,setCancelledOrdersExpanded]=useState(true);
   const [buildRuns,setBuildRuns]=useState<Array<{run_number:number;conclusion:string|null;status:string;display_title:string}>>([]);
   const [buildRunsLoading,setBuildRunsLoading]=useState(true);
+  const [buildFilters,setBuildFilters]=useState({cancelled:true,failed:true,success:true});
   const swipeStart=useRef<{x:number;y:number}|null>(null);
   const [historyLoading,setHistoryLoading]=useState(false);
   const historyLoadingRef=useRef(false);
@@ -512,6 +513,18 @@ export default function App() {
   },[screen]);
 
   const orderedBuildRuns=buildRuns.slice().sort((a,b)=>a.run_number-b.run_number);
+  const filteredBuildRuns=orderedBuildRuns.filter(run=>{
+    const cancelled=run.conclusion==='cancelled'||run.conclusion==='skipped'||run.status==='cancelled'||run.status==='skipped';
+    const failed=run.conclusion==='failure'||run.conclusion==='timed_out';
+    const success=run.conclusion==='success';
+    return (cancelled&&buildFilters.cancelled)||(failed&&buildFilters.failed)||(success&&buildFilters.success);
+  });
+  function toggleBuildFilter(key:'cancelled'|'failed'|'success') {
+    setBuildFilters(old=>{
+      if(old[key]&&Object.values(old).filter(Boolean).length===1) return old;
+      return {...old,[key]:!old[key]};
+    });
+  }
 
   function handleSwipeStart(event:any) { swipeStart.current={x:event.nativeEvent.pageX,y:event.nativeEvent.pageY}; }
 
@@ -1127,9 +1140,20 @@ export default function App() {
         <Text style={s.githubVersion}>V{BUILD_INFO.build}</Text>
       </Pressable>
       <Text style={s.meta}>REGISTRO DE CAMBIOS</Text>
+      <View style={s.buildFilterRow}>
+        <Pressable onPress={()=>toggleBuildFilter('cancelled')} style={[s.buildFilterButton,buildFilters.cancelled&&s.buildFilterCancelledOn]}>
+          <Text style={[s.buildFilterIcon,s.buildFilterCancelledText]}>−</Text>
+        </Pressable>
+        <Pressable onPress={()=>toggleBuildFilter('failed')} style={[s.buildFilterButton,buildFilters.failed&&s.buildFilterFailedOn]}>
+          <Text style={[s.buildFilterIcon,s.buildFilterFailedText]}>✕</Text>
+        </Pressable>
+        <Pressable onPress={()=>toggleBuildFilter('success')} style={[s.buildFilterButton,buildFilters.success&&s.buildFilterSuccessOn]}>
+          <Text style={[s.buildFilterIcon,s.buildFilterSuccessText]}>✓</Text>
+        </Pressable>
+      </View>
       <View style={s.buildHistory}>
-        {buildRunsLoading?<View style={{alignItems:'center',paddingVertical:18,gap:8}}><ActivityIndicator color="#fff"/><Text style={s.buildDescription}>CARGANDO HISTORIAL DE BUILDS...</Text></View>:<>
-          {orderedBuildRuns.map(run=><View key={'build-'+run.run_number} style={s.buildCard}>
+        {buildRunsLoading?<View style={{alignItems:'center',paddingVertical:18,gap:8}}><ActivityIndicator color="#fff"/><Text style={s.buildDescription}>CARGANDO HISTORIAL DE BUILDS...</Text></View>:filteredBuildRuns.length===0?<Text style={s.buildDescription}>No hay builds que coincidan con los filtros seleccionados.</Text>:<>
+          {filteredBuildRuns.map(run=><View key={'build-'+run.run_number} style={s.buildCard}>
             <Text style={run.conclusion==='success'?s.buildSuccess:run.conclusion==='failure'||run.conclusion==='timed_out'?s.buildFailure:s.buildPending}>#V{run.run_number}</Text>
             <Text style={s.buildDescription}>{run.display_title}</Text>
           </View>)}
@@ -1155,7 +1179,7 @@ const s=StyleSheet.create({
  card:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:14,padding:17,gap:17},info:{gap:5},infoLabel:{color:'#8f98a8',fontSize:11,fontWeight:'900'},infoValue:{color:'#fff',fontSize:15,fontWeight:'600'},pnlPositive:{color:'#28d17c',fontWeight:'900'},pnlNegative:{color:'#e05252',fontWeight:'900'},pnlZero:{color:'#f0a52b',fontWeight:'900'},
  refresh:{minHeight:48,borderRadius:10,borderWidth:1,borderColor:'#3b4350',alignItems:'center',justifyContent:'center'},refreshText:{color:'#fff',fontWeight:'900'},
  meta:{color:'#8f98a8',fontSize:11,fontWeight:'900'},time:{color:'#fff',fontWeight:'600',marginTop:-9},ap:{color:'#707988',fontSize:11},
- githubButton:{minHeight:54,borderRadius:12,borderWidth:1,borderColor:'#3b4350',paddingHorizontal:16,flexDirection:'row',alignItems:'center',gap:12},githubLogo:{width:24,height:24},githubText:{color:'#fff',fontWeight:'900',flex:1},githubVersion:{color:'#9da6b5',fontWeight:'800'},change:{color:'#dce1e9',fontSize:13,lineHeight:20},buildHistory:{width:'100%',gap:9},buildCard:{width:'100%',minWidth:0,flexDirection:'row',alignItems:'flex-start',gap:10,backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:12,padding:13},buildDescription:{flex:1,minWidth:0,flexShrink:1,color:'#dce1e9',fontSize:13,lineHeight:19},buildSuccess:{color:'#28d17c',fontSize:13,fontWeight:'900',minWidth:58},buildFailure:{color:'#e05252',fontSize:13,fontWeight:'900',minWidth:58},buildPending:{color:'#9da6b5',fontSize:13,fontWeight:'900',minWidth:58},
+ githubButton:{minHeight:54,borderRadius:12,borderWidth:1,borderColor:'#3b4350',paddingHorizontal:16,flexDirection:'row',alignItems:'center',gap:12},githubLogo:{width:24,height:24},githubText:{color:'#fff',fontWeight:'900',flex:1},githubVersion:{color:'#9da6b5',fontWeight:'800'},change:{color:'#dce1e9',fontSize:13,lineHeight:20},buildFilterRow:{flexDirection:'row',gap:8,marginTop:-7},buildFilterButton:{width:44,height:36,borderRadius:9,borderWidth:1,borderColor:'#3b4350',backgroundColor:'#151a22',alignItems:'center',justifyContent:'center',opacity:0.45},buildFilterCancelledOn:{borderColor:'#9da6b5',backgroundColor:'#303744',opacity:1},buildFilterFailedOn:{borderColor:'#e05252',backgroundColor:'#351a1e',opacity:1},buildFilterSuccessOn:{borderColor:'#28d17c',backgroundColor:'#10251b',opacity:1},buildFilterIcon:{fontSize:20,fontWeight:'900',lineHeight:22},buildFilterCancelledText:{color:'#9da6b5'},buildFilterFailedText:{color:'#e05252'},buildFilterSuccessText:{color:'#28d17c'},buildHistory:{width:'100%',gap:9},buildCard:{width:'100%',minWidth:0,flexDirection:'row',alignItems:'flex-start',gap:10,backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:12,padding:13},buildDescription:{flex:1,minWidth:0,flexShrink:1,color:'#dce1e9',fontSize:13,lineHeight:19},buildSuccess:{color:'#28d17c',fontSize:13,fontWeight:'900',minWidth:58},buildFailure:{color:'#e05252',fontSize:13,fontWeight:'900',minWidth:58},buildPending:{color:'#9da6b5',fontSize:13,fontWeight:'900',minWidth:58},
  saveIntervalButton:{minHeight:46,borderRadius:10,borderWidth:1,borderColor:'#3b4350',alignItems:'center',justifyContent:'center',backgroundColor:'#151a22'},saveIntervalText:{color:'#fff',fontWeight:'900',fontSize:12},
  intervalCard:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:14,padding:17,gap:12},intervalHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},clockButton:{width:40,height:40,borderRadius:20,alignItems:'center',justifyContent:'center'},clockOn:{color:'#28d17c',fontSize:25,fontWeight:'900'},clockOff:{color:'#e05252',fontSize:22,fontWeight:'900'},intervalTitle:{color:'#fff',fontSize:14,fontWeight:'800'},select:{minHeight:44,borderWidth:1,borderColor:'#3b4350',borderRadius:9,paddingHorizontal:12,flexDirection:'row',alignItems:'center',justifyContent:'space-between',backgroundColor:'#0f131a'},selectText:{color:'#fff',fontWeight:'700'},selectArrow:{color:'#9da6b5',fontSize:12},menu:{borderWidth:1,borderColor:'#3b4350',borderRadius:9,backgroundColor:'#0f131a',overflow:'hidden'},menuItem:{paddingHorizontal:13,paddingVertical:12},menuText:{color:'#fff',fontWeight:'700'},sliderRow:{flexDirection:'row',alignItems:'center',gap:8},sliderMin:{color:'#9da6b5',fontSize:11,fontWeight:'800'},sliderMax:{color:'#9da6b5',fontSize:11,fontWeight:'800'},sliderTrack:{flex:1,height:32,borderRadius:16,backgroundColor:'transparent',position:'relative',justifyContent:'center'},sliderEnabled:{opacity:1},sliderDisabled:{opacity:0.4},sliderRail:{position:'absolute',left:9,right:9,top:13,height:6,borderRadius:3,backgroundColor:'#303744'},sliderFill:{position:'absolute',left:9,top:13,height:6,borderRadius:3,backgroundColor:'#fff'},sliderThumb:{position:'absolute',top:7,width:18,height:18,borderRadius:9,backgroundColor:'#fff',marginLeft:-9},intervalValue:{color:'#9da6b5',fontSize:11,fontWeight:'700'},
   modalBackdrop:{position:'absolute',top:0,left:0,right:0,bottom:0,zIndex:100,backgroundColor:'rgba(0,0,0,0.72)',alignItems:'center',justifyContent:'center',padding:22},modalCard:{width:'100%',backgroundColor:'#151a22',borderWidth:1,borderColor:'#3b4350',borderRadius:15,padding:18,gap:12},modalTitle:{color:'#fff',fontSize:18,fontWeight:'900'},modalSub:{color:'#9da6b5',lineHeight:20},modalLabel:{color:'#8f98a8',fontSize:11,fontWeight:'900'},modalBig:{color:'#fff',fontSize:16,fontWeight:'900'},modalInput:{color:'#fff',backgroundColor:'#0f131a',borderWidth:1,borderColor:'#3b4350',borderRadius:9,padding:13,fontSize:16},modalButtons:{flexDirection:'row',gap:10,marginTop:5},modalCancel:{flex:1,minHeight:46,borderRadius:9,borderWidth:1,borderColor:'#3b4350',alignItems:'center',justifyContent:'center'},modalCancelText:{color:'#dce1e9',fontWeight:'900'},modalConfirm:{flex:1,minHeight:46,borderRadius:9,backgroundColor:'#fff',alignItems:'center',justifyContent:'center'},modalConfirmText:{color:'#0b0e13',fontWeight:'900'},editableRow:{gap:5},editableValue:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},pencil:{color:'#fff',fontSize:19,fontWeight:'900',paddingHorizontal:8},cardActionRow:{alignItems:'flex-end',marginTop:2},closeButton:{width:34,height:34,borderRadius:17,borderWidth:1,borderColor:'#3b4350',alignItems:'center',justifyContent:'center'},closeButtonText:{color:'#e05252',fontSize:16,fontWeight:'900'},
