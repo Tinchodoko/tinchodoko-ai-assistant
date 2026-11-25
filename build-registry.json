@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-25T22:06:50Z",
+  "generated_at": "2026-11-25T22:31:45Z",
   "workflow": "Android Release APK",
   "repository": "Tinchodoko/tinchodoko-ai-assistant",
   "builds": [
@@ -3452,6 +3452,51 @@
       "created_at": "2026-11-25T21:57:41Z",
       "updated_at": "2026-11-25T22:05:02Z",
       "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45709041538",
+      "failed_step": null,
+      "failed_steps": []
+    },
+    {
+      "run_number": 197,
+      "run_id": 45713584275,
+      "status": "in_progress",
+      "conclusion": null,
+      "display_title": "feat(app): add build status filters",
+      "event": "push",
+      "branch": "main",
+      "sha": "07f42a94c481429ad6fb81206db4dcf2425c2601",
+      "created_at": "2026-11-25T22:28:56Z",
+      "updated_at": "2026-11-25T22:28:59Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45713584275",
+      "failed_step": null,
+      "failed_steps": []
+    },
+    {
+      "run_number": 198,
+      "run_id": 45713719255,
+      "status": "completed",
+      "conclusion": "cancelled",
+      "display_title": "feat(market): reorganize indicator panels and chart controls",
+      "event": "push",
+      "branch": "main",
+      "sha": "8918d0a3d0c3f4ae7a4e5c0042e5b3cbe258b951",
+      "created_at": "2026-11-25T22:29:55Z",
+      "updated_at": "2026-11-25T22:30:09Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45713719255",
+      "failed_step": null,
+      "failed_steps": []
+    },
+    {
+      "run_number": 199,
+      "run_id": 45713750771,
+      "status": "pending",
+      "conclusion": null,
+      "display_title": "feat(market): draw indicators in OHLC chart",
+      "event": "push",
+      "branch": "main",
+      "sha": "a2371d500d33097755822c6833232cc586a8a34a",
+      "created_at": "2026-11-25T22:30:08Z",
+      "updated_at": "2026-11-25T22:30:09Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45713750771",
       "failed_step": null,
       "failed_steps": []
     }
