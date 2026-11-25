@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-25T21:33:26Z",
+  "generated_at": "2026-11-25T21:40:13Z",
   "workflow": "Android Release APK",
   "repository": "Tinchodoko/tinchodoko-ai-assistant",
   "builds": [
@@ -3365,6 +3365,51 @@
           "completed_at": "2026-11-25T21:30:35Z"
         }
       ]
+    },
+    {
+      "run_number": 192,
+      "run_id": 45706202423,
+      "status": "in_progress",
+      "conclusion": null,
+      "display_title": "fix(market): remove duplicate JSX closing tags",
+      "event": "push",
+      "branch": "main",
+      "sha": "94e27b44fbf1128f47c88037f1e76844feca2241",
+      "created_at": "2026-11-25T21:38:31Z",
+      "updated_at": "2026-11-25T21:38:34Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45706202423",
+      "failed_step": null,
+      "failed_steps": []
+    },
+    {
+      "run_number": 193,
+      "run_id": 45706206145,
+      "status": "completed",
+      "conclusion": "cancelled",
+      "display_title": "fix(ci): safely print markdown fences in build diagnostics",
+      "event": "push",
+      "branch": "main",
+      "sha": "cc2c1e9fda0fe0b30ba0794b9d5f6b1650a48bf3",
+      "created_at": "2026-11-25T21:38:33Z",
+      "updated_at": "2026-11-25T21:38:54Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45706206145",
+      "failed_step": null,
+      "failed_steps": []
+    },
+    {
+      "run_number": 194,
+      "run_id": 45706252152,
+      "status": "pending",
+      "conclusion": null,
+      "display_title": "fix(ci): correct printf newline escaping in diagnostics",
+      "event": "push",
+      "branch": "main",
+      "sha": "4c9265f08df2876b9b1f96a91be55bce6bb99407",
+      "created_at": "2026-11-25T21:38:53Z",
+      "updated_at": "2026-11-25T21:38:54Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45706252152",
+      "failed_step": null,
+      "failed_steps": []
     }
   ]
 }
