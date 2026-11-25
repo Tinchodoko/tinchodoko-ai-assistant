@@ -8,6 +8,7 @@ import { calculateIndicators, type IndicatorSnapshot } from './marketIndicators'
 
 type Props = { credentials: Credentials; accessPoint: string; instruments: string[]; selectedInstrument: string; onSelectInstrument: (symbol:string)=>void };
 type Config = Record<MarketTimeframe,number>;
+type MarketCandle = { time:string; open:number; high:number; low:number; close:number; volume:number };
 type LogItem = { id:string; symbol:string; timeframe:MarketTimeframe; requested:number; received:number; at:number; status:'OK'|'PARCIAL'|'FALLO'; message?:string; firstCandle?:string; lastCandle?:string; observedSpanMs?:number; expectedSpanMs?:number; gapCount?:number; weekendGapCount?:number; weekendGapHours?:number; missingCandles?:number };
 const TFS:MarketTimeframe[]=['M1','M5','M15','M30','H1','H4'];
 const DEFAULTS:Config={M1:5000,M5:500,M15:500,M30:300,H1:250,H4:250};
@@ -18,7 +19,7 @@ const LOG_KEY='tinchodoko.market.import.log.v1';
 const pad=(n:number)=>String(n).padStart(2,'0');
 function formatDate(ms:number){const d=new Date(ms);return pad(d.getDate())+pad(d.getMonth()+1)+d.getFullYear()+'-'+pad(d.getHours())+pad(d.getMinutes());}
 function datasetKey(account:string,symbol:string,tf:MarketTimeframe,id?:string){return 'tinchodoko.market.candles.'+account+'.'+symbol+'.'+tf+(id?'.'+id:'')+'.v1';}
-function buildImportDiagnostics(candles:ExnessCandle[],requested:number,timeframe:MarketTimeframe){
+function buildImportDiagnostics(candles:MarketCandle[],requested:number,timeframe:MarketTimeframe){
  const interval=({M1:60000,M5:300000,M15:900000,M30:1800000,H1:3600000,H4:14400000} as Record<MarketTimeframe,number>)[timeframe];
  const times=candles.map(c=>Date.parse(c.time)).filter(Number.isFinite).sort((a,b)=>a-b);
  const first=times[0],last=times[times.length-1];
@@ -152,8 +153,8 @@ export default function MarketDataScreen({credentials,accessPoint,instruments,se
   {indicator&&indicatorSource&&<View style={s.card}><View style={s.logTop}><Text style={s.section}>INDICADORES · {indicatorSource.symbol} {indicatorTf}</Text><Pressable onPress={()=>{setIndicator(null);setIndicatorSource(null);setIndicatorTf(null);}}><Text style={s.clearX}>✕</Text></Pressable></View><Text style={s.hint}>Calculados localmente sobre {indicatorSource.received} velas. No se consulta Exness para este cálculo.</Text><View style={s.indGrid}><InfoRow label="RSI (14)" value={indicator.rsi}/><InfoRow label="ATR (14)" value={indicator.atr}/><InfoRow label="EMA 20" value={indicator.ema20}/><InfoRow label="EMA 50" value={indicator.ema50}/><InfoRow label="ADX (14)" value={indicator.adx}/><InfoRow label="MACD" value={indicator.macd}/><InfoRow label="MACD SIGNAL" value={indicator.macdSignal}/><InfoRow label="MACD HISTOGRAM" value={indicator.macdHistogram}/><InfoRow label="BB SUPERIOR" value={indicator.bollingerUpper}/><InfoRow label="BB MEDIA" value={indicator.bollingerMiddle}/><InfoRow label="BB INFERIOR" value={indicator.bollingerLower}/><InfoRow label="BB WIDTH" value={indicator.bollingerWidth}/><InfoRow label="Z-SCORE" value={indicator.zScore}/></View></View>}
  </ScrollView>;
 }
-function InfoRow({label,value}:{label:string;value:string}){
- return <View style={s.infoRow}><Text style={s.infoRowLabel}>{label}</Text><Text style={s.infoRowValue}>{value}</Text></View>;
+function InfoRow({label,value}:{label:string;value:string|number|null}){
+ return <View style={s.infoRow}><Text style={s.infoRowLabel}>{label}</Text><Text style={s.infoRowValue}>{value===null||value===undefined?'—':String(value)}</Text></View>;
 }
 const s=StyleSheet.create({
  content:{padding:18,gap:14},title:{color:'#fff',fontSize:21,fontWeight:'900'},subtitle:{color:'#9da6b5',fontSize:13,lineHeight:20},
