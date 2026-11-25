@@ -36,9 +36,11 @@ jobs:
           java-version: '17'
 
       - name: Install npm packages
+        id: install_deps
         run: npm install
 
       - name: Generate Android project
+        id: prebuild
         run: |
           node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync('app.json','utf8')); p.expo.version='1.0.'+process.env.BUILD_NUMBER; p.expo.android.versionCode=Number(process.env.BUILD_NUMBER); fs.writeFileSync('app.json', JSON.stringify(p,null,2)+'\n')"
           CI=1 npx expo prebuild --platform android
@@ -50,6 +52,7 @@ jobs:
           mv CHANGELOG.new CHANGELOG.md
 
       - name: Configure permanent Android release signing
+        id: signing
         env:
           AIASSISTANT_SIGNING_KEYSTORE_BASE64: ${{ secrets.AIASSISTANT_SIGNING_KEYSTORE_BASE64 }}
           AIASSISTANT_SIGNING_STORE_PASSWORD: ${{ secrets.AIASSISTANT_SIGNING_STORE_PASSWORD }}
@@ -177,9 +180,13 @@ jobs:
           PY
 
       - name: TypeScript check
-        run: npm run typecheck
+        id: typecheck
+        run: |
+          set -o pipefail
+          npm run typecheck 2>&1 | tee "$RUNNER_TEMP/typecheck.log"
 
       - name: Build signed release APK
+        id: build_apk
         working-directory: android
         env:
           AIASSISTANT_SIGNING_STORE_PASSWORD: ${{ secrets.AIASSISTANT_SIGNING_STORE_PASSWORD }}
@@ -188,6 +195,7 @@ jobs:
         run: ./gradlew assembleRelease --no-daemon
 
       - name: Verify APK signature
+        id: verify_signature
         run: |
           set -euo pipefail
           APK="android/app/build/outputs/apk/release/app-release.apk"
@@ -204,6 +212,7 @@ jobs:
           echo "APK signature verified against the permanent certificate."
 
       - name: Upload signed APK artifact
+        id: upload_apk
         uses: actions/upload-artifact@v4
         with:
           name: tinchodoko-ai-assistant-V${{ github.run_number }}-release
@@ -232,6 +241,44 @@ jobs:
           git diff --cached --quiet || git commit -m "chore(build): record #V${BUILD_NUMBER} [skip ci]"
           git push
 
+
+      - name: Build diagnostics summary
+        if: always()
+        run: |
+          {
+            echo "Tinchodoko AI Assistant — Build #${{ github.run_number }}"
+            echo
+            echo "Commit: ${{ github.sha }}"
+            echo "Workflow run: ${{ github.run_id }}"
+            echo "Run URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo "Overall status: ${{ job.status }}"
+            echo
+            echo "Step results"
+            echo "- Install dependencies: ${{ steps.install_deps.outcome }}"
+            echo "- Generate Android project: ${{ steps.prebuild.outcome }}"
+            echo "- Signing configuration: ${{ steps.signing.outcome }}"
+            echo "- TypeScript: ${{ steps.typecheck.outcome }}"
+            echo "- Android APK: ${{ steps.build_apk.outcome }}"
+            echo "- Signature verification: ${{ steps.verify_signature.outcome }}"
+            echo "- APK artifact upload: ${{ steps.upload_apk.outcome }}"
+            echo
+            if [ -s "$RUNNER_TEMP/typecheck.log" ]; then
+              echo "TypeScript output"
+              echo "```text"
+              tail -n 120 "$RUNNER_TEMP/typecheck.log"
+              echo "```"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tinchodoko-ai-assistant-V${{ github.run_number }}-diagnostics
+          path: |
+            ${{ runner.temp }}/typecheck.log
+            ${{ runner.temp }}/apk-signature.txt
+          if-no-files-found: ignore
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
