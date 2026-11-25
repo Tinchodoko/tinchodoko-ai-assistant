@@ -121,6 +121,22 @@ async function editCandleQuantity(){const n=Number(candleDraft);if(!Number.isInt
    {text:'CONFIRMAR',style:'destructive',onPress:async()=>{try{await AsyncStorage.removeItem(datasetKey(credentials.accountId,item.symbol,item.timeframe,item.id));await AsyncStorage.removeItem(datasetKey(credentials.accountId,item.symbol,item.timeframe));await AsyncStorage.removeItem(indicatorDatasetKey(credentials.accountId,item.symbol,item.timeframe,item.id));const next=log.filter(x=>x.id!==item.id);await saveLog(next);if(indicatorSource?.id===item.id){setIndicator(null);setIndicatorRows([]);setIndicatorSource(null);setIndicatorTf(null);}Alert.alert('IMPORTACIÓN ELIMINADA','Los datos de la importación fueron eliminados del dispositivo.');}catch(e){Alert.alert('ERROR AL ELIMINAR',e instanceof Error?e.message:String(e));}}}
   ]);
  }
+ async function restorePersistedIndicators(item:LogItem){
+  try{
+   const raw=await AsyncStorage.getItem(indicatorDatasetKey(credentials.accountId,item.symbol,item.timeframe,item.id));
+   if(!raw)return false;
+   const parsed=JSON.parse(raw);
+   if(!Array.isArray(parsed.rows)||!parsed.rows.length)return false;
+   const rows=parsed.rows as IndicatorRow[];
+   const last=rows[rows.length-1];
+   setIndicator({rsi:last.rsi14,atr:last.atr14,ema20:last.ema20,ema50:last.ema50,adx:last.adx14,macd:last.macd,macdSignal:last.macdSignal,macdHistogram:last.macdHistogram,bollingerUpper:last.bollingerUpper,bollingerMiddle:last.bollingerMiddle,bollingerLower:last.bollingerLower,bollingerWidth:last.bollingerWidth,zScore:last.zScore});
+   setIndicatorRows(rows);setIndicatorSource(item);setIndicatorTf(item.timeframe);
+   if(parsed.configuration)setIndicatorConfig(normalizeIndicatorConfig(parsed.configuration));
+   return true;
+  }catch{return false;}
+ }
+ useEffect(()=>{if(!loaded||!log.length||indicatorSource)return;let cancelled=false;(async()=>{for(const item of log){if(cancelled)break;const found=await restorePersistedIndicators(item);if(found)break;}})();return()=>{cancelled=true;};},[loaded,log,indicatorSource]);
+
  async function loadIndicators(item:LogItem){
   try{
    const raw=await AsyncStorage.getItem(datasetKey(credentials.accountId,item.symbol,item.timeframe,item.id));
@@ -217,7 +233,7 @@ async function editCandleQuantity(){const n=Number(candleDraft);if(!Number.isInt
   {indicator&&indicatorSource&&<View style={s.card}>
    <View style={s.logTop}><Text style={s.section}>INDICADORES · {indicatorSource.symbol} {indicatorTf}</Text><Pressable onPress={()=>{setIndicator(null);setIndicatorRows([]);setIndicatorSource(null);setIndicatorTf(null);}}><Text style={s.clearX}>✕</Text></Pressable></View>
    <Text style={s.hint}>Los valores de arriba corresponden a la ÚLTIMA VELA disponible. La tabla contiene una fila por cada vela y sus indicadores calculados localmente en TypeScript.</Text>
-   <View style={s.indGrid}><InfoRow label="ÚLTIMA RSI (14)" value={indicator.rsi}/><InfoRow label="ÚLTIMA ATR (14)" value={indicator.atr}/><InfoRow label="ÚLTIMA EMA 20" value={indicator.ema20}/><InfoRow label="ÚLTIMA EMA 50" value={indicator.ema50}/><InfoRow label="ÚLTIMA ADX (14)" value={indicator.adx}/><InfoRow label="ÚLTIMA MACD" value={indicator.macd}/><InfoRow label="ÚLTIMA MACD SIGNAL" value={indicator.macdSignal}/><InfoRow label="ÚLTIMA MACD HISTOGRAM" value={indicator.macdHistogram}/><InfoRow label="ÚLTIMA BB SUPERIOR" value={indicator.bollingerUpper}/><InfoRow label="ÚLTIMA BB MEDIA" value={indicator.bollingerMiddle}/><InfoRow label="ÚLTIMA BB INFERIOR" value={indicator.bollingerLower}/><InfoRow label="ÚLTIMA BB WIDTH" value={indicator.bollingerWidth}/><InfoRow label="ÚLTIMA Z-SCORE" value={indicator.zScore}/></View>
+   <View style={s.indGrid}><InfoRow label={`ÚLTIMA RSI (${indicatorConfig.rsi.period})`} value={indicator.rsi}/><InfoRow label={`ÚLTIMA ATR (${indicatorConfig.atr.period})`} value={indicator.atr}/><InfoRow label={`ÚLTIMA EMA (${indicatorConfig.ema20.period})`} value={indicator.ema20}/><InfoRow label={`ÚLTIMA EMA (${indicatorConfig.ema50.period})`} value={indicator.ema50}/><InfoRow label={`ÚLTIMA ADX (${indicatorConfig.adx.period})`} value={indicator.adx}/><InfoRow label="ÚLTIMA MACD" value={indicator.macd}/><InfoRow label="ÚLTIMA MACD SIGNAL" value={indicator.macdSignal}/><InfoRow label="ÚLTIMA MACD HISTOGRAM" value={indicator.macdHistogram}/><InfoRow label={`ÚLTIMA BB SUPERIOR (${indicatorConfig.bollinger.period}, ${indicatorConfig.bollinger.deviation})`} value={indicator.bollingerUpper}/><InfoRow label={`ÚLTIMA BB MEDIA (${indicatorConfig.bollinger.period})`} value={indicator.bollingerMiddle}/><InfoRow label={`ÚLTIMA BB INFERIOR (${indicatorConfig.bollinger.period}, ${indicatorConfig.bollinger.deviation})`} value={indicator.bollingerLower}/><InfoRow label="ÚLTIMA BB WIDTH" value={indicator.bollingerWidth}/><InfoRow label={`ÚLTIMA Z-SCORE (${indicatorConfig.zScore.period})`} value={indicator.zScore}/></View>
    <View style={s.indicatorToolbar}><Text style={s.tableTitle}>{indicatorRows.length.toLocaleString('es-AR')} FILAS · 1 FILA = 1 VELA</Text><View style={s.indicatorTools}><Pressable onPress={()=>setIndicatorConfigOpen(true)} style={s.configButton}><Text style={s.configButtonText}>⚙ CONFIGURAR</Text></Pressable><Pressable onPress={()=>exportImportJson(indicatorSource)} style={s.exportButton}><Text style={s.exportButtonText}>⬇ EXPORTAR JSON</Text></Pressable></View></View>
    <Text style={s.hint}>Deslizá horizontalmente para ver todas las columnas y verticalmente para recorrer las velas. «—» significa que todavía no hay suficiente histórico para ese indicador.</Text>
    <ScrollView horizontal showsHorizontalScrollIndicator nestedScrollEnabled contentContainerStyle={s.tableWide}>
