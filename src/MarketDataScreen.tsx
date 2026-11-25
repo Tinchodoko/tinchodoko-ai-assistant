@@ -84,7 +84,8 @@ export default function MarketDataScreen({credentials,accessPoint,instruments,se
  const [indicatorSource,setIndicatorSource]=useState<LogItem|null>(null);
  const [width,setWidth]=useState(1);
  const [saving,setSaving]=useState(false);
- const [loaded,setLoaded]=useState(false);\n const [expandedImports,setExpandedImports]=useState<Record<string,boolean>>({});
+ const [loaded,setLoaded]=useState(false);
+ const [expandedImports,setExpandedImports]=useState<Record<string,boolean>>({});
  useEffect(()=>{let cancelled=false;Promise.all([AsyncStorage.getItem(CONFIG_KEY),AsyncStorage.getItem(LOG_KEY)]).then(([rawConfig,rawLog])=>{if(cancelled)return;if(rawConfig){try{const saved=JSON.parse(rawConfig) as Partial<Config>;const next={...DEFAULTS};for(const item of TFS){const n=Number(saved[item]);if(Number.isInteger(n)&&n>=MIN&&n<=MAX[item])next[item]=n;}setConfig(next);}catch{}}if(rawLog){try{const saved=JSON.parse(rawLog);if(Array.isArray(saved))setLog(saved.filter(x=>x&&typeof x.id==='string').slice(0,200));}catch{}}setLoaded(true);}).catch(()=>setLoaded(true));return()=>{cancelled=true;};},[]);
  const value=tf?config[tf]:0;
  const max=tf?MAX[tf]:MIN;
@@ -115,7 +116,8 @@ export default function MarketDataScreen({credentials,accessPoint,instruments,se
   try{
    const candles=await getMarketCandles(credentials,accessPoint,selectedInstrument,selectedTf,requested);
    const now=Date.now();
-   const diagnostics=buildImportDiagnostics(candles,requested,selectedTf);\n   const item:LogItem={id:String(now)+'-'+selectedInstrument+'-'+selectedTf,symbol:selectedInstrument,timeframe:selectedTf,requested,received:candles.length,at:now,status:candles.length===requested?'OK':'PARCIAL',message:candles.length===requested?undefined:'Exness devolvió '+candles.length+' de '+requested+' velas.',...diagnostics};
+   const diagnostics=buildImportDiagnostics(candles,requested,selectedTf);
+   const item:LogItem={id:String(now)+'-'+selectedInstrument+'-'+selectedTf,symbol:selectedInstrument,timeframe:selectedTf,requested,received:candles.length,at:now,status:candles.length===requested?'OK':'PARCIAL',message:candles.length===requested?undefined:'Exness devolvió '+candles.length+' de '+requested+' velas.',...diagnostics};
    await AsyncStorage.setItem(datasetKey(credentials.accountId,selectedInstrument,selectedTf,item.id),JSON.stringify({id:item.id,symbol:selectedInstrument,timeframe:selectedTf,requested,received:candles.length,importedAt:now,candles}));
    await saveLog([item,...log]);
    Alert.alert(item.status==='OK'?'IMPORTACIÓN COMPLETADA':'IMPORTACIÓN PARCIAL',selectedInstrument+' '+selectedTf+': '+candles.length+'/'+requested+' velas guardadas localmente.');
