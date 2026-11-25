@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-25T21:42:12Z",
+  "generated_at": "2026-11-25T21:48:31Z",
   "workflow": "Android Release APK",
   "repository": "Tinchodoko/tinchodoko-ai-assistant",
   "builds": [
@@ -3399,17 +3399,24 @@
     {
       "run_number": 194,
       "run_id": 45706252152,
-      "status": "in_progress",
-      "conclusion": null,
+      "status": "completed",
+      "conclusion": "failure",
       "display_title": "fix(ci): correct printf newline escaping in diagnostics",
       "event": "push",
       "branch": "main",
       "sha": "4c9265f08df2876b9b1f96a91be55bce6bb99407",
       "created_at": "2026-11-25T21:38:53Z",
-      "updated_at": "2026-11-25T21:41:03Z",
+      "updated_at": "2026-11-25T21:47:08Z",
       "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45706252152",
-      "failed_step": null,
-      "failed_steps": []
+      "failed_step": "Commit successful build changelog",
+      "failed_steps": [
+        {
+          "job": "build",
+          "step": "Commit successful build changelog",
+          "started_at": "2026-11-25T21:47:04Z",
+          "completed_at": "2026-11-25T21:47:05Z"
+        }
+      ]
     }
   ]
 }
