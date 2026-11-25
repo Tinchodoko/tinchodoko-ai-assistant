@@ -9,7 +9,8 @@
       "package": "com.tinchodoko.aiassistant",
       "versionCode": 1,
       "permissions": [
-        "REQUEST_INSTALL_PACKAGES"
+        "REQUEST_INSTALL_PACKAGES",
+        "POST_NOTIFICATIONS"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
