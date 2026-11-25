@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, AppState, Image, Linking, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View, type TextStyle } from 'react-native';
+import { ActivityIndicator, Alert, AppState, Image, PermissionsAndroid, Platform, Linking, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View, type TextStyle } from 'react-native';
 import { connectToExness, getAccountSnapshot, getTradingHistory, openExnessAccountStream, modifyActiveOrder, createPositionSltp, cancelActiveOrder, closePosition, getAvailableInstruments, getInstrumentConditions, openExnessTickStream, openMarketPosition, placeLimitOrder, type Credentials, type TradingHistoryData, type ExnessInstrumentConditions, type ExnessTick } from './src/exness';
 import { loadCredentials, saveCredentials } from './src/storage';
 import { BUILD_INFO } from './src/buildInfo';
@@ -214,6 +214,9 @@ export default function App() {
   const tickSocketRef=useRef<WebSocket|null>(null);
 
   useEffect(()=>{
+    if (Platform.OS==='android' && Platform.Version>=33) {
+      PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS).catch(()=>{});
+    }
     loadCredentials().then(x=>x&&setC(x));
     SecureStore.getItemAsync('tinchodoko.profile.refreshInterval').then(raw=>{
       if (!raw) return;
