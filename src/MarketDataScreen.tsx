@@ -1,13 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Clipboard from 'expo-clipboard';
 import type { Credentials } from './exness';
 import { getMarketCandles, type MarketTimeframe } from './exness';
 import { calculateIndicators, type IndicatorSnapshot } from './marketIndicators';
 
 type Props = { credentials: Credentials; accessPoint: string; instruments: string[]; selectedInstrument: string; onSelectInstrument: (symbol:string)=>void };
 type Config = Record<MarketTimeframe,number>;
-type LogItem = { id:string; symbol:string; timeframe:MarketTimeframe; requested:number; received:number; at:number; status:'OK'|'PARCIAL'|'FALLO'; message?:string };
+type LogItem = { id:string; symbol:string; timeframe:MarketTimeframe; requested:number; received:number; at:number; status:'OK'|'PARCIAL'|'FALLO'; message?:string; firstCandle?:string; lastCandle?:string; observedSpanMs?:number; expectedSpanMs?:number; gapCount?:number; weekendGapCount?:number; weekendGapHours?:number; missingCandles?:number };
 const TFS:MarketTimeframe[]=['M1','M5','M15','M30','H1','H4'];
 const DEFAULTS:Config={M1:5000,M5:500,M15:500,M30:300,H1:250,H4:250};
 const MAX:Record<MarketTimeframe,number>={M1:10000,M5:3000,M15:1800,M30:1200,H1:1000,H4:700};
@@ -17,6 +18,58 @@ const LOG_KEY='tinchodoko.market.import.log.v1';
 const pad=(n:number)=>String(n).padStart(2,'0');
 function formatDate(ms:number){const d=new Date(ms);return pad(d.getDate())+pad(d.getMonth()+1)+d.getFullYear()+'-'+pad(d.getHours())+pad(d.getMinutes());}
 function datasetKey(account:string,symbol:string,tf:MarketTimeframe,id?:string){return 'tinchodoko.market.candles.'+account+'.'+symbol+'.'+tf+(id?'.'+id:'')+'.v1';}
+function buildImportDiagnostics(candles:ExnessCandle[],requested:number,timeframe:MarketTimeframe){
+ const interval=({M1:60000,M5:300000,M15:900000,M30:1800000,H1:3600000,H4:14400000} as Record<MarketTimeframe,number>)[timeframe];
+ const times=candles.map(c=>Date.parse(c.time)).filter(Number.isFinite).sort((a,b)=>a-b);
+ const first=times[0],last=times[times.length-1];
+ let gapCount=0,weekendGapCount=0,weekendGapMs=0;
+ for(let i=1;i<times.length;i++){
+  const gap=times[i]-times[i-1];
+  if(gap>interval*1.5){
+   gapCount++;
+   const before=new Date(times[i-1]);
+   const after=new Date(times[i]);
+   const beforeDay=before.getUTCDay();
+   const afterDay=after.getUTCDay();
+   if((beforeDay===5||beforeDay===6)&&(afterDay===0||afterDay===1)){
+    weekendGapCount++; weekendGapMs+=gap-interval;
+   }
+  }
+ }
+ return {
+  firstCandle:first?new Date(first).toISOString():undefined,
+  lastCandle:last?new Date(last).toISOString():undefined,
+  observedSpanMs:first&&last?Math.max(0,last-first):undefined,
+  expectedSpanMs:Math.max(0,requested-1)*interval,
+  gapCount,
+  weekendGapCount,
+  weekendGapHours:weekendGapMs/3600000,
+  missingCandles:Math.max(0,requested-candles.length),
+ };
+}
+function formatDiagnosticDate(value?:string){return value?new Date(value).toLocaleString('es-AR',{dateStyle:'short',timeStyle:'medium'}):'—';}
+function formatDuration(ms?:number){if(!Number.isFinite(ms))return '—';const total=Math.round((ms??0)/60000);const d=Math.floor(total/1440);const h=Math.floor((total%1440)/60);const m=total%60;return (d?d+' d ':'')+(h?h+' h ':'')+m+' min';}
+function importLogText(item:LogItem){
+ const lines=[
+  'TINCHODOKO AI ASSISTANT — IMPORTACIÓN DE DATOS',
+  'SÍMBOLO: '+item.symbol,
+  'TIMEFRAME: '+item.timeframe,
+  'ESTADO: '+item.status,
+  'SOLICITADAS: '+item.requested,
+  'RECIBIDAS: '+item.received,
+  'FALTANTES: '+(item.missingCandles??Math.max(0,item.requested-item.received)),
+  'FECHA DE IMPORTACIÓN: '+formatDiagnosticDate(new Date(item.at).toISOString()),
+  item.message?('MENSAJE: '+item.message):'',
+  item.firstCandle?'PRIMERA VELA: '+formatDiagnosticDate(item.firstCandle):'',
+  item.lastCandle?'ÚLTIMA VELA: '+formatDiagnosticDate(item.lastCandle):'',
+  item.observedSpanMs!==undefined?'PERÍODO OBSERVADO: '+formatDuration(item.observedSpanMs):'',
+  item.expectedSpanMs!==undefined?'PERÍODO ESPERADO: '+formatDuration(item.expectedSpanMs):'',
+  item.gapCount!==undefined?'HUECOS DETECTADOS: '+item.gapCount:'',
+  item.weekendGapCount!==undefined?'HUECOS COMPATIBLES CON FIN DE SEMANA: '+item.weekendGapCount:'',
+  item.weekendGapHours!==undefined?'TIEMPO ESTIMADO SIN VELAS EN ESOS HUECOS: '+item.weekendGapHours.toFixed(1)+' h':'',
+ ].filter(Boolean);
+ return lines.join('\\n');
+}
 
 export default function MarketDataScreen({credentials,accessPoint,instruments,selectedInstrument,onSelectInstrument}:Props){
  const [config,setConfig]=useState<Config>(DEFAULTS);
@@ -31,7 +84,7 @@ export default function MarketDataScreen({credentials,accessPoint,instruments,se
  const [indicatorSource,setIndicatorSource]=useState<LogItem|null>(null);
  const [width,setWidth]=useState(1);
  const [saving,setSaving]=useState(false);
- const [loaded,setLoaded]=useState(false);
+ const [loaded,setLoaded]=useState(false);\n const [expandedImports,setExpandedImports]=useState<Record<string,boolean>>({});
  useEffect(()=>{let cancelled=false;Promise.all([AsyncStorage.getItem(CONFIG_KEY),AsyncStorage.getItem(LOG_KEY)]).then(([rawConfig,rawLog])=>{if(cancelled)return;if(rawConfig){try{const saved=JSON.parse(rawConfig) as Partial<Config>;const next={...DEFAULTS};for(const item of TFS){const n=Number(saved[item]);if(Number.isInteger(n)&&n>=MIN&&n<=MAX[item])next[item]=n;}setConfig(next);}catch{}}if(rawLog){try{const saved=JSON.parse(rawLog);if(Array.isArray(saved))setLog(saved.filter(x=>x&&typeof x.id==='string').slice(0,200));}catch{}}setLoaded(true);}).catch(()=>setLoaded(true));return()=>{cancelled=true;};},[]);
  const value=tf?config[tf]:0;
  const max=tf?MAX[tf]:MIN;
@@ -62,13 +115,13 @@ export default function MarketDataScreen({credentials,accessPoint,instruments,se
   try{
    const candles=await getMarketCandles(credentials,accessPoint,selectedInstrument,selectedTf,requested);
    const now=Date.now();
-   const item:LogItem={id:String(now)+'-'+selectedInstrument+'-'+selectedTf,symbol:selectedInstrument,timeframe:selectedTf,requested,received:candles.length,at:now,status:candles.length===requested?'OK':'PARCIAL',message:candles.length===requested?undefined:'Exness devolvió '+candles.length+' de '+requested+' velas.'};
+   const diagnostics=buildImportDiagnostics(candles,requested,selectedTf);\n   const item:LogItem={id:String(now)+'-'+selectedInstrument+'-'+selectedTf,symbol:selectedInstrument,timeframe:selectedTf,requested,received:candles.length,at:now,status:candles.length===requested?'OK':'PARCIAL',message:candles.length===requested?undefined:'Exness devolvió '+candles.length+' de '+requested+' velas.',...diagnostics};
    await AsyncStorage.setItem(datasetKey(credentials.accountId,selectedInstrument,selectedTf,item.id),JSON.stringify({id:item.id,symbol:selectedInstrument,timeframe:selectedTf,requested,received:candles.length,importedAt:now,candles}));
    await saveLog([item,...log]);
    Alert.alert(item.status==='OK'?'IMPORTACIÓN COMPLETADA':'IMPORTACIÓN PARCIAL',selectedInstrument+' '+selectedTf+': '+candles.length+'/'+requested+' velas guardadas localmente.');
   }catch(e){
    const message=e instanceof Error?e.message:String(e);const now=Date.now();
-   const item:LogItem={id:String(now)+'-'+selectedInstrument+'-'+selectedTf,symbol:selectedInstrument,timeframe:selectedTf,requested,received:0,at:now,status:'FALLO',message};
+   const item:LogItem={id:String(now)+'-'+selectedInstrument+'-'+selectedTf,symbol:selectedInstrument,timeframe:selectedTf,requested,received:0,at:now,status:'FALLO',message,missingCandles:requested};
    try{await saveLog([item,...log]);}catch{}
    Alert.alert('ERROR DE IMPORTACIÓN',message);
   }finally{setBusy(false);}
@@ -93,7 +146,7 @@ export default function MarketDataScreen({credentials,accessPoint,instruments,se
    {loaded&&<Text style={s.hint}>Configuración e historial guardados en el dispositivo.</Text>}
   </View>
   <View style={s.logHeader}><Text style={s.section}>HISTORIAL DE IMPORTACIONES</Text><Text style={s.muted}>{log.length}</Text></View>
-  {log.length===0?<View style={s.card}><Text style={s.muted}>Todavía no hay importaciones registradas.</Text></View>:log.map(item=><View key={item.id} style={s.logCard}><View style={s.logTop}><Text style={s.logSymbol}>{item.symbol}</Text><Text style={[s.status,item.status==='OK'?s.ok:item.status==='PARCIAL'?s.partial:s.fail]}>{item.status}</Text></View><Text style={s.logLine}>{item.timeframe} · {item.received.toLocaleString('es-AR')}/{item.requested.toLocaleString('es-AR')} velas · {formatDate(item.at)}</Text>{item.message&&<Text style={s.error} numberOfLines={3}>{item.message}</Text>}<View style={s.logActions}><Pressable onPress={()=>loadIndicators(item)} style={s.indicatorButton}><Text style={s.indicatorButtonText}>CALCULAR INDICADORES</Text></Pressable><Pressable onPress={()=>deleteImport(item)} style={s.deleteButton}><Text style={s.clearX}>✕</Text></Pressable></View></View>)}
+  {log.length===0?<View style={s.card}><Text style={s.muted}>Todavía no hay importaciones registradas.</Text></View>:log.map(item=>{const expanded=!!expandedImports[item.id];return <View key={item.id} style={s.logCard}><View style={s.logTop}><View style={{flex:1,gap:4}}><Text style={s.logSymbol}>{item.symbol}</Text><Text style={s.logLine}>{item.timeframe} · {item.received.toLocaleString('es-AR')}/{item.requested.toLocaleString('es-AR')} velas · {formatDate(item.at)}</Text></View><Text style={[s.status,item.status==='OK'?s.ok:item.status==='PARCIAL'?s.partial:s.fail]}>{item.status}</Text></View>{item.message&&<Text style={s.error} numberOfLines={expanded?undefined:3}>{item.message}</Text>}<View style={s.logUtilityRow}><Pressable onPress={()=>setExpandedImports(old=>({...old,[item.id]:!expanded}))} style={s.expandButton}><Text style={s.expandButtonText}>{expanded?'▲ OCULTAR DETALLES':'▼ EXPANDIR DETALLES'}</Text></Pressable><Pressable onPress={async()=>{try{await Clipboard.setStringAsync(importLogText(item));Alert.alert('COPIADO','La información de esta importación fue copiada al portapapeles.');}catch(e){Alert.alert('ERROR AL COPIAR',e instanceof Error?e.message:String(e));}}} style={s.copyButton}><Text style={s.copyButtonText}>📋</Text></Pressable></View>{expanded&&<View style={s.detailsBox}><Text style={s.detailLine}>SOLICITADAS: {item.requested.toLocaleString('es-AR')}</Text><Text style={s.detailLine}>RECIBIDAS: {item.received.toLocaleString('es-AR')}</Text><Text style={s.detailLine}>FALTANTES: {(item.missingCandles??Math.max(0,item.requested-item.received)).toLocaleString('es-AR')}</Text><Text style={s.detailLine}>PRIMERA VELA: {formatDiagnosticDate(item.firstCandle)}</Text><Text style={s.detailLine}>ÚLTIMA VELA: {formatDiagnosticDate(item.lastCandle)}</Text><Text style={s.detailLine}>PERÍODO OBSERVADO: {formatDuration(item.observedSpanMs)}</Text><Text style={s.detailLine}>PERÍODO ESPERADO: {formatDuration(item.expectedSpanMs)}</Text><Text style={s.detailLine}>HUECOS DETECTADOS: {item.gapCount??'—'}</Text><Text style={s.detailLine}>HUECOS COMPATIBLES CON FIN DE SEMANA: {item.weekendGapCount??'—'}</Text>{(item.weekendGapHours??0)>0&&<Text style={s.weekendHint}>TIEMPO ESTIMADO SIN VELAS EN ESOS HUECOS: {(item.weekendGapHours??0).toFixed(1)} h</Text>}<Text style={s.detailExplanation}>{item.status==='PARCIAL'?'Una importación parcial no significa que Exness haya borrado velas. El histórico puede contener períodos sin cotización (por ejemplo, el cierre semanal de Forex) y también puede estar limitado por la ventana histórica disponible para la solicitud. Los huecos se calculan comparando los timestamps recibidos.':'La cantidad solicitada fue recibida correctamente.'}</Text></View>}<View style={s.logActions}><Pressable onPress={()=>loadIndicators(item)} style={s.indicatorButton}><Text style={s.indicatorButtonText}>CALCULAR INDICADORES</Text></Pressable><Pressable onPress={()=>deleteImport(item)} style={s.deleteButton}><Text style={s.clearX}>✕</Text></Pressable></View></View>})}
   {indicator&&indicatorSource&&<View style={s.card}><View style={s.logTop}><Text style={s.section}>INDICADORES · {indicatorSource.symbol} {indicatorTf}</Text><Pressable onPress={()=>{setIndicator(null);setIndicatorSource(null);setIndicatorTf(null);}}><Text style={s.clearX}>✕</Text></Pressable></View><Text style={s.hint}>Calculados localmente sobre {indicatorSource.received} velas. No se consulta Exness para este cálculo.</Text><View style={s.indGrid}><InfoRow label="RSI (14)" value={indicator.rsi}/><InfoRow label="ATR (14)" value={indicator.atr}/><InfoRow label="EMA 20" value={indicator.ema20}/><InfoRow label="EMA 50" value={indicator.ema50}/><InfoRow label="ADX (14)" value={indicator.adx}/><InfoRow label="MACD" value={indicator.macd}/><InfoRow label="MACD SIGNAL" value={indicator.macdSignal}/><InfoRow label="MACD HISTOGRAM" value={indicator.macdHistogram}/><InfoRow label="BB SUPERIOR" value={indicator.bollingerUpper}/><InfoRow label="BB MEDIA" value={indicator.bollingerMiddle}/><InfoRow label="BB INFERIOR" value={indicator.bollingerLower}/><InfoRow label="BB WIDTH" value={indicator.bollingerWidth}/><InfoRow label="Z-SCORE" value={indicator.zScore}/></View></View>}
  </ScrollView>;
 }
@@ -107,5 +160,5 @@ const s=StyleSheet.create({
  track:{height:30,justifyContent:'center'},rail:{position:'absolute',left:0,right:0,height:6,borderRadius:3,backgroundColor:'#303744'},progress:{position:'absolute',left:0,height:6,borderRadius:3,backgroundColor:'#fff'},thumb:{position:'absolute',width:18,height:18,marginLeft:-9,borderRadius:9,backgroundColor:'#fff',borderWidth:2,borderColor:'#151a22'},
  range:{flexDirection:'row',justifyContent:'space-between'},actions:{flexDirection:'row',gap:8},secondary:{flex:1,minHeight:45,paddingHorizontal:7,borderWidth:1,borderColor:'#3b4350',borderRadius:9,alignItems:'center',justifyContent:'center',backgroundColor:'#0f131a'},secondaryText:{color:'#fff',fontSize:10,fontWeight:'900',textAlign:'center'},
  importButton:{minHeight:50,borderRadius:10,backgroundColor:'#fff',alignItems:'center',justifyContent:'center'},importText:{color:'#0b0e13',fontWeight:'900'},
- selectorTools:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},alphaButton:{width:42,height:32,borderWidth:1,borderColor:'#3b4350',borderRadius:8,alignItems:'center',justifyContent:'center',backgroundColor:'#0f131a'},alphaText:{color:'#fff',fontWeight:'900',fontSize:13},alphaPanel:{borderWidth:1,borderColor:'#3b4350',borderRadius:9,backgroundColor:'#0f131a',padding:8,flexDirection:'row',alignItems:'center',gap:8},alphaGrid:{flex:1,flexDirection:'row',flexWrap:'wrap',gap:5},alphaLetter:{width:25,height:25,borderWidth:1,borderColor:'#303744',borderRadius:6,alignItems:'center',justifyContent:'center'},alphaClear:{width:30,height:30,alignItems:'center',justifyContent:'center'},clearX:{color:'#e05252',fontSize:19,fontWeight:'900'},logHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},section:{color:'#fff',fontSize:13,fontWeight:'900'},logCard:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:12,padding:13,gap:7},logTop:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},logSymbol:{color:'#fff',fontSize:15,fontWeight:'900'},status:{fontSize:11,fontWeight:'900'},ok:{color:'#28d17c'},partial:{color:'#f0b429'},fail:{color:'#e05252'},logLine:{color:'#dce1e9',fontSize:12},error:{color:'#e05252',fontSize:11,lineHeight:16},muted:{color:'#9da6b5',fontSize:12,lineHeight:18},disabled:{opacity:0.45}
+ selectorTools:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},alphaButton:{width:42,height:32,borderWidth:1,borderColor:'#3b4350',borderRadius:8,alignItems:'center',justifyContent:'center',backgroundColor:'#0f131a'},alphaText:{color:'#fff',fontWeight:'900',fontSize:13},alphaPanel:{borderWidth:1,borderColor:'#3b4350',borderRadius:9,backgroundColor:'#0f131a',padding:8,flexDirection:'row',alignItems:'center',gap:8},alphaGrid:{flex:1,flexDirection:'row',flexWrap:'wrap',gap:5},alphaLetter:{width:25,height:25,borderWidth:1,borderColor:'#303744',borderRadius:6,alignItems:'center',justifyContent:'center'},alphaClear:{width:30,height:30,alignItems:'center',justifyContent:'center'},clearX:{color:'#e05252',fontSize:19,fontWeight:'900'},logHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},logUtilityRow:{flexDirection:'row',alignItems:'center',gap:8,marginTop:3},expandButton:{flex:1,minHeight:38,borderWidth:1,borderColor:'#3b4350',borderRadius:9,backgroundColor:'#0f131a',alignItems:'center',justifyContent:'center'},expandButtonText:{color:'#dce1e9',fontSize:10,fontWeight:'900'},copyButton:{width:42,height:38,borderWidth:1,borderColor:'#3b4350',borderRadius:9,backgroundColor:'#0f131a',alignItems:'center',justifyContent:'center'},copyButtonText:{fontSize:17},detailsBox:{borderWidth:1,borderColor:'#303744',borderRadius:9,backgroundColor:'#0f131a',padding:11,gap:6},detailLine:{color:'#bfc7d4',fontSize:11,lineHeight:17},weekendHint:{color:'#f0b429',fontSize:11,fontWeight:'900',lineHeight:17},detailExplanation:{color:'#7f8999',fontSize:10,lineHeight:16,marginTop:4},section:{color:'#fff',fontSize:13,fontWeight:'900'},logCard:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:12,padding:13,gap:7},logTop:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},logSymbol:{color:'#fff',fontSize:15,fontWeight:'900'},status:{fontSize:11,fontWeight:'900'},ok:{color:'#28d17c'},partial:{color:'#f0b429'},fail:{color:'#e05252'},logLine:{color:'#dce1e9',fontSize:12},error:{color:'#e05252',fontSize:11,lineHeight:16},muted:{color:'#9da6b5',fontSize:12,lineHeight:18},disabled:{opacity:0.45}
 });
