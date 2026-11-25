@@ -181,6 +181,19 @@ async function editCandleQuantity(){const n=Number(candleDraft);if(!Number.isInt
    const filename=exportFilename(item.symbol,item.timeframe,item.at);
    let directoryUri=await AsyncStorage.getItem(EXPORT_DIRECTORY_KEY);
    let fileUri:string|undefined;
+   const openDownloadDirectory=async()=>{
+    const permission=await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+    if(!permission.granted)return null;
+    const selectedUri=permission.directoryUri;
+    let decoded='';
+    try{decoded=decodeURIComponent(selectedUri).toLowerCase();}catch{decoded=selectedUri.toLowerCase();}
+    if(!decoded.includes(':download')&&!decoded.includes('/download')){
+     Alert.alert('CARPETA INCORRECTA','Seleccioná la carpeta Download para guardar el JSON.');
+     return null;
+    }
+    await AsyncStorage.setItem(EXPORT_DIRECTORY_KEY,selectedUri);
+    return selectedUri;
+   };
    if(directoryUri){
     try{
      fileUri=await FileSystem.StorageAccessFramework.createFileAsync(directoryUri,filename,'application/json');
@@ -190,17 +203,10 @@ async function editCandleQuantity(){const n=Number(candleDraft);if(!Number.isInt
     }
    }
    if(!fileUri){
-    const permission=await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
-    if(!permission.granted){return;}
-    const selectedUri=permission.directoryUri;
-    const decoded=decodeURIComponent(selectedUri).toLowerCase();
-    if(!decoded.includes(':download')&&!decoded.includes('/download')){
-     Alert.alert('CARPETA INCORRECTA','Seleccioná la carpeta Download para guardar el JSON.');
-     return;
-    }
-    await AsyncStorage.setItem(EXPORT_DIRECTORY_KEY,selectedUri);
+    directoryUri=await openDownloadDirectory();
+    if(!directoryUri)return;
     try{
-     fileUri=await FileSystem.StorageAccessFramework.createFileAsync(selectedUri,filename,'application/json');
+     fileUri=await FileSystem.StorageAccessFramework.createFileAsync(directoryUri,filename,'application/json');
     }catch{
      await AsyncStorage.removeItem(EXPORT_DIRECTORY_KEY);
      Alert.alert('ERROR DE CARPETA','No se pudo crear el archivo en Download. Volvé a intentarlo y seleccioná Download.');
