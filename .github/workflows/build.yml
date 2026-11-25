@@ -264,9 +264,9 @@ jobs:
             echo
             if [ -s "$RUNNER_TEMP/typecheck.log" ]; then
               echo "TypeScript output"
-              printf '%s\\n' '```text'
+              printf '%s\n' '```text'
               tail -n 120 "$RUNNER_TEMP/typecheck.log"
-              printf '%s\\n' '```'
+              printf '%s\n' '```'
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
