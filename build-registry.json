@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-26T20:32:51Z",
+  "generated_at": "2026-11-26T20:55:35Z",
   "workflow": "Android Release APK",
   "repository": "Tinchodoko/tinchodoko-ai-assistant",
   "builds": [
@@ -4272,6 +4272,21 @@
           "completed_at": "2026-11-26T20:31:00Z"
         }
       ]
+    },
+    {
+      "run_number": 245,
+      "run_id": 45893510562,
+      "status": "completed",
+      "conclusion": "success",
+      "display_title": "fix(ai): usar API legacy de expo-file-system en chat neuronal",
+      "event": "push",
+      "branch": "main",
+      "sha": "28befe70ef68a876bb95550a28e8ac3dc9024c6b",
+      "created_at": "2026-11-26T20:46:55Z",
+      "updated_at": "2026-11-26T20:53:15Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45893510562",
+      "failed_step": null,
+      "failed_steps": []
     }
   ]
 }
