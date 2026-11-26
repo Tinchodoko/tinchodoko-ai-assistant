@@ -52,6 +52,8 @@ const RELEASES_URL = 'https://github.com/Tinchodoko/tinchodoko-ai-assistant/rele
 const LATEST_RELEASE_API = 'https://api.github.com/repos/Tinchodoko/tinchodoko-ai-assistant/releases/latest';
 const UPDATE_MANIFEST_URL = 'https://raw.githubusercontent.com/Tinchodoko/tinchodoko-ai-assistant/main/update.json';
 type Screen = 'connection' | 'profile' | 'positions' | 'market' | 'history' | 'app';
+type AiProvider = 'groq' | 'gemini' | 'nvidia' | 'cloudflare' | 'openrouter';
+type ExtraProviderCard = { id:string; provider:AiProvider; model:string; question:string; answer:string; busy:boolean };
 type TradeAction = {
   kind: 'edit' | 'close';
   target: 'position' | 'order';
@@ -172,6 +174,9 @@ export default function App() {
   const [openrouterAnswer,setOpenrouterAnswer]=useState('');
   const [openrouterModel,setOpenrouterModel]=useState<string>(DEFAULT_OPENROUTER_MODEL);
   const [openrouterModelMenu,setOpenrouterModelMenu]=useState(false);
+  const [extraProviderCards,setExtraProviderCards]=useState<ExtraProviderCard[]>([]);
+  const [extraProvidersLoaded,setExtraProvidersLoaded]=useState(false);
+  const [providerPickerOpen,setProviderPickerOpen]=useState(false);
   const [,setStreamStatus]=useState<'off'|'connecting'|'connected'|'disconnected'|'error'>('off');
   const [autoRefresh,setAutoRefresh]=useState(false);
   const autoRefreshRef=useRef(false);
@@ -275,6 +280,7 @@ export default function App() {
     SecureStore.getItemAsync('tinchodoko.cloudflare.model').then(raw=>{if(raw && CLOUDFLARE_TEXT_MODELS.some(model=>model.id===raw)) setCloudflareModel(raw);}).catch(()=>{});
     SecureStore.getItemAsync('tinchodoko.openrouter.apiKey').then(raw=>{if(raw){setOpenrouterApiKey(raw);setOpenrouterStatus('online');}}).catch(()=>{});
     SecureStore.getItemAsync('tinchodoko.openrouter.model').then(raw=>{if(raw && OPENROUTER_TEXT_MODELS.some(model=>model.id===raw)) setOpenrouterModel(raw);}).catch(()=>{});
+    SecureStore.getItemAsync('tinchodoko.ai.extraProviders').then(raw=>{try{const saved=JSON.parse(raw??'[]');if(Array.isArray(saved))setExtraProviderCards(saved.filter((item:any)=>item&&typeof item.id==='string'&&['groq','gemini','nvidia','cloudflare','openrouter'].includes(item.provider)&&typeof item.model==='string').map((item:any)=>({id:item.id,provider:item.provider,model:item.model,question:'',answer:'',busy:false})));}catch{}finally{setExtraProvidersLoaded(true);}}).catch(()=>setExtraProvidersLoaded(true));
     SecureStore.getItemAsync('tinchodoko.profile.refreshInterval').then(raw=>{
       if (!raw) return;
       try {
@@ -314,6 +320,8 @@ export default function App() {
     }).catch(()=>{});
     void cleanupInstalledUpdateApks();
   },[]);
+
+  useEffect(()=>{if(!extraProvidersLoaded)return;void SecureStore.setItemAsync('tinchodoko.ai.extraProviders',JSON.stringify(extraProviderCards.map(({id,provider,model})=>({id,provider,model})))).catch(()=>{});},[extraProviderCards,extraProvidersLoaded]);
 
   // Mantiene un único flujo firmado por cuenta y se resincroniza al reconectar.
   useEffect(()=>{
@@ -367,6 +375,78 @@ export default function App() {
     const timer = setInterval(()=>{ void refresh(true); }, intervalMs);
     return ()=>clearInterval(timer);
   },[accessPoint,autoRefresh,appliedIntervalUnit,appliedIntervalValue]);
+
+  function getProviderModels(provider:AiProvider):Array<{id:string;name:string}> {
+    if(provider==='groq') return GROQ_TEXT_MODELS.map(model=>({id:model.id,name:model.name}));
+    if(provider==='gemini') return [{id:GEMINI_MODEL,name:'Gemini 3.5 Flash-Lite'}];
+    if(provider==='nvidia') return NVIDIA_TEXT_MODELS.map(model=>({id:model.id,name:model.name}));
+    if(provider==='cloudflare') return CLOUDFLARE_TEXT_MODELS.map(model=>({id:model.id,name:model.name}));
+    return OPENROUTER_TEXT_MODELS.map(model=>({id:model.id,name:model.name}));
+  }
+  function providerLabel(provider:AiProvider):string {
+    return provider==='groq'?'GROQ':provider==='gemini'?'GEMINI':provider==='nvidia'?'NVIDIA':provider==='cloudflare'?'CLOUDFLARE':'OPENROUTER';
+  }
+  function modelIdentity(provider:AiProvider,modelId:string):string {
+    const model=getProviderModels(provider).find(item=>item.id===modelId);
+    return (model?.name??modelId).toLowerCase().replace(/[^a-z0-9]/g,'');
+  }
+  function selectedModelIdentities(excludeCardId?:string):string[] {
+    const selected:Array<{provider:AiProvider;model:string}>=[
+      {provider:'groq',model:groqModel},{provider:'gemini',model:GEMINI_MODEL},
+      {provider:'nvidia',model:nvidiaModel},{provider:'cloudflare',model:cloudflareModel},
+      {provider:'openrouter',model:openrouterModel},
+      ...extraProviderCards.filter(card=>card.id!==excludeCardId).map(card=>({provider:card.provider,model:card.model})),
+    ];
+    return selected.map(item=>modelIdentity(item.provider,item.model));
+  }
+  function modelUsedByOther(provider:AiProvider,modelId:string,currentModelId:string,excludeCardId?:string):boolean {
+    if(modelId===currentModelId)return false;
+    return selectedModelIdentities(excludeCardId).includes(modelIdentity(provider,modelId));
+  }
+  function providerReady(provider:AiProvider):boolean {
+    if(provider==='groq')return !!groqApiKey.trim()&&groqStatus==='online';
+    if(provider==='gemini')return !!geminiApiKey.trim()&&geminiStatus==='online';
+    if(provider==='nvidia')return !!nvidiaApiKey.trim()&&nvidiaStatus==='online';
+    if(provider==='cloudflare')return !!cloudflareApiToken.trim()&&!!cloudflareAccountId.trim()&&cloudflareStatus==='online';
+    return !!openrouterApiKey.trim()&&openrouterStatus==='online';
+  }
+  function addExtraProvider(provider:AiProvider) {
+    const models=getProviderModels(provider);
+    const used=selectedModelIdentities();
+    const available=models.find(model=>!used.includes(modelIdentity(provider,model.id)));
+    if(!available){Alert.alert('Sin modelos disponibles',`Todos los modelos de ${providerLabel(provider)} ya están seleccionados en otros recuadros.`);return;}
+    const id='provider-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,7);
+    setExtraProviderCards(current=>[...current,{id,provider,model:available.id,question:'',answer:'',busy:false}]);
+    setProviderPickerOpen(false);
+  }
+  function changeExtraProviderModel(cardId:string,modelId:string) {
+    setExtraProviderCards(current=>current.map(card=>{
+      if(card.id!==cardId)return card;
+      if(modelUsedByOther(card.provider,modelId,card.model,card.id)){
+        Alert.alert('Modelo no disponible','Este modelo ya está seleccionado en otro proveedor o recuadro. Cada modelo solo puede utilizarse una vez.');
+        return card;
+      }
+      return {...card,model:modelId,question:'',answer:''};
+    }));
+  }
+  function removeExtraProvider(cardId:string) {setExtraProviderCards(current=>current.filter(card=>card.id!==cardId));}
+  async function testExtraProvider(cardId:string) {
+    const card=extraProviderCards.find(item=>item.id===cardId);
+    if(!card)return;
+    if(!providerReady(card.provider)){Alert.alert('Proveedor no conectado',`Primero conectá ${providerLabel(card.provider)} en su recuadro principal. La tarjeta adicional reutiliza esas mismas credenciales.`);return;}
+    const a=Math.floor(Math.random()*91)+10,b=Math.floor(Math.random()*91)+10;
+    const question=`¿Cuánto es ${a} + ${b}?`;
+    setExtraProviderCards(current=>current.map(item=>item.id===cardId?{...item,busy:true,question,answer:''}:item));
+    try{
+      let answer='';
+      if(card.provider==='groq')answer=await askGroq(groqApiKey,question,card.model);
+      else if(card.provider==='gemini')answer=await askGemini(geminiApiKey,question);
+      else if(card.provider==='nvidia')answer=await askNvidia(nvidiaApiKey,question,card.model);
+      else if(card.provider==='cloudflare')answer=await askCloudflare(cloudflareApiToken,cloudflareAccountId,question,card.model);
+      else answer=await askOpenRouter(openrouterApiKey,question,card.model);
+      setExtraProviderCards(current=>current.map(item=>item.id===cardId?{...item,answer,busy:false}:item));
+    }catch(error){setExtraProviderCards(current=>current.map(item=>item.id===cardId?{...item,answer:error instanceof Error?error.message:String(error),busy:false}:item));}
+  }
 
   async function connectGroq() {
     const key=groqApiKey.trim();
@@ -1176,6 +1256,7 @@ export default function App() {
         <View style={s.modalButtons}><Pressable onPress={()=>setTradeAction(null)} style={s.modalCancel}><Text style={s.modalCancelText}>CANCELAR</Text></Pressable><Pressable onPress={confirmEditInput} style={s.modalConfirm}><Text style={s.modalConfirmText}>CONFIRMAR</Text></Pressable></View>
       </View>
     </View>}
+    {providerPickerOpen && <View style={s.modalBackdrop}><View style={s.modalCard}><Text style={s.modalTitle}>AGREGAR PROVEEDOR</Text><Text style={s.modalSub}>Seleccioná el proveedor para crear un nuevo recuadro. Se reutilizarán sus credenciales guardadas.</Text>{(['groq','gemini','nvidia','cloudflare','openrouter'] as AiProvider[]).map(provider=><Pressable key={provider} onPress={()=>addExtraProvider(provider)} style={s.providerChoice}><Text style={s.menuText}>{providerLabel(provider)}</Text><Text style={s.selectArrow}>＋</Text></Pressable>)}<Pressable onPress={()=>setProviderPickerOpen(false)} style={s.modalCancel}><Text style={s.modalCancelText}>CANCELAR</Text></Pressable></View></View>}
     {tradeConfirm && <View style={s.modalBackdrop}>
       <View style={s.modalCard}>
         {tradeConfirm.kind==='edit' ? <>
@@ -1362,6 +1443,34 @@ export default function App() {
           <Text style={s.aiResultText}>{openrouterAnswer ? ('OPENROUTER - (' + (OPENROUTER_TEXT_MODELS.find(model=>model.id===openrouterModel)?.name ?? openrouterModel) + ')\n' + openrouterAnswer) : '—'}</Text>
         </View>
       </View>
+      {extraProviderCards.map(card=>{
+        const models=getProviderModels(card.provider);
+        const selected=models.find(model=>model.id===card.model);
+        const ready=providerReady(card.provider);
+        return <View key={card.id} style={s.aiCard}>
+          <View style={s.extraProviderHeader}>
+            <Text style={s.aiProvider}>{providerLabel(card.provider)} · PROVEEDOR ADICIONAL</Text>
+            <Pressable onPress={()=>removeExtraProvider(card.id)} style={s.extraProviderRemove}><Text style={s.extraProviderRemoveText}>×</Text></Pressable>
+          </View>
+          <Text style={s.aiLabel}>MODELO</Text>
+          <View style={s.menu}>
+            {models.filter(model=>!modelUsedByOther(card.provider,model.id,card.model,card.id)).map(model=><Pressable key={model.id} onPress={()=>changeExtraProviderModel(card.id,model.id)} style={s.menuItem}>
+              <Text style={[s.menuText,model.id===card.model&&{fontWeight:'900'}]}>{model.id===card.model?'✓  ':''}{model.name}</Text>
+            </Pressable>)}
+          </View>
+          <Text style={ready?s.onlineText:s.offlineText}>Credenciales {providerLabel(card.provider)}: {ready?'disponibles':'no conectadas'}</Text>
+          <Pressable disabled={card.busy||!ready} onPress={()=>void testExtraProvider(card.id)} style={[s.aiTestButton,(card.busy||!ready)&&s.disabled]}>
+            {card.busy?<ActivityIndicator color="#fff"/>:<Text style={s.aiTestButtonText}>TEST</Text>}
+          </Pressable>
+          <View style={s.aiResult}>
+            <Text style={s.aiResultLabel}>PREGUNTA</Text><Text style={s.aiResultText}>{card.question||'—'}</Text>
+            <Text style={s.aiResultLabel}>RESPUESTA</Text><Text style={s.aiResultText}>{card.answer?(`${providerLabel(card.provider)} - (${selected?.name??card.model})\n`+card.answer):'—'}</Text>
+          </View>
+        </View>;
+      })}
+      <Pressable onPress={()=>setProviderPickerOpen(true)} style={s.addProviderButton}>
+        <Text style={s.addProviderText}>AGREGAR PROVEEDOR</Text><Text style={s.addProviderPlus}>＋</Text>
+      </Pressable>
     </ScrollView>  : screen==='profile' ? <ScrollView contentContainerStyle={s.content} onTouchStart={e=>{handleSwipeStart(e);setIntervalMenu(false);}} onTouchEnd={handleSwipeEnd}>
       <Text style={s.h1}>BALANCE</Text>
       <View style={s.card}>
@@ -1588,7 +1697,7 @@ const s=StyleSheet.create({
  card:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:14,padding:17,gap:17},info:{gap:5},infoLabel:{color:'#8f98a8',fontSize:11,fontWeight:'900'},infoValue:{color:'#fff',fontSize:15,fontWeight:'600'},pnlPositive:{color:'#28d17c',fontWeight:'900'},pnlNegative:{color:'#e05252',fontWeight:'900'},pnlZero:{color:'#f0a52b',fontWeight:'900'},
  refresh:{minHeight:48,borderRadius:10,borderWidth:1,borderColor:'#3b4350',alignItems:'center',justifyContent:'center'},refreshText:{color:'#fff',fontWeight:'900'},
  meta:{color:'#8f98a8',fontSize:11,fontWeight:'900'},time:{color:'#fff',fontWeight:'600',marginTop:-9},ap:{color:'#707988',fontSize:11},
-  aiCard:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:14,padding:17,gap:12},aiTitle:{color:'#fff',fontSize:14,fontWeight:'900'},aiProvider:{color:'#f0b429',fontSize:12,fontWeight:'900'},aiLabel:{color:'#8f98a8',fontSize:11,fontWeight:'900'},aiTestButton:{minHeight:48,borderRadius:10,backgroundColor:'#222a38',borderWidth:1,borderColor:'#3b4350',alignItems:'center',justifyContent:'center'},aiTestButtonText:{color:'#fff',fontWeight:'900'},aiResult:{backgroundColor:'#0f131a',borderWidth:1,borderColor:'#303744',borderRadius:10,padding:13,gap:7},aiResultLabel:{color:'#8f98a8',fontSize:10,fontWeight:'900'},aiResultText:{color:'#fff',fontSize:14,lineHeight:20,fontWeight:'600'},
+  aiCard:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:14,padding:17,gap:12},extraProviderHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:8},extraProviderRemove:{width:30,height:30,borderRadius:8,borderWidth:1,borderColor:'#5a3038',alignItems:'center',justifyContent:'center'},extraProviderRemoveText:{color:'#e05252',fontSize:24,fontWeight:'700',lineHeight:25},addProviderButton:{minHeight:58,borderRadius:12,borderWidth:1,borderColor:'#596273',borderStyle:'dashed',backgroundColor:'#151a22',flexDirection:'row',alignItems:'center',justifyContent:'center',gap:12},addProviderText:{color:'#fff',fontWeight:'900',fontSize:13},addProviderPlus:{color:'#28d17c',fontSize:27,fontWeight:'900'},providerChoice:{minHeight:48,borderRadius:9,borderWidth:1,borderColor:'#303744',backgroundColor:'#0f131a',paddingHorizontal:13,flexDirection:'row',alignItems:'center',justifyContent:'space-between'},aiTitle:{color:'#fff',fontSize:14,fontWeight:'900'},aiProvider:{color:'#f0b429',fontSize:12,fontWeight:'900'},aiLabel:{color:'#8f98a8',fontSize:11,fontWeight:'900'},aiTestButton:{minHeight:48,borderRadius:10,backgroundColor:'#222a38',borderWidth:1,borderColor:'#3b4350',alignItems:'center',justifyContent:'center'},aiTestButtonText:{color:'#fff',fontWeight:'900'},aiResult:{backgroundColor:'#0f131a',borderWidth:1,borderColor:'#303744',borderRadius:10,padding:13,gap:7},aiResultLabel:{color:'#8f98a8',fontSize:10,fontWeight:'900'},aiResultText:{color:'#fff',fontSize:14,lineHeight:20,fontWeight:'600'},
  githubButton:{minHeight:54,borderRadius:12,borderWidth:1,borderColor:'#3b4350',paddingHorizontal:16,flexDirection:'row',alignItems:'center',gap:12},githubLogo:{width:24,height:24},githubText:{color:'#fff',fontWeight:'900',flex:1},githubVersion:{color:'#9da6b5',fontWeight:'800'},change:{color:'#dce1e9',fontSize:13,lineHeight:20},buildFilterRow:{flexDirection:'row',gap:8,marginTop:-7},buildFilterButton:{width:44,height:36,borderRadius:9,borderWidth:1,borderColor:'#3b4350',backgroundColor:'#151a22',alignItems:'center',justifyContent:'center',opacity:0.45},buildFilterCancelledOn:{borderColor:'#9da6b5',backgroundColor:'#303744',opacity:1},buildFilterFailedOn:{borderColor:'#e05252',backgroundColor:'#351a1e',opacity:1},buildFilterSuccessOn:{borderColor:'#28d17c',backgroundColor:'#10251b',opacity:1},buildFilterIcon:{fontSize:20,fontWeight:'900',lineHeight:22},buildFilterCancelledText:{color:'#9da6b5'},buildFilterFailedText:{color:'#e05252'},buildFilterSuccessText:{color:'#28d17c'},buildHistory:{width:'100%',gap:9},buildCard:{width:'100%',minWidth:0,flexDirection:'row',alignItems:'flex-start',gap:10,backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:12,padding:13},buildDescription:{flex:1,minWidth:0,flexShrink:1,color:'#dce1e9',fontSize:13,lineHeight:19},buildSuccess:{color:'#28d17c',fontSize:13,fontWeight:'900',minWidth:58},buildFailure:{color:'#e05252',fontSize:13,fontWeight:'900',minWidth:58},buildPending:{color:'#9da6b5',fontSize:13,fontWeight:'900',minWidth:58},
  saveIntervalButton:{minHeight:46,borderRadius:10,borderWidth:1,borderColor:'#3b4350',alignItems:'center',justifyContent:'center',backgroundColor:'#151a22'},saveIntervalText:{color:'#fff',fontWeight:'900',fontSize:12},
  intervalCard:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:14,padding:17,gap:12},intervalHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},clockButton:{width:40,height:40,borderRadius:20,alignItems:'center',justifyContent:'center'},clockOn:{color:'#28d17c',fontSize:25,fontWeight:'900'},clockOff:{color:'#e05252',fontSize:22,fontWeight:'900'},intervalTitle:{color:'#fff',fontSize:14,fontWeight:'800'},select:{minHeight:44,borderWidth:1,borderColor:'#3b4350',borderRadius:9,paddingHorizontal:12,flexDirection:'row',alignItems:'center',justifyContent:'space-between',backgroundColor:'#0f131a'},selectText:{color:'#fff',fontWeight:'700'},selectArrow:{color:'#9da6b5',fontSize:12},menu:{borderWidth:1,borderColor:'#3b4350',borderRadius:9,backgroundColor:'#0f131a',overflow:'hidden'},menuItem:{paddingHorizontal:13,paddingVertical:12},menuText:{color:'#fff',fontWeight:'700'},sliderRow:{flexDirection:'row',alignItems:'center',gap:8},sliderMin:{color:'#9da6b5',fontSize:11,fontWeight:'800'},sliderMax:{color:'#9da6b5',fontSize:11,fontWeight:'800'},sliderTrack:{flex:1,height:32,borderRadius:16,backgroundColor:'transparent',position:'relative',justifyContent:'center'},sliderEnabled:{opacity:1},sliderDisabled:{opacity:0.4},sliderRail:{position:'absolute',left:9,right:9,top:13,height:6,borderRadius:3,backgroundColor:'#303744'},sliderFill:{position:'absolute',left:9,top:13,height:6,borderRadius:3,backgroundColor:'#fff'},sliderThumb:{position:'absolute',top:7,width:18,height:18,borderRadius:9,backgroundColor:'#fff',marginLeft:-9},intervalValue:{color:'#9da6b5',fontSize:11,fontWeight:'700'},
