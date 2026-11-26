@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-26T08:47:49Z",
+  "generated_at": "2026-11-26T08:52:18Z",
   "workflow": "Android Release APK",
   "repository": "Tinchodoko/tinchodoko-ai-assistant",
   "builds": [
@@ -4024,6 +4024,36 @@
       "created_at": "2026-11-26T08:40:58Z",
       "updated_at": "2026-11-26T08:46:12Z",
       "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45785228892",
+      "failed_step": null,
+      "failed_steps": []
+    },
+    {
+      "run_number": 230,
+      "run_id": 45786610139,
+      "status": "completed",
+      "conclusion": "cancelled",
+      "display_title": "feat(ai): agregar cliente OpenRouter",
+      "event": "push",
+      "branch": "main",
+      "sha": "f9f4050e0e6dca52330d04587de13a0bf9073f43",
+      "created_at": "2026-11-26T08:50:43Z",
+      "updated_at": "2026-11-26T08:50:53Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45786610139",
+      "failed_step": null,
+      "failed_steps": []
+    },
+    {
+      "run_number": 231,
+      "run_id": 45786630597,
+      "status": "pending",
+      "conclusion": null,
+      "display_title": "feat(ai): integrar OpenRouter con tres modelos",
+      "event": "push",
+      "branch": "main",
+      "sha": "27b93acdb660eeb6aa56d4579d049981a25398dd",
+      "created_at": "2026-11-26T08:50:51Z",
+      "updated_at": "2026-11-26T08:50:52Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45786630597",
       "failed_step": null,
       "failed_steps": []
     }
