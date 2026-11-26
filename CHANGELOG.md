@@ -1,3 +1,4 @@
+- #V205 — fix(market): move panel expand arrows inside section tabs
 - #V204 — fix(market): escape detail button line breaks
 - #V202 — fix(market): close indicator panel rows correctly
 - #V196 — fix(ci): stash unrelated generated changes before changelog rebase
