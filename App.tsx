@@ -5,6 +5,7 @@ import { loadCredentials, saveCredentials } from './src/storage';
 import { BUILD_INFO } from './src/buildInfo';
 import { BUILD_HISTORY_FALLBACK } from './src/buildHistory';
 import { askGroq, validateGroqApiKey, GROQ_TEXT_MODELS, DEFAULT_GROQ_MODEL } from './src/groq';
+import { askGemini, validateGeminiApiKey, GEMINI_MODEL } from './src/gemini';
 import MarketDataScreen from './src/MarketDataScreen';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as IntentLauncher from 'expo-intent-launcher';
@@ -137,6 +138,12 @@ export default function App() {
   const [groqAnswer,setGroqAnswer]=useState('');
   const [groqModel,setGroqModel]=useState<string>(DEFAULT_GROQ_MODEL);
   const [groqModelMenu,setGroqModelMenu]=useState(false);
+  const [geminiApiKey,setGeminiApiKey]=useState('');
+  const [geminiApiVisible,setGeminiApiVisible]=useState(false);
+  const [geminiStatus,setGeminiStatus]=useState<'offline'|'online'|'connecting'>('offline');
+  const [geminiBusy,setGeminiBusy]=useState(false);
+  const [geminiQuestion,setGeminiQuestion]=useState('');
+  const [geminiAnswer,setGeminiAnswer]=useState('');
   const [,setStreamStatus]=useState<'off'|'connecting'|'connected'|'disconnected'|'error'>('off');
   const [autoRefresh,setAutoRefresh]=useState(false);
   const autoRefreshRef=useRef(false);
@@ -232,6 +239,7 @@ export default function App() {
     SecureStore.getItemAsync('tinchodoko.groq.model').then(raw=>{
       if (raw && GROQ_TEXT_MODELS.some(model=>model.id===raw)) setGroqModel(raw);
     }).catch(()=>{});
+    SecureStore.getItemAsync('tinchodoko.gemini.apiKey').then(raw=>{if(raw){setGeminiApiKey(raw);setGeminiStatus('online');}}).catch(()=>{});
     SecureStore.getItemAsync('tinchodoko.profile.refreshInterval').then(raw=>{
       if (!raw) return;
       try {
@@ -363,6 +371,42 @@ export default function App() {
       setGroqStatus('offline'); setGroqAnswer(e instanceof Error?e.message:String(e));
     } finally { setGroqBusy(false); }
   }
+
+  async function connectGemini() {
+    const key=geminiApiKey.trim();
+    if (!key) { Alert.alert('GEMINI','Ingresá una API KEY de Gemini.'); return; }
+    setGeminiBusy(true); setGeminiStatus('connecting');
+    try {
+      await validateGeminiApiKey(key);
+      await SecureStore.setItemAsync('tinchodoko.gemini.apiKey',key);
+      setGeminiStatus('online'); setGeminiAnswer(''); setGeminiQuestion('');
+      Alert.alert('Gemini','Conexión establecida correctamente.');
+    } catch(e) {
+      setGeminiStatus('offline');
+      Alert.alert('Conexión Gemini fallida',e instanceof Error?e.message:String(e));
+    } finally { setGeminiBusy(false); }
+  }
+
+  function generateGeminiMathQuestion(): string {
+    const a=Math.floor(Math.random()*91)+10;
+    const b=Math.floor(Math.random()*91)+10;
+    return `¿Cuánto es ${a} + ${b}?`;
+  }
+
+  async function testGemini() {
+    const key=geminiApiKey.trim();
+    if (!key) { Alert.alert('GEMINI','Primero ingresá y conectá una API KEY.'); return; }
+    setGeminiBusy(true);
+    try {
+      const question=generateGeminiMathQuestion();
+      setGeminiQuestion(question); setGeminiAnswer('');
+      const answer=await askGemini(key,question);
+      setGeminiAnswer(answer); setGeminiStatus('online');
+    } catch(e) {
+      setGeminiStatus('offline'); setGeminiAnswer(e instanceof Error?e.message:String(e));
+    } finally { setGeminiBusy(false); }
+  }
+
 
   async function connect() {
     setBusy(true); setStatus('connecting');
@@ -1036,6 +1080,31 @@ export default function App() {
           <Text style={s.aiResultText}>{groqQuestion||'—'}</Text>
           <Text style={s.aiResultLabel}>RESPUESTA</Text>
           <Text style={s.aiResultText}>{groqAnswer ? ('GROQ - (' + (GROQ_TEXT_MODELS.find(model=>model.id===groqModel)?.name ?? groqModel) + ')\n' + groqAnswer) : '—'}</Text>
+        </View>
+      </View>
+
+      <View style={s.aiCard}>
+        <Text style={s.aiTitle}>CLAVES DE CONEXIÓN DE IA</Text>
+        <Text style={s.aiProvider}>GEMINI</Text>
+        <Text style={s.aiLabel}>API KEY</Text>
+        <View style={s.row}>
+          <TextInput style={s.input} value={geminiApiKey} onChangeText={value=>{setGeminiApiKey(value);if(geminiStatus==='online')setGeminiStatus('offline');}} autoCapitalize="none" autoCorrect={false} secureTextEntry={!geminiApiVisible} placeholder="Ingresá tu API KEY de Gemini" placeholderTextColor="#6f7785"/>
+          <Pressable style={s.eye} onPress={()=>setGeminiApiVisible(v=>!v)}><Text>{geminiApiVisible?'🙈':'👁️'}</Text></Pressable>
+        </View>
+        <Pressable disabled={geminiBusy} onPress={()=>void connectGemini()} style={[s.button,geminiBusy&&s.disabled]}>
+          {geminiBusy&&geminiStatus==='connecting'?<ActivityIndicator/>:<Text style={s.buttonText}>CONECTAR</Text>}
+        </Pressable>
+        <Text style={s.aiLabel}>MODELO</Text>
+        <View style={s.select}><Text style={s.selectText}>Gemini 3.5 Flash-Lite</Text><Text style={s.selectArrow}>•</Text></View>
+        <Text style={geminiStatus==='online'?s.onlineText:s.offlineText}>Estado Gemini: {geminiStatus}</Text>
+        <Pressable disabled={geminiBusy||geminiStatus!=='online'} onPress={()=>void testGemini()} style={[s.aiTestButton,(geminiBusy||geminiStatus!=='online')&&s.disabled]}>
+          {geminiBusy&&geminiStatus==='online'?<ActivityIndicator color="#fff"/>:<Text style={s.aiTestButtonText}>TEST</Text>}
+        </Pressable>
+        <View style={s.aiResult}>
+          <Text style={s.aiResultLabel}>PREGUNTA</Text>
+          <Text style={s.aiResultText}>{geminiQuestion||'—'}</Text>
+          <Text style={s.aiResultLabel}>RESPUESTA</Text>
+          <Text style={s.aiResultText}>{geminiAnswer ? ('GEMINI - (' + GEMINI_MODEL + ')\n' + geminiAnswer) : '—'}</Text>
         </View>
       </View>
     </ScrollView>  : screen==='profile' ? <ScrollView contentContainerStyle={s.content} onTouchStart={e=>{handleSwipeStart(e);setIntervalMenu(false);}} onTouchEnd={handleSwipeEnd}>
