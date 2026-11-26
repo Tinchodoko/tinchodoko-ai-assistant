@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-26T02:32:36Z",
+  "generated_at": "2026-11-26T04:34:49Z",
   "workflow": "Android Release APK",
   "repository": "Tinchodoko/tinchodoko-ai-assistant",
   "builds": [
@@ -3706,6 +3706,28 @@
       "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45742117562",
       "failed_step": null,
       "failed_steps": []
+    },
+    {
+      "run_number": 211,
+      "run_id": 45755822264,
+      "status": "completed",
+      "conclusion": "failure",
+      "display_title": "Unificar exportación JSON de velas e indicadores",
+      "event": "push",
+      "branch": "main",
+      "sha": "757d0984874d788b41910712db05635c39303c86",
+      "created_at": "2026-11-26T04:32:09Z",
+      "updated_at": "2026-11-26T04:32:55Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45755822264",
+      "failed_step": "TypeScript check",
+      "failed_steps": [
+        {
+          "job": "build",
+          "step": "TypeScript check",
+          "started_at": "2026-11-26T04:32:47Z",
+          "completed_at": "2026-11-26T04:32:49Z"
+        }
+      ]
     }
   ]
 }
