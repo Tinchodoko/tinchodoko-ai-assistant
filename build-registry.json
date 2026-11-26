@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-26T09:03:02Z",
+  "generated_at": "2026-11-26T09:14:56Z",
   "workflow": "Android Release APK",
   "repository": "Tinchodoko/tinchodoko-ai-assistant",
   "builds": [
@@ -4054,6 +4054,51 @@
       "created_at": "2026-11-26T08:50:51Z",
       "updated_at": "2026-11-26T09:01:17Z",
       "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45786630597",
+      "failed_step": null,
+      "failed_steps": []
+    },
+    {
+      "run_number": 232,
+      "run_id": 45789913877,
+      "status": "in_progress",
+      "conclusion": null,
+      "display_title": "fix(ai): corregir respuestas Nemotron Super y Lightning",
+      "event": "push",
+      "branch": "main",
+      "sha": "9c8536a2b1dcc18bf31de58204c4800481565e52",
+      "created_at": "2026-11-26T09:13:07Z",
+      "updated_at": "2026-11-26T09:13:10Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45789913877",
+      "failed_step": null,
+      "failed_steps": []
+    },
+    {
+      "run_number": 233,
+      "run_id": 45789919169,
+      "status": "completed",
+      "conclusion": "cancelled",
+      "display_title": "fix(ai): desactivar thinking y robustecer respuesta Gemma Cloudflare",
+      "event": "push",
+      "branch": "main",
+      "sha": "7c64e46e5a566a8295925b9686d8db9adb203a1b",
+      "created_at": "2026-11-26T09:13:09Z",
+      "updated_at": "2026-11-26T09:13:12Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45789919169",
+      "failed_step": null,
+      "failed_steps": []
+    },
+    {
+      "run_number": 234,
+      "run_id": 45789924487,
+      "status": "pending",
+      "conclusion": null,
+      "display_title": "fix(ai): agregar fallback y reintentos OpenRouter",
+      "event": "push",
+      "branch": "main",
+      "sha": "8403abd2da5e54612fb8a57902e63abb0dcb88e6",
+      "created_at": "2026-11-26T09:13:11Z",
+      "updated_at": "2026-11-26T09:13:12Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45789924487",
       "failed_step": null,
       "failed_steps": []
     }
