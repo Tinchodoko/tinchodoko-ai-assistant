@@ -238,39 +238,50 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add CHANGELOG.md update.json
-          if git diff --cached --quiet; then
-            echo "No changelog/update changes to commit."
-            exit 0
-          fi
-          git commit -m "chore(build): record #V${BUILD_NUMBER} [skip ci]"
-          # The build-registry workflow may update another file in the working tree
-          # while this build is running. Keep those unrelated local changes out of
-          # the changelog commit and temporarily stash them before rebasing.
-          if ! git diff --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
-            git stash push --include-untracked -m "build-${BUILD_NUMBER}-unrelated-local-changes"
-          fi
 
-
-          # A completed-build registry can update main concurrently with this step.
-          # Rebase our generated changelog commit onto the newest main before pushing.
+          # Build Registry can update main concurrently. Do not rebase the generated
+          # changelog commit, because both workflows may legitimately modify the
+          # same CHANGELOG.md/update.json files. Instead, start each push attempt
+          # from the latest main and regenerate only this build's files on top of it.
           for attempt in 1 2 3 4 5; do
             git fetch origin main
-            if git rebase origin/main; then
-              if git push origin HEAD:main; then
-                echo "Changelog pushed successfully on attempt ${attempt}."
-                exit 0
-              fi
-            else
-              echo "::warning::Rebase failed on attempt ${attempt}; aborting rebase."
-              git rebase --abort || true
+            git reset --hard origin/main
+
+            printf '%s\\n' "- #V${BUILD_NUMBER} — ${BUILD_CHANGE}" > CHANGELOG.new
+            cat CHANGELOG.md >> CHANGELOG.new
+            mv CHANGELOG.new CHANGELOG.md
+
+            python3 - <<'PY'
+          from pathlib import Path
+          import json, os
+          build = int(os.environ["BUILD_NUMBER"])
+          manifest = {
+              "build": build,
+              "tag": f"v{build}",
+              "apk_url": f"https://github.com/Tinchodoko/tinchodoko-ai-assistant/releases/download/v{build}/app-release.apk"
+          }
+          Path("update.json").write_text(json.dumps(manifest, indent=2) + "\\n", encoding="utf-8")
+          PY
+
+            git add CHANGELOG.md update.json
+            if git diff --cached --quiet; then
+              echo "No changelog/update changes to commit."
+              exit 0
             fi
+
+            git commit -m "chore(build): record #V${BUILD_NUMBER} [skip ci]"
+
+            if git push origin HEAD:main; then
+              echo "Changelog pushed successfully on attempt ${attempt}."
+              exit 0
+            fi
+
+            echo "::warning::Push rejected on attempt ${attempt}; another workflow updated main. Retrying from the latest main."
             sleep $((attempt * 2))
           done
 
           echo "::error::Could not push the successful-build changelog after 5 attempts."
           exit 1
-
 
       - name: Build diagnostics summary
         if: always()
