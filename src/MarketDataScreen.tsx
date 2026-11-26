@@ -178,7 +178,7 @@ async function editCandleQuantity(){const n=Number(candleDraft);if(!Number.isInt
    const indicatorRaw=await AsyncStorage.getItem(indicatorDatasetKey(credentials.accountId,item.symbol,item.timeframe,item.id));
    const rows=indicatorRaw?((JSON.parse(indicatorRaw)?.rows??[]) as IndicatorRow[]):calculateIndicatorSeries(candles,indicatorConfig);
    const indicatorByTime=new Map(rows.map(row=>[row.time,row]));
-   const unifiedCandles=candles.map(candle=>{
+   const unifiedCandles=candles.map((candle:MarketCandle)=>{
     const row=indicatorByTime.get(candle.time);
     return {
      time:candle.time,
