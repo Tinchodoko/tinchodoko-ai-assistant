@@ -32,7 +32,7 @@ const initials=(p:AiProvider)=>providerLabel(p)[0];
 const statusColor=(status:NeuralProvider['status'],active:boolean)=>!active?'#6d7480':status==='online'?'#28d17c':status==='error'?'#e05252':status==='connecting'?'#f0a429':'#6d7480';
 
 function safeDate(value?:string|number){if(value===undefined||value===null)return '—';const d=new Date(value);return Number.isFinite(d.getTime())?d.toLocaleString('es-AR',{dateStyle:'short',timeStyle:'medium'}):'—';}
-function configSummary(config:any):string[]{const out:string[]=[];for(const [key,value] of Object.entries(config??{})){if(value&&typeof value==='object'){const period=(value as any).period ?? (value as any).length ?? (value as any).window;if(period!==undefined)out.push(`${key} calculado en ${period} periodos`);}}return out;}
+function configSummary(config:any):string[]{const out:string[]=[];const labels:Record<string,string>={rsi:'RSI',atr:'ATR',ema20:'EMA20',ema50:'EMA50',adx:'ADX',macd:'MACD',bollinger:'Bollinger',zScore:'Z-score'};for(const [key,value] of Object.entries(config??{})){if(!value||typeof value!=='object')continue;const v=value as any;if(key==='macd'){out.push(`MACD calculado en ${v.fast}/${v.slow}/${v.signal} periodos`);continue;}if(key==='bollinger'){out.push(`Bollinger calculado en ${v.period} periodos, desviación ${v.deviation}`);continue;}if(v.period!==undefined)out.push(`${labels[key]??key} calculado en ${v.period} periodos`);}return out;}
 
 export default function NeuralScreen({providers,runner,accountId}:{providers:NeuralProvider[];runner:NeuralRunner;accountId:string}){
  const [instructions,setInstructions]=useState(DEFAULT_INSTRUCTIONS);
