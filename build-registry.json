@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-26T01:51:09Z",
+  "generated_at": "2026-11-26T02:14:20Z",
   "workflow": "Android Release APK",
   "repository": "Tinchodoko/tinchodoko-ai-assistant",
   "builds": [
@@ -3652,6 +3652,36 @@
       "created_at": "2026-11-26T01:41:34Z",
       "updated_at": "2026-11-26T01:49:21Z",
       "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45737464095",
+      "failed_step": null,
+      "failed_steps": []
+    },
+    {
+      "run_number": 208,
+      "run_id": 45740162985,
+      "status": "completed",
+      "conclusion": "success",
+      "display_title": "fix(indicators): calculate ADX on every candle after warmup",
+      "event": "push",
+      "branch": "main",
+      "sha": "6174daf0032573d32e288c4c7e2359be78338b15",
+      "created_at": "2026-11-26T02:06:12Z",
+      "updated_at": "2026-11-26T02:12:34Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45740162985",
+      "failed_step": null,
+      "failed_steps": []
+    },
+    {
+      "run_number": 209,
+      "run_id": 45740167790,
+      "status": "in_progress",
+      "conclusion": null,
+      "display_title": "fix(market): align indicator crosshair and import section arrow",
+      "event": "push",
+      "branch": "main",
+      "sha": "96a8d74551c20cb7638621baf4270439e535e2b9",
+      "created_at": "2026-11-26T02:06:14Z",
+      "updated_at": "2026-11-26T02:12:37Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45740167790",
       "failed_step": null,
       "failed_steps": []
     }
