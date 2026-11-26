@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-26T06:30:58Z",
+  "generated_at": "2026-11-26T07:02:10Z",
   "workflow": "Android Release APK",
   "repository": "Tinchodoko/tinchodoko-ai-assistant",
   "builds": [
@@ -3808,6 +3808,36 @@
       "created_at": "2026-11-26T06:22:21Z",
       "updated_at": "2026-11-26T06:29:07Z",
       "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45767729946",
+      "failed_step": null,
+      "failed_steps": []
+    },
+    {
+      "run_number": 217,
+      "run_id": 45771583324,
+      "status": "completed",
+      "conclusion": "cancelled",
+      "display_title": "feat(ai): agregar cliente inicial para Groq",
+      "event": "push",
+      "branch": "main",
+      "sha": "b5a06e00e45795ddba57c4ace6b87bd3212273c9",
+      "created_at": "2026-11-26T06:55:32Z",
+      "updated_at": "2026-11-26T07:00:46Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45771583324",
+      "failed_step": null,
+      "failed_steps": []
+    },
+    {
+      "run_number": 218,
+      "run_id": 45771629835,
+      "status": "in_progress",
+      "conclusion": null,
+      "display_title": "feat(ai): integrar configuración y prueba de Groq en Conexión",
+      "event": "push",
+      "branch": "main",
+      "sha": "5267baab8bdd6b8e9de31e05e56630951a98157b",
+      "created_at": "2026-11-26T06:55:57Z",
+      "updated_at": "2026-11-26T07:00:48Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45771629835",
       "failed_step": null,
       "failed_steps": []
     }
