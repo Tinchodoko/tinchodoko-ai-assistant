@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-26T02:14:20Z",
+  "generated_at": "2026-11-26T02:20:24Z",
   "workflow": "Android Release APK",
   "repository": "Tinchodoko/tinchodoko-ai-assistant",
   "builds": [
@@ -3673,17 +3673,24 @@
     {
       "run_number": 209,
       "run_id": 45740167790,
-      "status": "in_progress",
-      "conclusion": null,
+      "status": "completed",
+      "conclusion": "failure",
       "display_title": "fix(market): align indicator crosshair and import section arrow",
       "event": "push",
       "branch": "main",
       "sha": "96a8d74551c20cb7638621baf4270439e535e2b9",
       "created_at": "2026-11-26T02:06:14Z",
-      "updated_at": "2026-11-26T02:12:37Z",
+      "updated_at": "2026-11-26T02:18:53Z",
       "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45740167790",
-      "failed_step": null,
-      "failed_steps": []
+      "failed_step": "Commit successful build changelog",
+      "failed_steps": [
+        {
+          "job": "build",
+          "step": "Commit successful build changelog",
+          "started_at": "2026-11-26T02:18:19Z",
+          "completed_at": "2026-11-26T02:18:50Z"
+        }
+      ]
     }
   ]
 }
