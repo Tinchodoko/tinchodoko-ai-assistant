@@ -4,7 +4,7 @@ import { connectToExness, getAccountSnapshot, getTradingHistory, openExnessAccou
 import { loadCredentials, saveCredentials } from './src/storage';
 import { BUILD_INFO } from './src/buildInfo';
 import { BUILD_HISTORY_FALLBACK } from './src/buildHistory';
-import { askGroq, validateGroqApiKey } from './src/groq';
+import { askGroq, validateGroqApiKey, GROQ_TEXT_MODELS, DEFAULT_GROQ_MODEL } from './src/groq';
 import MarketDataScreen from './src/MarketDataScreen';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as IntentLauncher from 'expo-intent-launcher';
@@ -135,6 +135,8 @@ export default function App() {
   const [groqBusy,setGroqBusy]=useState(false);
   const [groqQuestion,setGroqQuestion]=useState('');
   const [groqAnswer,setGroqAnswer]=useState('');
+  const [groqModel,setGroqModel]=useState(DEFAULT_GROQ_MODEL);
+  const [groqModelMenu,setGroqModelMenu]=useState(false);
   const [,setStreamStatus]=useState<'off'|'connecting'|'connected'|'disconnected'|'error'>('off');
   const [autoRefresh,setAutoRefresh]=useState(false);
   const autoRefreshRef=useRef(false);
@@ -227,6 +229,9 @@ export default function App() {
     }
     loadCredentials().then(x=>x&&setC(x));
     SecureStore.getItemAsync('tinchodoko.groq.apiKey').then(raw=>{if(raw){setGroqApiKey(raw);setGroqStatus('online');}}).catch(()=>{});
+    SecureStore.getItemAsync('tinchodoko.groq.model').then(raw=>{
+      if (raw && GROQ_TEXT_MODELS.some(model=>model.id===raw)) setGroqModel(raw);
+    }).catch(()=>{});
     SecureStore.getItemAsync('tinchodoko.profile.refreshInterval').then(raw=>{
       if (!raw) return;
       try {
@@ -325,8 +330,12 @@ export default function App() {
     if (!key) { Alert.alert('GROQ','Ingresá una API KEY de Groq.'); return; }
     setGroqBusy(true); setGroqStatus('connecting');
     try {
-      await validateGroqApiKey(key);
+      const availableModels=await validateGroqApiKey(key);
+      const selectedAvailable=availableModels.includes(groqModel);
+      const nextModel=selectedAvailable ? groqModel : (availableModels.find(id=>GROQ_TEXT_MODELS.some(model=>model.id===id)) ?? DEFAULT_GROQ_MODEL);
+      setGroqModel(nextModel);
       await SecureStore.setItemAsync('tinchodoko.groq.apiKey',key);
+      await SecureStore.setItemAsync('tinchodoko.groq.model',nextModel);
       setGroqStatus('online'); setGroqAnswer(''); setGroqQuestion('');
       Alert.alert('Groq','Conexión establecida correctamente.');
     } catch(e) {
@@ -348,7 +357,7 @@ export default function App() {
     try {
       const question=generateGroqMathQuestion();
       setGroqQuestion(question); setGroqAnswer('');
-      const answer=await askGroq(key,question);
+      const answer=await askGroq(key,question,groqModel);
       setGroqAnswer(answer); setGroqStatus('online');
     } catch(e) {
       setGroqStatus('offline'); setGroqAnswer(e instanceof Error?e.message:String(e));
@@ -1008,6 +1017,16 @@ export default function App() {
         <Pressable disabled={groqBusy} onPress={()=>void connectGroq()} style={[s.button,groqBusy&&s.disabled]}>
           {groqBusy&&groqStatus==='connecting'?<ActivityIndicator/>:<Text style={s.buttonText}>CONECTAR</Text>}
         </Pressable>
+        <Text style={s.aiLabel}>MODELO</Text>
+        <Pressable disabled={groqBusy} onPress={()=>setGroqModelMenu(v=>!v)} style={s.select}>
+          <Text style={s.selectText}>{GROQ_TEXT_MODELS.find(model=>model.id===groqModel)?.name ?? groqModel}</Text>
+          <Text style={s.selectArrow}>{groqModelMenu?'▲':'▼'}</Text>
+        </Pressable>
+        {groqModelMenu&&<View style={s.menu}>
+          {GROQ_TEXT_MODELS.map(model=><Pressable key={model.id} onPress={()=>{setGroqModel(model.id);setGroqModelMenu(false);SecureStore.setItemAsync('tinchodoko.groq.model',model.id).catch(()=>{});}} style={s.menuItem}>
+            <Text style={[s.menuText,model.id===groqModel&&{fontWeight:'900'}]}>{model.name}</Text>
+          </Pressable>)}
+        </View>}
         <Text style={groqStatus==='online'?s.onlineText:s.offlineText}>Estado Groq: {groqStatus}</Text>
         <Pressable disabled={groqBusy||groqStatus!=='online'} onPress={()=>void testGroq()} style={[s.aiTestButton,(groqBusy||groqStatus!=='online')&&s.disabled]}>
           {groqBusy&&groqStatus==='online'?<ActivityIndicator color="#fff"/>:<Text style={s.aiTestButtonText}>TEST</Text>}
@@ -1015,8 +1034,8 @@ export default function App() {
         <View style={s.aiResult}>
           <Text style={s.aiResultLabel}>PREGUNTA</Text>
           <Text style={s.aiResultText}>{groqQuestion||'—'}</Text>
-          <Text style={s.aiResultLabel}>RESPUESTA DE GROQ</Text>
-          <Text style={s.aiResultText}>{groqAnswer||'—'}</Text>
+          <Text style={s.aiResultLabel}>RESPUESTA</Text>
+          <Text style={s.aiResultText}>{groqAnswer ? ('GROQ - (' + (GROQ_TEXT_MODELS.find(model=>model.id===groqModel)?.name ?? groqModel) + ')\n' + groqAnswer) : '—'}</Text>
         </View>
       </View>
     </ScrollView>  : screen==='profile' ? <ScrollView contentContainerStyle={s.content} onTouchStart={e=>{handleSwipeStart(e);setIntervalMenu(false);}} onTouchEnd={handleSwipeEnd}>
