@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-26T00:45:43Z",
+  "generated_at": "2026-11-26T01:10:59Z",
   "workflow": "Android Release APK",
   "repository": "Tinchodoko/tinchodoko-ai-assistant",
   "builds": [
@@ -3587,6 +3587,21 @@
           "completed_at": "2026-11-26T00:44:13Z"
         }
       ]
+    },
+    {
+      "run_number": 204,
+      "run_id": 45732875108,
+      "status": "completed",
+      "conclusion": "success",
+      "display_title": "fix(market): escape detail button line breaks",
+      "event": "push",
+      "branch": "main",
+      "sha": "fe18900f4f895f6cba91e264067c00f871610af1",
+      "created_at": "2026-11-26T01:01:35Z",
+      "updated_at": "2026-11-26T01:09:11Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45732875108",
+      "failed_step": null,
+      "failed_steps": []
     }
   ]
 }
