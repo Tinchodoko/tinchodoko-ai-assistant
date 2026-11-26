@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-26T07:32:04Z",
+  "generated_at": "2026-11-26T07:44:32Z",
   "workflow": "Android Release APK",
   "repository": "Tinchodoko/tinchodoko-ai-assistant",
   "builds": [
@@ -3890,6 +3890,43 @@
       "created_at": "2026-11-26T07:24:49Z",
       "updated_at": "2026-11-26T07:30:41Z",
       "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45775119751",
+      "failed_step": null,
+      "failed_steps": []
+    },
+    {
+      "run_number": 222,
+      "run_id": 45777295018,
+      "status": "completed",
+      "conclusion": "failure",
+      "display_title": "feat(ai): agregar conexión y test de Gemini",
+      "event": "push",
+      "branch": "main",
+      "sha": "9b89b0f71f6c7ff6e07795b776ee0f7f54840f3d",
+      "created_at": "2026-11-26T07:42:13Z",
+      "updated_at": "2026-11-26T07:42:59Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45777295018",
+      "failed_step": "TypeScript check",
+      "failed_steps": [
+        {
+          "job": "build",
+          "step": "TypeScript check",
+          "started_at": "2026-11-26T07:42:50Z",
+          "completed_at": "2026-11-26T07:42:54Z"
+        }
+      ]
+    },
+    {
+      "run_number": 223,
+      "run_id": 45777307533,
+      "status": "in_progress",
+      "conclusion": null,
+      "display_title": "feat(ai): integrar Gemini 3.5 Flash-Lite",
+      "event": "push",
+      "branch": "main",
+      "sha": "69d62a39f13aaf16cccf68217788e597d672adfb",
+      "created_at": "2026-11-26T07:42:20Z",
+      "updated_at": "2026-11-26T07:43:02Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45777307533",
       "failed_step": null,
       "failed_steps": []
     }
