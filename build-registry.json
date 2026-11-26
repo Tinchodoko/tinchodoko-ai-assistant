@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-26T07:10:06Z",
+  "generated_at": "2026-11-26T07:24:32Z",
   "workflow": "Android Release APK",
   "repository": "Tinchodoko/tinchodoko-ai-assistant",
   "builds": [
@@ -3838,6 +3838,36 @@
       "created_at": "2026-11-26T06:55:57Z",
       "updated_at": "2026-11-26T07:08:38Z",
       "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45771629835",
+      "failed_step": null,
+      "failed_steps": []
+    },
+    {
+      "run_number": 219,
+      "run_id": 45774681318,
+      "status": "completed",
+      "conclusion": "cancelled",
+      "display_title": "feat(ai): actualizar modelos Groq disponibles",
+      "event": "push",
+      "branch": "main",
+      "sha": "c896f5052b7930b00306d0fa0c07ae00b775cf2b",
+      "created_at": "2026-11-26T07:21:18Z",
+      "updated_at": "2026-11-26T07:22:41Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45774681318",
+      "failed_step": null,
+      "failed_steps": []
+    },
+    {
+      "run_number": 220,
+      "run_id": 45774685852,
+      "status": "in_progress",
+      "conclusion": null,
+      "display_title": "feat(ai): selector de modelo Groq y formato de respuesta",
+      "event": "push",
+      "branch": "main",
+      "sha": "c5abd700eb8cab4532f47e0cc1e7fc3af0512b1c",
+      "created_at": "2026-11-26T07:21:20Z",
+      "updated_at": "2026-11-26T07:22:44Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45774685852",
       "failed_step": null,
       "failed_steps": []
     }
