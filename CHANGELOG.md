@@ -1,3 +1,4 @@
+- #V208 — fix(indicators): calculate ADX on every candle after warmup
 - #V207 — fix(market): repair chart axis interpolation and right-side values
 - #V205 — fix(market): move panel expand arrows inside section tabs
 - #V204 — fix(market): escape detail button line breaks
