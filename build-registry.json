@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-26T09:32:52Z",
+  "generated_at": "2026-11-26T10:19:06Z",
   "workflow": "Android Release APK",
   "repository": "Tinchodoko/tinchodoko-ai-assistant",
   "builds": [
@@ -4129,6 +4129,21 @@
       "created_at": "2026-11-26T09:23:03Z",
       "updated_at": "2026-11-26T09:31:17Z",
       "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45791450129",
+      "failed_step": null,
+      "failed_steps": []
+    },
+    {
+      "run_number": 237,
+      "run_id": 45798691820,
+      "status": "completed",
+      "conclusion": "success",
+      "display_title": "feat(ai): gestionar proveedores agregados y claves API",
+      "event": "push",
+      "branch": "main",
+      "sha": "e3d81bbf8a4a57667c69f6ac84c02c966c62e72e",
+      "created_at": "2026-11-26T10:09:37Z",
+      "updated_at": "2026-11-26T10:17:12Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45798691820",
       "failed_step": null,
       "failed_steps": []
     }
