@@ -7,6 +7,7 @@ import { BUILD_HISTORY_FALLBACK } from './src/buildHistory';
 import { askGroq, validateGroqApiKey, GROQ_TEXT_MODELS, DEFAULT_GROQ_MODEL } from './src/groq';
 import { askGemini, validateGeminiApiKey, GEMINI_MODEL } from './src/gemini';
 import { askNvidia, validateNvidiaApiKey, NVIDIA_TEXT_MODELS, DEFAULT_NVIDIA_MODEL } from './src/nvidia';
+import { askCloudflare, validateCloudflareCredentials, CLOUDFLARE_TEXT_MODELS, DEFAULT_CLOUDFLARE_MODEL } from './src/cloudflare';
 import MarketDataScreen from './src/MarketDataScreen';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as IntentLauncher from 'expo-intent-launcher';
@@ -153,6 +154,15 @@ export default function App() {
   const [nvidiaAnswer,setNvidiaAnswer]=useState('');
   const [nvidiaModel,setNvidiaModel]=useState<string>(DEFAULT_NVIDIA_MODEL);
   const [nvidiaModelMenu,setNvidiaModelMenu]=useState(false);
+  const [cloudflareApiToken,setCloudflareApiToken]=useState('');
+  const [cloudflareAccountId,setCloudflareAccountId]=useState('');
+  const [cloudflareApiVisible,setCloudflareApiVisible]=useState(false);
+  const [cloudflareStatus,setCloudflareStatus]=useState<'offline'|'online'|'connecting'>('offline');
+  const [cloudflareBusy,setCloudflareBusy]=useState(false);
+  const [cloudflareQuestion,setCloudflareQuestion]=useState('');
+  const [cloudflareAnswer,setCloudflareAnswer]=useState('');
+  const [cloudflareModel,setCloudflareModel]=useState<string>(DEFAULT_CLOUDFLARE_MODEL);
+  const [cloudflareModelMenu,setCloudflareModelMenu]=useState(false);
   const [,setStreamStatus]=useState<'off'|'connecting'|'connected'|'disconnected'|'error'>('off');
   const [autoRefresh,setAutoRefresh]=useState(false);
   const autoRefreshRef=useRef(false);
@@ -251,6 +261,9 @@ export default function App() {
     SecureStore.getItemAsync('tinchodoko.gemini.apiKey').then(raw=>{if(raw){setGeminiApiKey(raw);setGeminiStatus('online');}}).catch(()=>{});
     SecureStore.getItemAsync('tinchodoko.nvidia.apiKey').then(raw=>{if(raw){setNvidiaApiKey(raw);setNvidiaStatus('online');}}).catch(()=>{});
     SecureStore.getItemAsync('tinchodoko.nvidia.model').then(raw=>{if(raw && NVIDIA_TEXT_MODELS.some(model=>model.id===raw)) setNvidiaModel(raw);}).catch(()=>{});
+    SecureStore.getItemAsync('tinchodoko.cloudflare.apiToken').then(raw=>{if(raw){setCloudflareApiToken(raw);setCloudflareStatus('online');}}).catch(()=>{});
+    SecureStore.getItemAsync('tinchodoko.cloudflare.accountId').then(raw=>{if(raw)setCloudflareAccountId(raw);}).catch(()=>{});
+    SecureStore.getItemAsync('tinchodoko.cloudflare.model').then(raw=>{if(raw && CLOUDFLARE_TEXT_MODELS.some(model=>model.id===raw)) setCloudflareModel(raw);}).catch(()=>{});
     SecureStore.getItemAsync('tinchodoko.profile.refreshInterval').then(raw=>{
       if (!raw) return;
       try {
@@ -456,6 +469,57 @@ export default function App() {
     } catch(e) {
       setNvidiaStatus('offline'); setNvidiaAnswer(e instanceof Error?e.message:String(e));
     } finally { setNvidiaBusy(false); }
+  }
+
+  async function connectCloudflare() {
+    const token=cloudflareApiToken.trim();
+    const accountId=cloudflareAccountId.trim();
+    if (!token) { Alert.alert('CLOUDFLARE','Ingresá el API TOKEN de Cloudflare.'); return; }
+    if (!/^[a-f0-9]{32}$/i.test(accountId)) { Alert.alert('CLOUDFLARE','Ingresá un ACCOUNT ID válido de 32 caracteres hexadecimales.'); return; }
+    setCloudflareBusy(true); setCloudflareStatus('connecting');
+    try {
+      await validateCloudflareCredentials(token,accountId);
+      await SecureStore.setItemAsync('tinchodoko.cloudflare.apiToken',token);
+      await SecureStore.setItemAsync('tinchodoko.cloudflare.accountId',accountId);
+      await SecureStore.setItemAsync('tinchodoko.cloudflare.model',cloudflareModel);
+      setCloudflareStatus('online'); setCloudflareAnswer(''); setCloudflareQuestion('');
+      Alert.alert('Cloudflare','Credenciales verificadas correctamente. La ejecución de GLM-5.3 requiere facturación habilitada; Gemma 4 es la opción para probar primero el acceso gratuito.');
+    } catch(e) {
+      setCloudflareStatus('offline');
+      Alert.alert('Conexión Cloudflare fallida',e instanceof Error?e.message:String(e));
+    } finally { setCloudflareBusy(false); }
+  }
+
+  function generateCloudflareMathQuestion(): string {
+    const a=Math.floor(Math.random()*91)+10;
+    const b=Math.floor(Math.random()*91)+10;
+    return `¿Cuánto es ${a} + ${b}?`;
+  }
+
+  async function testCloudflare() {
+    const token=cloudflareApiToken.trim();
+    const accountId=cloudflareAccountId.trim();
+    if (!token || !accountId) { Alert.alert('CLOUDFLARE','Primero ingresá y conectá el API TOKEN y el ACCOUNT ID.'); return; }
+    if (cloudflareModel==='@cf/zai-org/glm-5.3') {
+      Alert.alert('GLM-5.3 · Acceso pago','Cloudflare indica que GLM-5.3 requiere Workers Paid o créditos prepagos de AI Gateway. La prueba puede generar cargos. ¿Deseás continuar?',[
+        {text:'CANCELAR',style:'cancel'},
+        {text:'CONTINUAR',onPress:()=>void runCloudflareTest(token,accountId)},
+      ]);
+      return;
+    }
+    await runCloudflareTest(token,accountId);
+  }
+
+  async function runCloudflareTest(token:string,accountId:string) {
+    setCloudflareBusy(true);
+    try {
+      const question=generateCloudflareMathQuestion();
+      setCloudflareQuestion(question); setCloudflareAnswer('');
+      const answer=await askCloudflare(token,accountId,question,cloudflareModel);
+      setCloudflareAnswer(answer); setCloudflareStatus('online');
+    } catch(e) {
+      setCloudflareStatus('offline'); setCloudflareAnswer(e instanceof Error?e.message:String(e));
+    } finally { setCloudflareBusy(false); }
   }
 
   async function connect() {
@@ -1184,6 +1248,40 @@ export default function App() {
           <Text style={s.aiResultText}>{nvidiaQuestion||'—'}</Text>
           <Text style={s.aiResultLabel}>RESPUESTA</Text>
           <Text style={s.aiResultText}>{nvidiaAnswer ? ('NVIDIA - (' + (NVIDIA_TEXT_MODELS.find(model=>model.id===nvidiaModel)?.name ?? nvidiaModel) + ')\n' + nvidiaAnswer) : '—'}</Text>
+        </View>
+      </View>
+      <View style={s.aiCard}>
+        <Text style={s.aiProvider}>CLOUDFLARE</Text>
+        <Text style={s.aiLabel}>API TOKEN</Text>
+        <View style={s.row}>
+          <TextInput style={s.input} value={cloudflareApiToken} onChangeText={value=>{setCloudflareApiToken(value);if(cloudflareStatus==='online')setCloudflareStatus('offline');}} autoCapitalize="none" autoCorrect={false} secureTextEntry={!cloudflareApiVisible} placeholder="Ingresá tu API TOKEN de Cloudflare" placeholderTextColor="#6f7785"/>
+          <Pressable style={s.eye} onPress={()=>setCloudflareApiVisible(v=>!v)}><Text>{cloudflareApiVisible?'🙈':'👁️'}</Text></Pressable>
+        </View>
+        <Text style={s.aiLabel}>ACCOUNT ID</Text>
+        <TextInput style={s.orderInput} value={cloudflareAccountId} onChangeText={value=>{setCloudflareAccountId(value.trim());if(cloudflareStatus==='online')setCloudflareStatus('offline');}} autoCapitalize="none" autoCorrect={false} placeholder="Ingresá tu ACCOUNT ID" placeholderTextColor="#6f7785"/>
+        <Pressable disabled={cloudflareBusy} onPress={()=>void connectCloudflare()} style={[s.button,cloudflareBusy&&s.disabled]}>
+          {cloudflareBusy&&cloudflareStatus==='connecting'?<ActivityIndicator/>:<Text style={s.buttonText}>CONECTAR</Text>}
+        </Pressable>
+        <Text style={s.aiLabel}>MODELO</Text>
+        <Pressable disabled={cloudflareBusy} onPress={()=>setCloudflareModelMenu(v=>!v)} style={s.select}>
+          <Text style={s.selectText}>{CLOUDFLARE_TEXT_MODELS.find(model=>model.id===cloudflareModel)?.name ?? cloudflareModel}</Text>
+          <Text style={s.selectArrow}>{cloudflareModelMenu?'▲':'▼'}</Text>
+        </Pressable>
+        {cloudflareModelMenu&&<View style={s.menu}>
+          {CLOUDFLARE_TEXT_MODELS.map(model=><Pressable key={model.id} onPress={()=>{setCloudflareModel(model.id);setCloudflareModelMenu(false);SecureStore.setItemAsync('tinchodoko.cloudflare.model',model.id).catch(()=>{});if(model.id==='@cf/zai-org/glm-5.3')Alert.alert('GLM-5.3 · Acceso pago','Este modelo requiere Workers Paid o créditos prepagos de AI Gateway.');}} style={s.menuItem}>
+            <Text style={[s.menuText,model.id===cloudflareModel&&{fontWeight:'900'}]}>{model.name}</Text>
+            {model.id==='@cf/zai-org/glm-5.3'&&<Text style={s.aiLabel}>REQUIERE FACTURACIÓN</Text>}
+          </Pressable>)}
+        </View>}
+        <Text style={cloudflareStatus==='online'?s.onlineText:s.offlineText}>Estado Cloudflare: {cloudflareStatus}</Text>
+        <Pressable disabled={cloudflareBusy||cloudflareStatus!=='online'} onPress={()=>void testCloudflare()} style={[s.aiTestButton,(cloudflareBusy||cloudflareStatus!=='online')&&s.disabled]}>
+          {cloudflareBusy?<ActivityIndicator color="#fff"/>:<Text style={s.aiTestButtonText}>TEST</Text>}
+        </Pressable>
+        <View style={s.aiResult}>
+          <Text style={s.aiResultLabel}>PREGUNTA</Text>
+          <Text style={s.aiResultText}>{cloudflareQuestion||'—'}</Text>
+          <Text style={s.aiResultLabel}>RESPUESTA</Text>
+          <Text style={s.aiResultText}>{cloudflareAnswer ? ('CLOUDFLARE - (' + (CLOUDFLARE_TEXT_MODELS.find(model=>model.id===cloudflareModel)?.name ?? cloudflareModel) + ')\\n' + cloudflareAnswer) : '—'}</Text>
         </View>
       </View>
     </ScrollView>  : screen==='profile' ? <ScrollView contentContainerStyle={s.content} onTouchStart={e=>{handleSwipeStart(e);setIntervalMenu(false);}} onTouchEnd={handleSwipeEnd}>
