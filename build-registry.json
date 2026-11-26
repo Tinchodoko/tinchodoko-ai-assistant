@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-26T07:51:48Z",
+  "generated_at": "2026-11-26T08:17:14Z",
   "workflow": "Android Release APK",
   "repository": "Tinchodoko/tinchodoko-ai-assistant",
   "builds": [
@@ -3927,6 +3927,43 @@
       "created_at": "2026-11-26T07:42:20Z",
       "updated_at": "2026-11-26T07:50:16Z",
       "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45777307533",
+      "failed_step": null,
+      "failed_steps": []
+    },
+    {
+      "run_number": 224,
+      "run_id": 45781490807,
+      "status": "completed",
+      "conclusion": "failure",
+      "display_title": "feat(ai): integrar NVIDIA y limpiar encabezados de IA",
+      "event": "push",
+      "branch": "main",
+      "sha": "82596fa96fe9d10be6151b1e20ca92cc939c0b50",
+      "created_at": "2026-11-26T08:14:29Z",
+      "updated_at": "2026-11-26T08:15:17Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45781490807",
+      "failed_step": "TypeScript check",
+      "failed_steps": [
+        {
+          "job": "build",
+          "step": "TypeScript check",
+          "started_at": "2026-11-26T08:15:08Z",
+          "completed_at": "2026-11-26T08:15:12Z"
+        }
+      ]
+    },
+    {
+      "run_number": 225,
+      "run_id": 45781495574,
+      "status": "in_progress",
+      "conclusion": null,
+      "display_title": "feat(ai): agregar cliente NVIDIA Nemotron",
+      "event": "push",
+      "branch": "main",
+      "sha": "247d6b732caa10272e9dd7504c5dc92acdf8fc2a",
+      "created_at": "2026-11-26T08:14:31Z",
+      "updated_at": "2026-11-26T08:15:19Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45781495574",
       "failed_step": null,
       "failed_steps": []
     }
