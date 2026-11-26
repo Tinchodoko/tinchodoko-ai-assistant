@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-26T19:47:02Z",
+  "generated_at": "2026-11-26T19:48:56Z",
   "workflow": "Android Release APK",
   "repository": "Tinchodoko/tinchodoko-ai-assistant",
   "builds": [
@@ -4210,17 +4210,24 @@
     {
       "run_number": 242,
       "run_id": 45885295669,
-      "status": "in_progress",
-      "conclusion": null,
+      "status": "completed",
+      "conclusion": "failure",
       "display_title": "fix(ai): mostrar configuración completa de indicadores",
       "event": "push",
       "branch": "main",
       "sha": "7c8a6e37f155ef736c04e6a70a6f74d7d555686c",
       "created_at": "2026-11-26T19:39:45Z",
-      "updated_at": "2026-11-26T19:45:12Z",
+      "updated_at": "2026-11-26T19:45:49Z",
       "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45885295669",
-      "failed_step": null,
-      "failed_steps": []
+      "failed_step": "TypeScript check",
+      "failed_steps": [
+        {
+          "job": "build",
+          "step": "TypeScript check",
+          "started_at": "2026-11-26T19:45:45Z",
+          "completed_at": "2026-11-26T19:45:46Z"
+        }
+      ]
     }
   ]
 }
