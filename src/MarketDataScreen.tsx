@@ -282,8 +282,7 @@ async function editCandleQuantity(){const n=Number(candleDraft);if(!Number.isInt
     <Pressable onPress={saveIndicatorConfig} style={s.importButton}><Text style={s.importText}>GUARDAR CONFIGURACIÓN DE INDICADORES</Text></Pressable>
    </View>}
   </View>
-
-   </View></View>
+  </View>
   {indicator&&indicatorSource&&<View style={s.panelRow}>
    <Pressable onPress={()=>setExpandedPanels(o=>({...o,chart:!o.chart}))} style={s.sideToggleButton}><Text style={s.sideToggleText}>{expandedPanels.chart?'▲\nOCULTAR\nDETALLES':'▼\nEXPANDIR\nDETALLES'}</Text></Pressable>
    <View style={s.panelCardFlex}><View style={s.panelHeader}><Text style={s.section}>OHLC + INDICADORES</Text><Pressable onPress={()=>deleteImport(indicatorSource)} style={s.deleteButton}><Text style={s.clearX}>✕</Text></Pressable></View>
