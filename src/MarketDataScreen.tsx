@@ -273,21 +273,13 @@ async function editCandleQuantity(){const n=Number(candleDraft);if(!Number.isInt
    <View style={s.panelCardFlex}><View style={s.panelHeader}><Text style={s.section}>INDICADORES · {indicatorSource.symbol} · {indicatorTf}</Text></View>
    {expandedPanels.indicator&&<View style={s.panelBody}><Text style={s.hint}>Valores de la última vela. Cálculo local en TypeScript.</Text><View style={s.indGrid}><InfoRow label={`ÚLTIMA RSI (${indicatorConfig.rsi.period})`} value={indicator.rsi}/><InfoRow label={`ÚLTIMA ATR (${indicatorConfig.atr.period})`} value={indicator.atr}/><InfoRow label={`ÚLTIMA EMA (${indicatorConfig.ema20.period})`} value={indicator.ema20}/><InfoRow label={`ÚLTIMA EMA (${indicatorConfig.ema50.period})`} value={indicator.ema50}/><InfoRow label={`ÚLTIMA ADX (${indicatorConfig.adx.period})`} value={indicator.adx}/><InfoRow label="ÚLTIMA MACD" value={indicator.macd}/><InfoRow label="ÚLTIMA MACD SIGNAL" value={indicator.macdSignal}/><InfoRow label="ÚLTIMA MACD HISTOGRAM" value={indicator.macdHistogram}/><InfoRow label={`ÚLTIMA BB SUPERIOR (${indicatorConfig.bollinger.period}, ${indicatorConfig.bollinger.deviation})`} value={indicator.bollingerUpper}/><InfoRow label={`ÚLTIMA BB MEDIA (${indicatorConfig.bollinger.period})`} value={indicator.bollingerMiddle}/><InfoRow label={`ÚLTIMA BB INFERIOR (${indicatorConfig.bollinger.period}, ${indicatorConfig.bollinger.deviation})`} value={indicator.bollingerLower}/><InfoRow label="ÚLTIMA BB WIDTH" value={indicator.bollingerWidth}/><InfoRow label={`ÚLTIMA Z-SCORE (${indicatorConfig.zScore.period})`} value={indicator.zScore}/></View><Pressable onPress={()=>exportImportJson(indicatorSource)} style={s.exportButton}><Text style={s.exportButtonText}>⬇ EXPORTAR JSON</Text></Pressable></View>}
    </View>
-   <Pressable onPress={()=>setExpandedPanels(o=>({...o,indicator:!o.indicator}))} style={s.sideToggleButton}><Text style={s.sideToggleText}>{expandedPanels.indicator?'▲
-OCULTAR
-DETALLES':'▼
-EXPANDIR
-DETALLES'}</Text></Pressable>
+   <Pressable onPress={()=>setExpandedPanels(o=>({...o,indicator:!o.indicator}))} style={s.sideToggleButton}><Text style={s.sideToggleText}>{expandedPanels.indicator?'▲\\nOCULTAR\\nDETALLES':'▼\\nEXPANDIR\\nDETALLES'}</Text></Pressable>
   </View>}
   {indicator&&indicatorSource&&<View style={s.panelRow}>
    <View style={s.panelCardFlex}><View style={s.panelHeader}><Text style={s.section}>CALCULAR INDICADORES</Text></View>
    {expandedPanels.calculate&&<View style={s.panelBody}><Text style={s.hint}>Los cambios de configuración se aplican al volver a calcular.</Text><View style={s.actions}><Pressable onPress={()=>loadIndicators(indicatorSource)} style={[s.importButton,s.calculateIndicatorButton]}><Text style={s.calculateIndicatorText}>CALCULAR INDICADORES</Text></Pressable><Pressable onPress={()=>{setIndicator(null);setIndicatorRows([]);setIndicatorSource(null);setIndicatorTf(null);}} style={s.secondary}><Text style={s.secondaryText}>RESTABLECER INDICADORES</Text></Pressable></View></View>}
    </View>
-   <Pressable onPress={()=>setExpandedPanels(o=>({...o,calculate:!o.calculate}))} style={s.sideToggleButton}><Text style={s.sideToggleText}>{expandedPanels.calculate?'▲
-OCULTAR
-DETALLES':'▼
-EXPANDIR
-DETALLES'}</Text></Pressable>
+   <Pressable onPress={()=>setExpandedPanels(o=>({...o,calculate:!o.calculate}))} style={s.sideToggleButton}><Text style={s.sideToggleText}>{expandedPanels.calculate?'▲\\nOCULTAR\\nDETALLES':'▼\\nEXPANDIR\\nDETALLES'}</Text></Pressable>
   </View>}
   <View style={s.panelRow}>
    <View style={s.panelCardFlex}><View style={s.panelHeader}><Text style={s.section}>CONFIGURACIÓN DE INDICADORES</Text></View>
@@ -303,31 +295,19 @@ DETALLES'}</Text></Pressable>
     <Pressable onPress={saveIndicatorConfig} style={s.importButton}><Text style={s.importText}>GUARDAR CONFIGURACIÓN DE INDICADORES</Text></Pressable>
    </View>}
   </View>
-  <Pressable onPress={()=>setExpandedPanels(o=>({...o,config:!o.config}))} style={s.sideToggleButton}><Text style={s.sideToggleText}>{expandedPanels.config?'▲
-OCULTAR
-DETALLES':'▼
-EXPANDIR
-DETALLES'}</Text></Pressable>
+  <Pressable onPress={()=>setExpandedPanels(o=>({...o,config:!o.config}))} style={s.sideToggleButton}><Text style={s.sideToggleText}>{expandedPanels.config?'▲\\nOCULTAR\\nDETALLES':'▼\\nEXPANDIR\\nDETALLES'}</Text></Pressable>
   </View>
   {indicator&&indicatorSource&&<View style={s.panelRow}>
    <View style={s.panelCardFlex}><View style={s.panelHeader}><Text style={s.section}>OHLC + INDICADORES</Text><View style={s.panelHeaderActions}><Pressable onPress={()=>setChartOptionsOpen(true)} style={s.configButton}><Text style={s.configButtonText}>INDICADORES Y COLORES</Text></Pressable><Pressable onPress={()=>deleteImport(indicatorSource)} style={s.deleteButton}><Text style={s.clearX}>✕</Text></Pressable></View></View>
    {expandedPanels.chart&&<View style={s.panelBody}><OhlcChart rows={indicatorRows} chartConfig={chartConfig} zoom={chartZoom}/><View style={s.chartZoomRow}><Text style={s.chartZoomLabel}>ZOOM {Math.round(chartZoom*100)}%</Text><Pressable onPress={()=>setChartZoom(v=>Math.max(0.7,Number((v-0.1).toFixed(1))))} style={s.chartZoomButton}><Text style={s.chartZoomText}>−</Text></Pressable><Pressable onPress={()=>setChartZoom(v=>Math.min(2.5,Number((v+0.1).toFixed(1))))} style={s.chartZoomButton}><Text style={s.chartZoomText}>+</Text></Pressable></View><Text style={s.hint}>Las velas, indicadores, cuadrícula, precios y horarios comparten el mismo desplazamiento horizontal. El zoom también mantiene sincronizados todos los indicadores.</Text></View>}
    </View>
-   <Pressable onPress={()=>setExpandedPanels(o=>({...o,chart:!o.chart}))} style={s.sideToggleButton}><Text style={s.sideToggleText}>{expandedPanels.chart?'▲
-OCULTAR
-DETALLES':'▼
-EXPANDIR
-DETALLES'}</Text></Pressable>
+   <Pressable onPress={()=>setExpandedPanels(o=>({...o,chart:!o.chart}))} style={s.sideToggleButton}><Text style={s.sideToggleText}>{expandedPanels.chart?'▲\\nOCULTAR\\nDETALLES':'▼\\nEXPANDIR\\nDETALLES'}</Text></Pressable>
   </View>}
   {indicator&&indicatorSource&&<View style={s.panelRow}>
    <View style={s.panelCardFlex}><View style={s.panelHeader}><Text style={s.section}>TABLA OHLC + INDICADORES</Text></View>
    {expandedPanels.table&&<View style={s.panelBody}><ScrollView horizontal showsHorizontalScrollIndicator nestedScrollEnabled contentContainerStyle={s.tableWide}><View><View style={s.tableHeader}><TableCell label="FECHA/HORA" width={155}/><TableCell label="OPEN" width={90}/><TableCell label="HIGH" width={90}/><TableCell label="LOW" width={90}/><TableCell label="CLOSE" width={90}/><TableCell label="VOL" width={85}/><TableCell label="RSI14" width={90}/><TableCell label="ATR14" width={100}/><TableCell label="EMA20" width={105}/><TableCell label="EMA50" width={105}/><TableCell label="ADX14" width={90}/><TableCell label="MACD" width={105}/><TableCell label="MACD SIG" width={105}/><TableCell label="MACD HIST" width={105}/><TableCell label="BB UP" width={105}/><TableCell label="BB MID" width={105}/><TableCell label="BB LOW" width={105}/><TableCell label="BB WIDTH" width={105}/><TableCell label="Z-SCORE" width={100}/></View><FlatList data={indicatorRows.slice().reverse()} keyExtractor={(row,index)=>row.time+'-'+index} nestedScrollEnabled style={s.tableList} renderItem={({item})=><View style={s.tableRow}><TableCell value={new Date(item.time).toLocaleString('es-AR',{dateStyle:'short',timeStyle:'medium'})} width={155}/><TableCell value={String(item.open)} width={90}/><TableCell value={String(item.high)} width={90}/><TableCell value={String(item.low)} width={90}/><TableCell value={String(item.close)} width={90}/><TableCell value={String(item.volume)} width={85}/><TableCell value={indicatorValue(item.rsi14)} width={90}/><TableCell value={indicatorValue(item.atr14)} width={100}/><TableCell value={indicatorValue(item.ema20)} width={105}/><TableCell value={indicatorValue(item.ema50)} width={105}/><TableCell value={indicatorValue(item.adx14)} width={90}/><TableCell value={indicatorValue(item.macd)} width={105}/><TableCell value={indicatorValue(item.macdSignal)} width={105}/><TableCell value={indicatorValue(item.macdHistogram)} width={105}/><TableCell value={indicatorValue(item.bollingerUpper)} width={105}/><TableCell value={indicatorValue(item.bollingerMiddle)} width={105}/><TableCell value={indicatorValue(item.bollingerLower)} width={105}/><TableCell value={indicatorValue(item.bollingerWidth)} width={105}/><TableCell value={indicatorValue(item.zScore)} width={100}/></View>}/></View></ScrollView></View>}
    </View>
-   <Pressable onPress={()=>setExpandedPanels(o=>({...o,table:!o.table}))} style={s.sideToggleButton}><Text style={s.sideToggleText}>{expandedPanels.table?'▲
-OCULTAR
-DETALLES':'▼
-EXPANDIR
-DETALLES'}</Text></Pressable>
+   <Pressable onPress={()=>setExpandedPanels(o=>({...o,table:!o.table}))} style={s.sideToggleButton}><Text style={s.sideToggleText}>{expandedPanels.table?'▲\\nOCULTAR\\nDETALLES':'▼\\nEXPANDIR\\nDETALLES'}</Text></Pressable>
   </View>} </ScrollView>
   <Modal visible={chartOptionsOpen} transparent animationType="fade" onRequestClose={()=>setChartOptionsOpen(false)}>
   <View style={s.modalBackdrop}><View style={[s.modalCard,s.chartOptionsCard]}><Text style={s.modalTitle}>INDICADORES DEL GRÁFICO</Text><Text style={s.modalHint}>Activá o desactivá cada indicador y elegí su color. Los cambios se guardan automáticamente.</Text>
