@@ -73,7 +73,9 @@ export async function askCloudflare(apiToken:string,accountId:string,question:st
         {role:'user',content:question},
       ],
       temperature:0.1,
-      max_tokens:64,
+      max_tokens:128,
+      // Gemma 4 supports thinking; disable it for short direct-response tests.
+      ...(model==='@cf/google/gemma-4-26b-a4b-it' ? {chat_template_kwargs:{enable_thinking:false}} : {}),
     }),
   });
   const body=await response.text();
@@ -82,23 +84,35 @@ export async function askCloudflare(apiToken:string,accountId:string,question:st
     if(response.status===402 || /paid|billing|credit|payment/i.test(detail)) {
       throw new Error(`Cloudflare no habilitó este modelo con la facturación actual: ${detail}`);
     }
-    throw new Error(`Cloudflare rechazó la consulta: ${detail}`);
+    throw new Error(`Cloudflare rechazó la consulta (${response.status}): ${detail}`);
   }
 
-  try {
-    const data=JSON.parse(body) as {
-      success?:boolean;
-      result?:{
-        response?:string;
-        choices?:Array<{message?:{content?:string|null}}>;
-      };
+  let data: {
+    success?:boolean;
+    result?:{
+      response?:string;
+      generated_text?:string;
+      output_text?:string;
+      choices?:Array<{message?:{content?:string|null}}>;
     };
-    const answer=data.result?.response?.trim() || data.result?.choices?.[0]?.message?.content?.trim();
-    if(data.success===false) throw new Error(parseCloudflareError(response.status,body));
-    if(!answer) throw new Error('Cloudflare respondió sin contenido.');
-    return answer;
-  } catch(error) {
-    if(error instanceof Error && error.message!=='Cloudflare respondió sin contenido.') throw error;
-    throw new Error('Respuesta inválida de Cloudflare.');
+    response?:string;
+    output_text?:string;
+  };
+  try {
+    data=JSON.parse(body);
+  } catch {
+    throw new Error('Cloudflare devolvió una respuesta que no es JSON válido.');
   }
+  if(data.success===false) throw new Error(`Cloudflare informó un error: ${parseCloudflareError(response.status,body)}`);
+  const answer=data.result?.response?.trim()
+    || data.result?.generated_text?.trim()
+    || data.result?.output_text?.trim()
+    || data.result?.choices?.[0]?.message?.content?.trim()
+    || data.response?.trim()
+    || data.output_text?.trim();
+  if(!answer) {
+    const shape=Object.keys(data.result??data).join(', ') || 'sin campos';
+    throw new Error(`Cloudflare no devolvió texto en el formato esperado (campos: ${shape}).`);
+  }
+  return answer;
 }
