@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-26T00:28:42Z",
+  "generated_at": "2026-11-26T00:45:43Z",
   "workflow": "Android Release APK",
   "repository": "Tinchodoko/tinchodoko-ai-assistant",
   "builds": [
@@ -3565,6 +3565,28 @@
       "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45727946919",
       "failed_step": null,
       "failed_steps": []
+    },
+    {
+      "run_number": 203,
+      "run_id": 45730786283,
+      "status": "completed",
+      "conclusion": "failure",
+      "display_title": "feat(market): align detail buttons and improve synchronized indicator…",
+      "event": "push",
+      "branch": "main",
+      "sha": "dac1b9e4d033078ac4a5d6c945c70f6c7d6afc75",
+      "created_at": "2026-11-26T00:43:41Z",
+      "updated_at": "2026-11-26T00:44:17Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45730786283",
+      "failed_step": "TypeScript check",
+      "failed_steps": [
+        {
+          "job": "build",
+          "step": "TypeScript check",
+          "started_at": "2026-11-26T00:44:12Z",
+          "completed_at": "2026-11-26T00:44:13Z"
+        }
+      ]
     }
   ]
 }
