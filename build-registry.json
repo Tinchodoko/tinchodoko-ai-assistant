@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-26T04:34:49Z",
+  "generated_at": "2026-11-26T04:37:35Z",
   "workflow": "Android Release APK",
   "repository": "Tinchodoko/tinchodoko-ai-assistant",
   "builds": [
@@ -3726,6 +3726,28 @@
           "step": "TypeScript check",
           "started_at": "2026-11-26T04:32:47Z",
           "completed_at": "2026-11-26T04:32:49Z"
+        }
+      ]
+    },
+    {
+      "run_number": 212,
+      "run_id": 45756208149,
+      "status": "completed",
+      "conclusion": "failure",
+      "display_title": "ci: validar build final antes de integrar IA",
+      "event": "push",
+      "branch": "main",
+      "sha": "975f3e68b64310429b815a7cf7df708d9c8fb270",
+      "created_at": "2026-11-26T04:35:43Z",
+      "updated_at": "2026-11-26T04:36:22Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45756208149",
+      "failed_step": "TypeScript check",
+      "failed_steps": [
+        {
+          "job": "build",
+          "step": "TypeScript check",
+          "started_at": "2026-11-26T04:36:15Z",
+          "completed_at": "2026-11-26T04:36:18Z"
         }
       ]
     }
