@@ -10,6 +10,7 @@ import { askNvidia, validateNvidiaApiKey, NVIDIA_TEXT_MODELS, DEFAULT_NVIDIA_MOD
 import { askCloudflare, validateCloudflareCredentials, CLOUDFLARE_TEXT_MODELS, DEFAULT_CLOUDFLARE_MODEL } from './src/cloudflare';
 import { askOpenRouter, validateOpenRouterApiKey, OPENROUTER_TEXT_MODELS, DEFAULT_OPENROUTER_MODEL } from './src/openrouter';
 import MarketDataScreen from './src/MarketDataScreen';
+import NeuralScreen, { type NeuralProvider, type NeuralRunner } from './src/NeuralScreen';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as IntentLauncher from 'expo-intent-launcher';
 import * as SecureStore from 'expo-secure-store';
@@ -51,7 +52,7 @@ function PairIdentity({instrument}:{instrument:string}) {
 const RELEASES_URL = 'https://github.com/Tinchodoko/tinchodoko-ai-assistant/releases';
 const LATEST_RELEASE_API = 'https://api.github.com/repos/Tinchodoko/tinchodoko-ai-assistant/releases/latest';
 const UPDATE_MANIFEST_URL = 'https://raw.githubusercontent.com/Tinchodoko/tinchodoko-ai-assistant/main/update.json';
-type Screen = 'connection' | 'profile' | 'positions' | 'market' | 'history' | 'app';
+type Screen = 'connection' | 'profile' | 'positions' | 'market' | 'history' | 'neural' | 'app';
 type AiProvider = 'groq' | 'gemini' | 'nvidia' | 'cloudflare' | 'openrouter';
 type ExtraProviderCard = { id:string; provider:AiProvider; model:string; apiKey:string; accountId:string; apiKeyVisible:boolean; question:string; answer:string; busy:boolean };
 type TradeAction = {
@@ -178,6 +179,7 @@ export default function App() {
   const [extraProvidersLoaded,setExtraProvidersLoaded]=useState(false);
   const [providerPickerOpen,setProviderPickerOpen]=useState(false);
   const [extraProviderMenuId,setExtraProviderMenuId]=useState<string|null>(null);
+  const [neuralScreenKey,setNeuralScreenKey]=useState(0);
   const [,setStreamStatus]=useState<'off'|'connecting'|'connected'|'disconnected'|'error'>('off');
   const [autoRefresh,setAutoRefresh]=useState(false);
   const autoRefreshRef=useRef(false);
@@ -1330,6 +1332,21 @@ export default function App() {
       </View>
     </View>}
   </>;
+  const neuralProviders:NeuralProvider[] = [
+    {id:'default-groq',provider:'groq',model:groqModel,apiKey:groqApiKey,accountId:'',default:true,status:groqStatus==='online'?'online':groqStatus==='connecting'?'connecting':'offline'},
+    {id:'default-gemini',provider:'gemini',model:GEMINI_MODEL,apiKey:geminiApiKey,accountId:'',default:true,status:geminiStatus==='online'?'online':geminiStatus==='connecting'?'connecting':'offline'},
+    {id:'default-nvidia',provider:'nvidia',model:nvidiaModel,apiKey:nvidiaApiKey,accountId:'',default:true,status:nvidiaStatus==='online'?'online':nvidiaStatus==='connecting'?'connecting':'offline'},
+    {id:'default-cloudflare',provider:'cloudflare',model:cloudflareModel,apiKey:cloudflareApiToken,accountId:cloudflareAccountId,default:true,status:cloudflareStatus==='online'?'online':cloudflareStatus==='connecting'?'connecting':'offline'},
+    {id:'default-openrouter',provider:'openrouter',model:openrouterModel,apiKey:openrouterApiKey,accountId:'',default:true,status:openrouterStatus==='online'?'online':openrouterStatus==='connecting'?'connecting':'offline'},
+    ...extraProviderCards.map(card=>({id:card.id,provider:card.provider,model:card.model,apiKey:card.apiKey,accountId:card.accountId,default:false,status:(card.apiKey?'online':'offline') as NeuralProvider['status']})),
+  ];
+  const runNeuralProvider:NeuralRunner=async(provider,question)=>{
+    if(provider.provider==='groq') return askGroq(provider.apiKey,question,provider.model);
+    if(provider.provider==='gemini') return askGemini(provider.apiKey,question);
+    if(provider.provider==='nvidia') return askNvidia(provider.apiKey,question,provider.model);
+    if(provider.provider==='cloudflare') return askCloudflare(provider.apiKey,provider.accountId,question,provider.model);
+    return askOpenRouter(provider.apiKey,question,provider.model);
+  };
   return <SafeAreaView style={s.safe}>
     <View style={s.header}><Text style={s.title}>Tinchodoko AI Assistant</Text><View style={[s.dot,status==='online'?s.green:status==='connecting'?s.yellow:s.red]}/></View>
     <View style={s.tabs}>
@@ -1338,6 +1355,7 @@ export default function App() {
       <Pressable onPress={()=>{setIntervalMenu(false);openHistory();}} style={[s.tab,screen==='history'&&s.active]}><Text style={s.tabText}>HISTORIAL</Text></Pressable>
       <Pressable onPress={()=>{setInstrumentMenuOpen(false);setInstrumentCategoryMenu(false);setScreen('positions');}} style={[s.tab,screen==='positions'&&s.active]}><Text style={s.tabText}>POSICIONES</Text></Pressable>
       <Pressable onPress={()=>{setInstrumentMenuOpen(false);setInstrumentCategoryMenu(false);setScreen('market');}} style={[s.tab,screen==='market'&&s.active]}><View style={s.marketTabIcon}><View style={s.marketCandleGreenWick}/><View style={s.marketCandleGreen}/><View style={s.marketCandleRedWick}/><View style={s.marketCandleRed}/></View></Pressable>
+      <Pressable onPress={()=>{setIntervalMenu(false);setHistoryMenuOpen(false);setHistoryIntervalMenu(false);setScreen('neural');}} style={[s.tab,screen==='neural'&&s.active]}><View style={s.neuronTabIcon}><View style={s.neuronDot1}/><View style={s.neuronDot2}/><View style={s.neuronDot3}/><View style={s.neuronLine1}/><View style={s.neuronLine2}/></View></Pressable>
       <Pressable onPress={()=>{setIntervalMenu(false);setHistoryMenuOpen(false);setHistoryIntervalMenu(false);setScreen('app');}} style={[s.tab,screen==='app'&&s.active]}><Text style={s.tabText}>APP</Text></Pressable>
     </View>
 
@@ -1638,7 +1656,7 @@ export default function App() {
         <Text style={s.sellText}>STOP LOSS</Text><TextInput value={limitStopLoss} onChangeText={setLimitStopLoss} keyboardType="decimal-pad" placeholder="Precio SL (opcional)" placeholderTextColor="#707988" style={s.orderInput}/>
         <Pressable disabled={positionSubmitting} onPress={()=>void submitLimitOrder()} style={[s.limitButton,positionSubmitting&&s.disabled]}>{positionSubmitting?<ActivityIndicator color="#0b0e13"/>:<Text style={s.limitButtonText}>ABRIR LIMIT ORDER</Text>}</Pressable>
       </View>
-}    </ScrollView> : screen==='market' ? <MarketDataScreen credentials={c} accessPoint={accessPoint} instruments={instrumentList} selectedInstrument={selectedInstrument} onSelectInstrument={setSelectedInstrument}/> : screen==='history' ? <ScrollView contentContainerStyle={s.content} onTouchStart={handleSwipeStart} onTouchEnd={handleSwipeEnd}>
+}    </ScrollView> : screen==='market' ? <MarketDataScreen credentials={c} accessPoint={accessPoint} instruments={instrumentList} selectedInstrument={selectedInstrument} onSelectInstrument={setSelectedInstrument}/> : screen==='neural' ? <NeuralScreen key={neuralScreenKey} providers={neuralProviders} runner={runNeuralProvider} accountId={c.accountId}/> : screen==='history' ? <ScrollView contentContainerStyle={s.content} onTouchStart={handleSwipeStart} onTouchEnd={handleSwipeEnd}>
       <Text style={s.h1}>HISTORIAL</Text><Text style={s.sub}>Consultá las posiciones activas, órdenes pendientes y operaciones pasadas de tu cuenta.</Text>
       <Text style={s.label}>SELECCIONE SU PAR</Text>
       <Pressable disabled={!historyData||historyLoading} onPress={()=>setHistoryMenuOpen(!historyMenuOpen)} style={[s.select,(!historyData||historyLoading)&&s.disabled]}><Text style={s.selectText}>{historyPair==='*'?'MOSTRAR TODO':historyPair||'MOSTRAR TODO'}</Text><Text style={s.selectArrow}>{historyMenuOpen?'▲':'▼'}</Text></Pressable>
@@ -1758,7 +1776,7 @@ function Info({label,value,valueStyle}:{label:string,value:string,valueStyle?:Te
 const s=StyleSheet.create({
  safe:{flex:1,backgroundColor:'#0b0e13'},header:{height:68,paddingHorizontal:20,flexDirection:'row',alignItems:'center',justifyContent:'space-between',borderBottomWidth:1,borderBottomColor:'#252b35'},
  title:{color:'#fff',fontSize:18,fontWeight:'800'},dot:{width:12,height:12,borderRadius:6},green:{backgroundColor:'#28d17c'},yellow:{backgroundColor:'#f0b429'},red:{backgroundColor:'#e05252'},
- tabs:{flexDirection:'row',borderBottomWidth:1,borderBottomColor:'#252b35'},tab:{flex:1,paddingHorizontal:3,paddingVertical:12,alignItems:'center',justifyContent:'center',minWidth:0},active:{borderBottomWidth:2,borderBottomColor:'#fff'},marketTabIcon:{height:22,width:30,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:4},marketCandleGreenWick:{position:'absolute',left:7,width:2,height:20,backgroundColor:'#28d17c'},marketCandleGreen:{width:7,height:11,backgroundColor:'#28d17c',borderRadius:1,marginTop:2},marketCandleRedWick:{position:'absolute',right:7,width:2,height:20,backgroundColor:'#e05252'},marketCandleRed:{width:7,height:14,backgroundColor:'#e05252',borderRadius:1,marginTop:-2},tabText:{color:'#dce1e9',fontWeight:'800',fontSize:11,letterSpacing:-0.2,includeFontPadding:false,textAlign:'center'},
+ tabs:{flexDirection:'row',borderBottomWidth:1,borderBottomColor:'#252b35'},tab:{flex:1,paddingHorizontal:3,paddingVertical:12,alignItems:'center',justifyContent:'center',minWidth:0},active:{borderBottomWidth:2,borderBottomColor:'#fff'},marketTabIcon:{height:22,width:30,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:4},marketCandleGreenWick:{position:'absolute',left:7,width:2,height:20,backgroundColor:'#28d17c'},marketCandleGreen:{width:7,height:11,backgroundColor:'#28d17c',borderRadius:1,marginTop:2},marketCandleRedWick:{position:'absolute',right:7,width:2,height:20,backgroundColor:'#e05252'},marketCandleRed:{width:7,height:14,backgroundColor:'#e05252',borderRadius:1,marginTop:-2},neuronTabIcon:{height:22,width:30,position:'relative'},neuronDot1:{position:'absolute',left:3,top:8,width:6,height:6,borderRadius:3,backgroundColor:'#28d17c'},neuronDot2:{position:'absolute',right:4,top:3,width:6,height:6,borderRadius:3,backgroundColor:'#7ea7ff'},neuronDot3:{position:'absolute',right:7,bottom:2,width:6,height:6,borderRadius:3,backgroundColor:'#e05252'},neuronLine1:{position:'absolute',left:7,top:7,width:15,height:1,backgroundColor:'#697386',transform:[{rotate:'-18deg'}]},neuronLine2:{position:'absolute',left:8,top:13,width:13,height:1,backgroundColor:'#697386',transform:[{rotate:'25deg'}]},tabText:{color:'#dce1e9',fontWeight:'800',fontSize:11,letterSpacing:-0.2,includeFontPadding:false,textAlign:'center'},
  content:{padding:22,gap:15},h1:{color:'#fff',fontSize:26,fontWeight:'900'},sub:{color:'#9da6b5',lineHeight:21},field:{gap:7},label:{color:'#c8ced8',fontSize:12,fontWeight:'800'},
  row:{flexDirection:'row',backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:10},input:{flex:1,color:'#fff',padding:13,minHeight:48},eye:{width:48,alignItems:'center',justifyContent:'center'},
  button:{minHeight:50,borderRadius:10,backgroundColor:'#fff',alignItems:'center',justifyContent:'center'},buttonText:{color:'#0b0e13',fontWeight:'900'},disabled:{opacity:.5},
