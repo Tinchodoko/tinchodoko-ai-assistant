@@ -6,6 +6,7 @@ import { BUILD_INFO } from './src/buildInfo';
 import { BUILD_HISTORY_FALLBACK } from './src/buildHistory';
 import { askGroq, validateGroqApiKey, GROQ_TEXT_MODELS, DEFAULT_GROQ_MODEL } from './src/groq';
 import { askGemini, validateGeminiApiKey, GEMINI_MODEL } from './src/gemini';
+import { askNvidia, validateNvidiaApiKey, NVIDIA_TEXT_MODELS, DEFAULT_NVIDIA_MODEL } from './src/nvidia';
 import MarketDataScreen from './src/MarketDataScreen';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as IntentLauncher from 'expo-intent-launcher';
@@ -144,6 +145,14 @@ export default function App() {
   const [geminiBusy,setGeminiBusy]=useState(false);
   const [geminiQuestion,setGeminiQuestion]=useState('');
   const [geminiAnswer,setGeminiAnswer]=useState('');
+  const [nvidiaApiKey,setNvidiaApiKey]=useState('');
+  const [nvidiaApiVisible,setNvidiaApiVisible]=useState(false);
+  const [nvidiaStatus,setNvidiaStatus]=useState<'offline'|'online'|'connecting'>('offline');
+  const [nvidiaBusy,setNvidiaBusy]=useState(false);
+  const [nvidiaQuestion,setNvidiaQuestion]=useState('');
+  const [nvidiaAnswer,setNvidiaAnswer]=useState('');
+  const [nvidiaModel,setNvidiaModel]=useState<string>(DEFAULT_NVIDIA_MODEL);
+  const [nvidiaModelMenu,setNvidiaModelMenu]=useState(false);
   const [,setStreamStatus]=useState<'off'|'connecting'|'connected'|'disconnected'|'error'>('off');
   const [autoRefresh,setAutoRefresh]=useState(false);
   const autoRefreshRef=useRef(false);
@@ -240,6 +249,8 @@ export default function App() {
       if (raw && GROQ_TEXT_MODELS.some(model=>model.id===raw)) setGroqModel(raw);
     }).catch(()=>{});
     SecureStore.getItemAsync('tinchodoko.gemini.apiKey').then(raw=>{if(raw){setGeminiApiKey(raw);setGeminiStatus('online');}}).catch(()=>{});
+    SecureStore.getItemAsync('tinchodoko.nvidia.apiKey').then(raw=>{if(raw){setNvidiaApiKey(raw);setNvidiaStatus('online');}}).catch(()=>{});
+    SecureStore.getItemAsync('tinchodoko.nvidia.model').then(raw=>{if(raw && NVIDIA_TEXT_MODELS.some(model=>model.id===raw)) setNvidiaModel(raw);}).catch(()=>{});
     SecureStore.getItemAsync('tinchodoko.profile.refreshInterval').then(raw=>{
       if (!raw) return;
       try {
@@ -407,6 +418,45 @@ export default function App() {
     } finally { setGeminiBusy(false); }
   }
 
+
+  async function connectNvidia() {
+    const key=nvidiaApiKey.trim();
+    if (!key) { Alert.alert('NVIDIA','Ingresá una API KEY de NVIDIA.'); return; }
+    setNvidiaBusy(true); setNvidiaStatus('connecting');
+    try {
+      const availableModels=await validateNvidiaApiKey(key);
+      const selectedAvailable=availableModels.includes(nvidiaModel);
+      const nextModel=selectedAvailable ? nvidiaModel : (availableModels.find(id=>NVIDIA_TEXT_MODELS.some(model=>model.id===id)) ?? DEFAULT_NVIDIA_MODEL);
+      setNvidiaModel(nextModel);
+      await SecureStore.setItemAsync('tinchodoko.nvidia.apiKey',key);
+      await SecureStore.setItemAsync('tinchodoko.nvidia.model',nextModel);
+      setNvidiaStatus('online'); setNvidiaAnswer(''); setNvidiaQuestion('');
+      Alert.alert('NVIDIA','Conexión establecida correctamente.');
+    } catch(e) {
+      setNvidiaStatus('offline');
+      Alert.alert('Conexión NVIDIA fallida',e instanceof Error?e.message:String(e));
+    } finally { setNvidiaBusy(false); }
+  }
+
+  function generateNvidiaMathQuestion(): string {
+    const a=Math.floor(Math.random()*91)+10;
+    const b=Math.floor(Math.random()*91)+10;
+    return `¿Cuánto es ${a} + ${b}?`;
+  }
+
+  async function testNvidia() {
+    const key=nvidiaApiKey.trim();
+    if (!key) { Alert.alert('NVIDIA','Primero ingresá y conectá una API KEY.'); return; }
+    setNvidiaBusy(true);
+    try {
+      const question=generateNvidiaMathQuestion();
+      setNvidiaQuestion(question); setNvidiaAnswer('');
+      const answer=await askNvidia(key,question,nvidiaModel);
+      setNvidiaAnswer(answer); setNvidiaStatus('online');
+    } catch(e) {
+      setNvidiaStatus('offline'); setNvidiaAnswer(e instanceof Error?e.message:String(e));
+    } finally { setNvidiaBusy(false); }
+  }
 
   async function connect() {
     setBusy(true); setStatus('connecting');
@@ -1051,7 +1101,6 @@ export default function App() {
       {status==='online'&&!!accessPoint&&<Text style={s.ap}>URL DE ACCESS POINT: {accessPoint}</Text>}
 
       <View style={s.aiCard}>
-        <Text style={s.aiTitle}>CLAVES DE CONEXIÓN DE IA</Text>
         <Text style={s.aiProvider}>GROQ</Text>
         <Text style={s.aiLabel}>API KEY</Text>
         <View style={s.row}>
@@ -1084,7 +1133,6 @@ export default function App() {
       </View>
 
       <View style={s.aiCard}>
-        <Text style={s.aiTitle}>CLAVES DE CONEXIÓN DE IA</Text>
         <Text style={s.aiProvider}>GEMINI</Text>
         <Text style={s.aiLabel}>API KEY</Text>
         <View style={s.row}>
@@ -1105,6 +1153,37 @@ export default function App() {
           <Text style={s.aiResultText}>{geminiQuestion||'—'}</Text>
           <Text style={s.aiResultLabel}>RESPUESTA</Text>
           <Text style={s.aiResultText}>{geminiAnswer ? ('GEMINI - (' + GEMINI_MODEL + ')\n' + geminiAnswer) : '—'}</Text>
+        </View>
+      </View>
+      <View style={s.aiCard}>
+        <Text style={s.aiProvider}>NVIDIA</Text>
+        <Text style={s.aiLabel}>API KEY</Text>
+        <View style={s.row}>
+          <TextInput style={s.input} value={nvidiaApiKey} onChangeText={value=>{setNvidiaApiKey(value);if(nvidiaStatus==='online')setNvidiaStatus('offline');}} autoCapitalize="none" autoCorrect={false} secureTextEntry={!nvidiaApiVisible} placeholder="Ingresá tu API KEY de NVIDIA" placeholderTextColor="#6f7785"/>
+          <Pressable style={s.eye} onPress={()=>setNvidiaApiVisible(v=>!v)}><Text>{nvidiaApiVisible?'🙈':'👁️'}</Text></Pressable>
+        </View>
+        <Pressable disabled={nvidiaBusy} onPress={()=>void connectNvidia()} style={[s.button,nvidiaBusy&&s.disabled]}>
+          {nvidiaBusy&&nvidiaStatus==='connecting'?<ActivityIndicator/>:<Text style={s.buttonText}>CONECTAR</Text>}
+        </Pressable>
+        <Text style={s.aiLabel}>MODELO</Text>
+        <Pressable disabled={nvidiaBusy} onPress={()=>setNvidiaModelMenu(v=>!v)} style={s.select}>
+          <Text style={s.selectText}>{NVIDIA_TEXT_MODELS.find(model=>model.id===nvidiaModel)?.name ?? nvidiaModel}</Text>
+          <Text style={s.selectArrow}>{nvidiaModelMenu?'▲':'▼'}</Text>
+        </Pressable>
+        {nvidiaModelMenu&&<View style={s.menu}>
+          {NVIDIA_TEXT_MODELS.map(model=><Pressable key={model.id} onPress={()=>{setNvidiaModel(model.id);setNvidiaModelMenu(false);SecureStore.setItemAsync('tinchodoko.nvidia.model',model.id).catch(()=>{});}} style={s.menuItem}>
+            <Text style={[s.menuText,model.id===nvidiaModel&&{fontWeight:'900'}]}>{model.name}</Text>
+          </Pressable>)}
+        </View>}
+        <Text style={nvidiaStatus==='online'?s.onlineText:s.offlineText}>Estado NVIDIA: {nvidiaStatus}</Text>
+        <Pressable disabled={nvidiaBusy||nvidiaStatus!=='online'} onPress={()=>void testNvidia()} style={[s.aiTestButton,(nvidiaBusy||nvidiaStatus!=='online')&&s.disabled]}>
+          {nvidiaBusy&&nvidiaStatus==='online'?<ActivityIndicator color="#fff"/>:<Text style={s.aiTestButtonText}>TEST</Text>}
+        </Pressable>
+        <View style={s.aiResult}>
+          <Text style={s.aiResultLabel}>PREGUNTA</Text>
+          <Text style={s.aiResultText}>{nvidiaQuestion||'—'}</Text>
+          <Text style={s.aiResultLabel}>RESPUESTA</Text>
+          <Text style={s.aiResultText}>{nvidiaAnswer ? ('NVIDIA - (' + (NVIDIA_TEXT_MODELS.find(model=>model.id===nvidiaModel)?.name ?? nvidiaModel) + ')\n' + nvidiaAnswer) : '—'}</Text>
         </View>
       </View>
     </ScrollView>  : screen==='profile' ? <ScrollView contentContainerStyle={s.content} onTouchStart={e=>{handleSwipeStart(e);setIntervalMenu(false);}} onTouchEnd={handleSwipeEnd}>
