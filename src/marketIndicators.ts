@@ -77,7 +77,7 @@ function adxSeries(c:IndicatorCandle[],n:number){
   for(let i=1;i<len;i++){tr[i]=Math.max(c[i].high-c[i].low,Math.abs(c[i].high-c[i-1].close),Math.abs(c[i].low-c[i-1].close));const up=c[i].high-c[i-1].high,down=c[i-1].low-c[i].low;plus[i]=up>down&&up>0?up:0;minus[i]=down>up&&down>0?down:0;}
   let atr=0,p=0,m=0;for(let i=1;i<=n;i++){atr+=tr[i];p+=plus[i];m+=minus[i];}atr/=n;p/=n;m/=n;
   const dx:number[]=[];const dxIndex:number[]=[];
-  for(let i=n;i<len;i++){if(i>n){atr=(atr*(n-1)+tr[i])/n;p=(p*(n-1)+plus[i])/n;m=(m*(n-1)+minus[i])/n;}const pdi=atr?p/atr*100:0,mdi=atr?m/atr*100:0,den=pdi+mdi,dxv=den?Math.abs(pdi-mdi)/den*100:0;dx.push(dxv);dxIndex.push(i);if(dx.length===n)out[i]=dx.reduce((a,b)=>a+b,0)/n;else if(dx.length>n){const prior=out[dxIndex[dx.length-n-1]];if(prior!==null)out[i]=(prior*(n-1)+dxv)/n;}}
+  for(let i=n;i<len;i++){if(i>n){atr=(atr*(n-1)+tr[i])/n;p=(p*(n-1)+plus[i])/n;m=(m*(n-1)+minus[i])/n;}const pdi=atr?p/atr*100:0,mdi=atr?m/atr*100:0,den=pdi+mdi,dxv=den?Math.abs(pdi-mdi)/den*100:0;dx.push(dxv);dxIndex.push(i);if(dx.length===n)out[i]=dx.reduce((a,b)=>a+b,0)/n;else if(dx.length>n){const prior=out[i-1];if(prior!==null)out[i]=(prior*(n-1)+dxv)/n;}}
   return out;
 }
 
