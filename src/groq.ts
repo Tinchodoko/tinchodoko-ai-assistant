@@ -68,9 +68,10 @@ export async function askGroq(
         { role: 'user', content: question },
       ],
       temperature: 0.1,
-      max_completion_tokens: 256,
-      reasoning_effort: 'none',
-      include_reasoning: false,
+      max_completion_tokens: 512,
+      ...(model === 'qwen/qwen3.8-27b'
+        ? { reasoning_effort: 'none', include_reasoning: false }
+        : { reasoning_effort: 'low', include_reasoning: false }),
     }),
   });
 
