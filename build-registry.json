@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-26T10:19:06Z",
+  "generated_at": "2026-11-26T15:19:40Z",
   "workflow": "Android Release APK",
   "repository": "Tinchodoko/tinchodoko-ai-assistant",
   "builds": [
@@ -4144,6 +4144,21 @@
       "created_at": "2026-11-26T10:09:37Z",
       "updated_at": "2026-11-26T10:17:12Z",
       "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45798691820",
+      "failed_step": null,
+      "failed_steps": []
+    },
+    {
+      "run_number": 238,
+      "run_id": 45846514730,
+      "status": "completed",
+      "conclusion": "success",
+      "display_title": "fix(ai): unificar agregar todos los modelos y ajustar modal de provee…",
+      "event": "push",
+      "branch": "main",
+      "sha": "2919de2a681b724346b47a5f332068f93e53f873",
+      "created_at": "2026-11-26T15:11:09Z",
+      "updated_at": "2026-11-26T15:17:45Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45846514730",
       "failed_step": null,
       "failed_steps": []
     }
