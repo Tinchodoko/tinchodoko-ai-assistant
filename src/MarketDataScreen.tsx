@@ -177,18 +177,44 @@ async function editCandleQuantity(){const n=Number(candleDraft);if(!Number.isInt
    if(!candles.length){Alert.alert('DATOS VACÍOS','Esta importación no contiene velas para exportar.');return;}
    const indicatorRaw=await AsyncStorage.getItem(indicatorDatasetKey(credentials.accountId,item.symbol,item.timeframe,item.id));
    const rows=indicatorRaw?((JSON.parse(indicatorRaw)?.rows??[]) as IndicatorRow[]):calculateIndicatorSeries(candles,indicatorConfig);
+   const indicatorByTime=new Map(rows.map(row=>[row.time,row]));
+   const unifiedCandles=candles.map(candle=>{
+    const row=indicatorByTime.get(candle.time);
+    return {
+     time:candle.time,
+     open:candle.open,
+     high:candle.high,
+     low:candle.low,
+     close:candle.close,
+     volume:candle.volume,
+     rsi14:row?.rsi14??null,
+     atr14:row?.atr14??null,
+     ema20:row?.ema20??null,
+     ema50:row?.ema50??null,
+     adx14:row?.adx14??null,
+     macd:row?.macd??null,
+     macdSignal:row?.macdSignal??null,
+     macdHistogram:row?.macdHistogram??null,
+     bollingerUpper:row?.bollingerUpper??null,
+     bollingerMiddle:row?.bollingerMiddle??null,
+     bollingerLower:row?.bollingerLower??null,
+     bollingerWidth:row?.bollingerWidth??null,
+     zScore:row?.zScore??null
+    };
+   });
    const payload={
     format:'tinchodoko-market-data',
-    version:1,
+    version:2,
     exportedAt:new Date().toISOString(),
     source:'Exness',
     symbol:item.symbol,
     timeframe:item.timeframe,
+    indicatorCalculation:'local-typescript',
+    indicatorConfiguration:indicatorRaw?JSON.parse(indicatorRaw)?.configuration??indicatorConfig:indicatorConfig,
     import:{id:item.id,requested:item.requested,received:item.received,importedAt:new Date(item.at).toISOString(),diagnostics:{
       firstCandle:item.firstCandle,lastCandle:item.lastCandle,observedSpanMs:item.observedSpanMs,expectedSpanMs:item.expectedSpanMs,gapCount:item.gapCount,weekendGapCount:item.weekendGapCount,weekendGapHours:item.weekendGapHours,missingCandles:item.missingCandles
     }},
-    candles,
-    indicators:{version:1,calculation:'local-typescript',rows}
+    candles:unifiedCandles
    };
    const json=JSON.stringify(payload,null,2);
    const filename=exportFilename(item.symbol,item.timeframe,item.at);
