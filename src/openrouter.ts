@@ -95,7 +95,9 @@ export async function askOpenRouter(
       try {
         const answer=extractOpenRouterAnswer(body);
         if (answer) return answer;
-        throw new Error('OpenRouter devolvió una respuesta vacía.');
+        lastError='OpenRouter devolvió una respuesta vacía.';
+        if (attempt<2) { await new Promise(resolve=>setTimeout(resolve,900*(attempt+1))); continue; }
+        throw new Error(lastError);
       } catch(error) {
         if(error instanceof Error && error.message==='OpenRouter devolvió una respuesta vacía.') throw error;
         throw new Error('OpenRouter devolvió una respuesta JSON inválida.');
