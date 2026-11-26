@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-26T19:48:56Z",
+  "generated_at": "2026-11-26T20:13:19Z",
   "workflow": "Android Release APK",
   "repository": "Tinchodoko/tinchodoko-ai-assistant",
   "builds": [
@@ -4226,6 +4226,28 @@
           "step": "TypeScript check",
           "started_at": "2026-11-26T19:45:45Z",
           "completed_at": "2026-11-26T19:45:46Z"
+        }
+      ]
+    },
+    {
+      "run_number": 243,
+      "run_id": 45889092118,
+      "status": "completed",
+      "conclusion": "failure",
+      "display_title": "feat(ai): estructurar instrucciones inglesas y flujo de analisis por par",
+      "event": "push",
+      "branch": "main",
+      "sha": "6aa58d3dd8e95699ac916d9b8f9931a1e8685d65",
+      "created_at": "2026-11-26T20:10:36Z",
+      "updated_at": "2026-11-26T20:11:16Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45889092118",
+      "failed_step": "TypeScript check",
+      "failed_steps": [
+        {
+          "job": "build",
+          "step": "TypeScript check",
+          "started_at": "2026-11-26T20:11:11Z",
+          "completed_at": "2026-11-26T20:11:12Z"
         }
       ]
     }
