@@ -177,6 +177,7 @@ export default function App() {
   const [extraProviderCards,setExtraProviderCards]=useState<ExtraProviderCard[]>([]);
   const [extraProvidersLoaded,setExtraProvidersLoaded]=useState(false);
   const [providerPickerOpen,setProviderPickerOpen]=useState(false);
+  const [extraProviderMenuId,setExtraProviderMenuId]=useState<string|null>(null);
   const [,setStreamStatus]=useState<'off'|'connecting'|'connected'|'disconnected'|'error'>('off');
   const [autoRefresh,setAutoRefresh]=useState(false);
   const autoRefreshRef=useRef(false);
@@ -1308,7 +1309,7 @@ export default function App() {
           <Text style={s.selectArrow}>{groqModelMenu?'▲':'▼'}</Text>
         </Pressable>
         {groqModelMenu&&<View style={s.menu}>
-          {GROQ_TEXT_MODELS.map(model=><Pressable key={model.id} onPress={()=>{setGroqModel(model.id);setGroqModelMenu(false);SecureStore.setItemAsync('tinchodoko.groq.model',model.id).catch(()=>{});}} style={s.menuItem}>
+          {GROQ_TEXT_MODELS.filter(model=>!modelUsedByOther('groq',model.id,groqModel)).map(model=><Pressable key={model.id} onPress={()=>{setGroqModel(model.id);setGroqModelMenu(false);SecureStore.setItemAsync('tinchodoko.groq.model',model.id).catch(()=>{});}} style={s.menuItem}>
             <Text style={[s.menuText,model.id===groqModel&&{fontWeight:'900'}]}>{model.name}</Text>
           </Pressable>)}
         </View>}
@@ -1363,7 +1364,7 @@ export default function App() {
           <Text style={s.selectArrow}>{nvidiaModelMenu?'▲':'▼'}</Text>
         </Pressable>
         {nvidiaModelMenu&&<View style={s.menu}>
-          {NVIDIA_TEXT_MODELS.map(model=><Pressable key={model.id} onPress={()=>{setNvidiaModel(model.id);setNvidiaModelMenu(false);SecureStore.setItemAsync('tinchodoko.nvidia.model',model.id).catch(()=>{});}} style={s.menuItem}>
+          {NVIDIA_TEXT_MODELS.filter(model=>!modelUsedByOther('nvidia',model.id,nvidiaModel)).map(model=><Pressable key={model.id} onPress={()=>{setNvidiaModel(model.id);setNvidiaModelMenu(false);SecureStore.setItemAsync('tinchodoko.nvidia.model',model.id).catch(()=>{});}} style={s.menuItem}>
             <Text style={[s.menuText,model.id===nvidiaModel&&{fontWeight:'900'}]}>{model.name}</Text>
           </Pressable>)}
         </View>}
@@ -1396,7 +1397,7 @@ export default function App() {
           <Text style={s.selectArrow}>{cloudflareModelMenu?'▲':'▼'}</Text>
         </Pressable>
         {cloudflareModelMenu&&<View style={s.menu}>
-          {CLOUDFLARE_TEXT_MODELS.map(model=><Pressable key={model.id} onPress={()=>{setCloudflareModel(model.id);setCloudflareModelMenu(false);SecureStore.setItemAsync('tinchodoko.cloudflare.model',model.id).catch(()=>{});if(model.id==='@cf/zai-org/glm-5.3')Alert.alert('GLM-5.3 · Acceso pago','Este modelo requiere Workers Paid o créditos prepagos de AI Gateway.');}} style={s.menuItem}>
+          {CLOUDFLARE_TEXT_MODELS.filter(model=>!modelUsedByOther('cloudflare',model.id,cloudflareModel)).map(model=><Pressable key={model.id} onPress={()=>{setCloudflareModel(model.id);setCloudflareModelMenu(false);SecureStore.setItemAsync('tinchodoko.cloudflare.model',model.id).catch(()=>{});if(model.id==='@cf/zai-org/glm-5.3')Alert.alert('GLM-5.3 · Acceso pago','Este modelo requiere Workers Paid o créditos prepagos de AI Gateway.');}} style={s.menuItem}>
             <Text style={[s.menuText,model.id===cloudflareModel&&{fontWeight:'900'}]}>{model.name}</Text>
             {model.id==='@cf/zai-org/glm-5.3'&&<Text style={s.aiLabel}>REQUIERE FACTURACIÓN</Text>}
           </Pressable>)}
@@ -1428,7 +1429,7 @@ export default function App() {
           <Text style={s.selectArrow}>{openrouterModelMenu?'▲':'▼'}</Text>
         </Pressable>
         {openrouterModelMenu&&<View style={s.menu}>
-          {OPENROUTER_TEXT_MODELS.map(model=><Pressable key={model.id} onPress={()=>{setOpenrouterModel(model.id);setOpenrouterModelMenu(false);SecureStore.setItemAsync('tinchodoko.openrouter.model',model.id).catch(()=>{});if(openrouterStatus==='online')setOpenrouterStatus('online');}} style={s.menuItem}>
+          {OPENROUTER_TEXT_MODELS.filter(model=>!modelUsedByOther('openrouter',model.id,openrouterModel)).map(model=><Pressable key={model.id} onPress={()=>{setOpenrouterModel(model.id);setOpenrouterModelMenu(false);SecureStore.setItemAsync('tinchodoko.openrouter.model',model.id).catch(()=>{});if(openrouterStatus==='online')setOpenrouterStatus('online');}} style={s.menuItem}>
             <Text style={[s.menuText,model.id===openrouterModel&&{fontWeight:'900'}]}>{model.name}</Text>
           </Pressable>)}
         </View>}
@@ -1453,11 +1454,14 @@ export default function App() {
             <Pressable onPress={()=>removeExtraProvider(card.id)} style={s.extraProviderRemove}><Text style={s.extraProviderRemoveText}>×</Text></Pressable>
           </View>
           <Text style={s.aiLabel}>MODELO</Text>
-          <View style={s.menu}>
-            {models.filter(model=>!modelUsedByOther(card.provider,model.id,card.model,card.id)).map(model=><Pressable key={model.id} onPress={()=>changeExtraProviderModel(card.id,model.id)} style={s.menuItem}>
-              <Text style={[s.menuText,model.id===card.model&&{fontWeight:'900'}]}>{model.id===card.model?'✓  ':''}{model.name}</Text>
+          <Pressable onPress={()=>setExtraProviderMenuId(current=>current===card.id?null:card.id)} style={s.select}>
+            <Text style={s.selectText}>{selected?.name??card.model}</Text><Text style={s.selectArrow}>{extraProviderMenuId===card.id?'▲':'▼'}</Text>
+          </Pressable>
+          {extraProviderMenuId===card.id&&<View style={s.menu}>
+            {models.filter(model=>!modelUsedByOther(card.provider,model.id,card.model,card.id)).map(model=><Pressable key={model.id} onPress={()=>{changeExtraProviderModel(card.id,model.id);setExtraProviderMenuId(null);}} style={s.menuItem}>
+              <Text style={[s.menuText,model.id===card.model&&{fontWeight:'900'}]}>{model.name}</Text>
             </Pressable>)}
-          </View>
+          </View>}
           <Text style={ready?s.onlineText:s.offlineText}>Credenciales {providerLabel(card.provider)}: {ready?'disponibles':'no conectadas'}</Text>
           <Pressable disabled={card.busy||!ready} onPress={()=>void testExtraProvider(card.id)} style={[s.aiTestButton,(card.busy||!ready)&&s.disabled]}>
             {card.busy?<ActivityIndicator color="#fff"/>:<Text style={s.aiTestButtonText}>TEST</Text>}
