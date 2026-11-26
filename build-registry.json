@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-26T20:13:19Z",
+  "generated_at": "2026-11-26T20:32:51Z",
   "workflow": "Android Release APK",
   "repository": "Tinchodoko/tinchodoko-ai-assistant",
   "builds": [
@@ -4248,6 +4248,28 @@
           "step": "TypeScript check",
           "started_at": "2026-11-26T20:11:11Z",
           "completed_at": "2026-11-26T20:11:12Z"
+        }
+      ]
+    },
+    {
+      "run_number": 244,
+      "run_id": 45891485226,
+      "status": "completed",
+      "conclusion": "failure",
+      "display_title": "fix(ai): corregir sintaxis del contexto de mercado",
+      "event": "push",
+      "branch": "main",
+      "sha": "2395815a96dea5d3a6c8b4a253a99ccba2a1f2cc",
+      "created_at": "2026-11-26T20:30:11Z",
+      "updated_at": "2026-11-26T20:31:04Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45891485226",
+      "failed_step": "TypeScript check",
+      "failed_steps": [
+        {
+          "job": "build",
+          "step": "TypeScript check",
+          "started_at": "2026-11-26T20:30:56Z",
+          "completed_at": "2026-11-26T20:31:00Z"
         }
       ]
     }
