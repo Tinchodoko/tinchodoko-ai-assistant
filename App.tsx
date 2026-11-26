@@ -4,6 +4,7 @@ import { connectToExness, getAccountSnapshot, getTradingHistory, openExnessAccou
 import { loadCredentials, saveCredentials } from './src/storage';
 import { BUILD_INFO } from './src/buildInfo';
 import { BUILD_HISTORY_FALLBACK } from './src/buildHistory';
+import { askGroq, validateGroqApiKey } from './src/groq';
 import MarketDataScreen from './src/MarketDataScreen';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as IntentLauncher from 'expo-intent-launcher';
@@ -128,6 +129,12 @@ export default function App() {
   const [accessPoint,setAccessPoint]=useState('');
   const [last,setLast]=useState<Date|null>(null);
   const [busy,setBusy]=useState(false);
+  const [groqApiKey,setGroqApiKey]=useState('');
+  const [groqApiVisible,setGroqApiVisible]=useState(false);
+  const [groqStatus,setGroqStatus]=useState<'offline'|'online'|'connecting'>('offline');
+  const [groqBusy,setGroqBusy]=useState(false);
+  const [groqQuestion,setGroqQuestion]=useState('');
+  const [groqAnswer,setGroqAnswer]=useState('');
   const [,setStreamStatus]=useState<'off'|'connecting'|'connected'|'disconnected'|'error'>('off');
   const [autoRefresh,setAutoRefresh]=useState(false);
   const autoRefreshRef=useRef(false);
@@ -219,6 +226,7 @@ export default function App() {
       PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS).catch(()=>{});
     }
     loadCredentials().then(x=>x&&setC(x));
+    SecureStore.getItemAsync('tinchodoko.groq.apiKey').then(raw=>{if(raw){setGroqApiKey(raw);setGroqStatus('online');}}).catch(()=>{});
     SecureStore.getItemAsync('tinchodoko.profile.refreshInterval').then(raw=>{
       if (!raw) return;
       try {
@@ -311,6 +319,41 @@ export default function App() {
     const timer = setInterval(()=>{ void refresh(true); }, intervalMs);
     return ()=>clearInterval(timer);
   },[accessPoint,autoRefresh,appliedIntervalUnit,appliedIntervalValue]);
+
+  async function connectGroq() {
+    const key=groqApiKey.trim();
+    if (!key) { Alert.alert('GROQ','Ingresá una API KEY de Groq.'); return; }
+    setGroqBusy(true); setGroqStatus('connecting');
+    try {
+      await validateGroqApiKey(key);
+      await SecureStore.setItemAsync('tinchodoko.groq.apiKey',key);
+      setGroqStatus('online'); setGroqAnswer(''); setGroqQuestion('');
+      Alert.alert('Groq','Conexión establecida correctamente.');
+    } catch(e) {
+      setGroqStatus('offline');
+      Alert.alert('Conexión Groq fallida',e instanceof Error?e.message:String(e));
+    } finally { setGroqBusy(false); }
+  }
+
+  function generateGroqMathQuestion(): string {
+    const a=Math.floor(Math.random()*91)+10;
+    const b=Math.floor(Math.random()*91)+10;
+    return `¿Cuánto es ${a} + ${b}?`;
+  }
+
+  async function testGroq() {
+    const key=groqApiKey.trim();
+    if (!key) { Alert.alert('GROQ','Primero ingresá y conectá una API KEY.'); return; }
+    setGroqBusy(true);
+    try {
+      const question=generateGroqMathQuestion();
+      setGroqQuestion(question); setGroqAnswer('');
+      const answer=await askGroq(key,question);
+      setGroqAnswer(answer); setGroqStatus('online');
+    } catch(e) {
+      setGroqStatus('offline'); setGroqAnswer(e instanceof Error?e.message:String(e));
+    } finally { setGroqBusy(false); }
+  }
 
   async function connect() {
     setBusy(true); setStatus('connecting');
@@ -953,6 +996,29 @@ export default function App() {
       <Pressable disabled={busy} onPress={connect} style={[s.button,busy&&s.disabled]}>{busy?<ActivityIndicator/>:<Text style={s.buttonText}>CONECTAR</Text>}</Pressable>
       <Text style={status==='online'?s.onlineText:s.offlineText}>Estado: {status}</Text>
       {status==='online'&&!!accessPoint&&<Text style={s.ap}>URL DE ACCESS POINT: {accessPoint}</Text>}
+
+      <View style={s.aiCard}>
+        <Text style={s.aiTitle}>CLAVES DE CONEXIÓN DE IA</Text>
+        <Text style={s.aiProvider}>GROQ</Text>
+        <Text style={s.aiLabel}>API KEY</Text>
+        <View style={s.row}>
+          <TextInput style={s.input} value={groqApiKey} onChangeText={value=>{setGroqApiKey(value);if(groqStatus==='online')setGroqStatus('offline');}} autoCapitalize="none" autoCorrect={false} secureTextEntry={!groqApiVisible} placeholder="Ingresá tu API KEY de Groq" placeholderTextColor="#6f7785"/>
+          <Pressable style={s.eye} onPress={()=>setGroqApiVisible(v=>!v)}><Text>{groqApiVisible?'🙈':'👁️'}</Text></Pressable>
+        </View>
+        <Pressable disabled={groqBusy} onPress={()=>void connectGroq()} style={[s.button,groqBusy&&s.disabled]}>
+          {groqBusy&&groqStatus==='connecting'?<ActivityIndicator/>:<Text style={s.buttonText}>CONECTAR</Text>}
+        </Pressable>
+        <Text style={groqStatus==='online'?s.onlineText:s.offlineText}>Estado Groq: {groqStatus}</Text>
+        <Pressable disabled={groqBusy||groqStatus!=='online'} onPress={()=>void testGroq()} style={[s.aiTestButton,(groqBusy||groqStatus!=='online')&&s.disabled]}>
+          {groqBusy&&groqStatus==='online'?<ActivityIndicator color="#fff"/>:<Text style={s.aiTestButtonText}>TEST</Text>}
+        </Pressable>
+        <View style={s.aiResult}>
+          <Text style={s.aiResultLabel}>PREGUNTA</Text>
+          <Text style={s.aiResultText}>{groqQuestion||'—'}</Text>
+          <Text style={s.aiResultLabel}>RESPUESTA DE GROQ</Text>
+          <Text style={s.aiResultText}>{groqAnswer||'—'}</Text>
+        </View>
+      </View>
     </ScrollView>  : screen==='profile' ? <ScrollView contentContainerStyle={s.content} onTouchStart={e=>{handleSwipeStart(e);setIntervalMenu(false);}} onTouchEnd={handleSwipeEnd}>
       <Text style={s.h1}>BALANCE</Text>
       <View style={s.card}>
@@ -1179,6 +1245,7 @@ const s=StyleSheet.create({
  card:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:14,padding:17,gap:17},info:{gap:5},infoLabel:{color:'#8f98a8',fontSize:11,fontWeight:'900'},infoValue:{color:'#fff',fontSize:15,fontWeight:'600'},pnlPositive:{color:'#28d17c',fontWeight:'900'},pnlNegative:{color:'#e05252',fontWeight:'900'},pnlZero:{color:'#f0a52b',fontWeight:'900'},
  refresh:{minHeight:48,borderRadius:10,borderWidth:1,borderColor:'#3b4350',alignItems:'center',justifyContent:'center'},refreshText:{color:'#fff',fontWeight:'900'},
  meta:{color:'#8f98a8',fontSize:11,fontWeight:'900'},time:{color:'#fff',fontWeight:'600',marginTop:-9},ap:{color:'#707988',fontSize:11},
+  aiCard:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:14,padding:17,gap:12},aiTitle:{color:'#fff',fontSize:14,fontWeight:'900'},aiProvider:{color:'#f0b429',fontSize:12,fontWeight:'900'},aiLabel:{color:'#8f98a8',fontSize:11,fontWeight:'900'},aiTestButton:{minHeight:48,borderRadius:10,backgroundColor:'#222a38',borderWidth:1,borderColor:'#3b4350',alignItems:'center',justifyContent:'center'},aiTestButtonText:{color:'#fff',fontWeight:'900'},aiResult:{backgroundColor:'#0f131a',borderWidth:1,borderColor:'#303744',borderRadius:10,padding:13,gap:7},aiResultLabel:{color:'#8f98a8',fontSize:10,fontWeight:'900'},aiResultText:{color:'#fff',fontSize:14,lineHeight:20,fontWeight:'600'},
  githubButton:{minHeight:54,borderRadius:12,borderWidth:1,borderColor:'#3b4350',paddingHorizontal:16,flexDirection:'row',alignItems:'center',gap:12},githubLogo:{width:24,height:24},githubText:{color:'#fff',fontWeight:'900',flex:1},githubVersion:{color:'#9da6b5',fontWeight:'800'},change:{color:'#dce1e9',fontSize:13,lineHeight:20},buildFilterRow:{flexDirection:'row',gap:8,marginTop:-7},buildFilterButton:{width:44,height:36,borderRadius:9,borderWidth:1,borderColor:'#3b4350',backgroundColor:'#151a22',alignItems:'center',justifyContent:'center',opacity:0.45},buildFilterCancelledOn:{borderColor:'#9da6b5',backgroundColor:'#303744',opacity:1},buildFilterFailedOn:{borderColor:'#e05252',backgroundColor:'#351a1e',opacity:1},buildFilterSuccessOn:{borderColor:'#28d17c',backgroundColor:'#10251b',opacity:1},buildFilterIcon:{fontSize:20,fontWeight:'900',lineHeight:22},buildFilterCancelledText:{color:'#9da6b5'},buildFilterFailedText:{color:'#e05252'},buildFilterSuccessText:{color:'#28d17c'},buildHistory:{width:'100%',gap:9},buildCard:{width:'100%',minWidth:0,flexDirection:'row',alignItems:'flex-start',gap:10,backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:12,padding:13},buildDescription:{flex:1,minWidth:0,flexShrink:1,color:'#dce1e9',fontSize:13,lineHeight:19},buildSuccess:{color:'#28d17c',fontSize:13,fontWeight:'900',minWidth:58},buildFailure:{color:'#e05252',fontSize:13,fontWeight:'900',minWidth:58},buildPending:{color:'#9da6b5',fontSize:13,fontWeight:'900',minWidth:58},
  saveIntervalButton:{minHeight:46,borderRadius:10,borderWidth:1,borderColor:'#3b4350',alignItems:'center',justifyContent:'center',backgroundColor:'#151a22'},saveIntervalText:{color:'#fff',fontWeight:'900',fontSize:12},
  intervalCard:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:14,padding:17,gap:12},intervalHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},clockButton:{width:40,height:40,borderRadius:20,alignItems:'center',justifyContent:'center'},clockOn:{color:'#28d17c',fontSize:25,fontWeight:'900'},clockOff:{color:'#e05252',fontSize:22,fontWeight:'900'},intervalTitle:{color:'#fff',fontSize:14,fontWeight:'800'},select:{minHeight:44,borderWidth:1,borderColor:'#3b4350',borderRadius:9,paddingHorizontal:12,flexDirection:'row',alignItems:'center',justifyContent:'space-between',backgroundColor:'#0f131a'},selectText:{color:'#fff',fontWeight:'700'},selectArrow:{color:'#9da6b5',fontSize:12},menu:{borderWidth:1,borderColor:'#3b4350',borderRadius:9,backgroundColor:'#0f131a',overflow:'hidden'},menuItem:{paddingHorizontal:13,paddingVertical:12},menuText:{color:'#fff',fontWeight:'700'},sliderRow:{flexDirection:'row',alignItems:'center',gap:8},sliderMin:{color:'#9da6b5',fontSize:11,fontWeight:'800'},sliderMax:{color:'#9da6b5',fontSize:11,fontWeight:'800'},sliderTrack:{flex:1,height:32,borderRadius:16,backgroundColor:'transparent',position:'relative',justifyContent:'center'},sliderEnabled:{opacity:1},sliderDisabled:{opacity:0.4},sliderRail:{position:'absolute',left:9,right:9,top:13,height:6,borderRadius:3,backgroundColor:'#303744'},sliderFill:{position:'absolute',left:9,top:13,height:6,borderRadius:3,backgroundColor:'#fff'},sliderThumb:{position:'absolute',top:7,width:18,height:18,borderRadius:9,backgroundColor:'#fff',marginLeft:-9},intervalValue:{color:'#9da6b5',fontSize:11,fontWeight:'700'},
