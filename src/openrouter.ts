@@ -53,12 +53,22 @@ export async function validateOpenRouterApiKey(apiKey: string): Promise<void> {
 
 function extractOpenRouterAnswer(body: string): string {
   const data = JSON.parse(body) as {
-    choices?: Array<{ message?: { content?: string | Array<{ type?: string; text?: string }> | null } }>;
+    choices?: Array<{
+      finish_reason?: string | null;
+      message?: {
+        content?: string | Array<{ type?: string; text?: string }> | null;
+        reasoning?: string | null;
+      };
+    }>;
   };
-  const raw = data.choices?.[0]?.message?.content;
-  return typeof raw === 'string'
+  const choice = data.choices?.[0];
+  const raw = choice?.message?.content;
+  const answer = typeof raw === 'string'
     ? raw.trim()
     : Array.isArray(raw) ? raw.map(part => part.text ?? '').join('').trim() : '';
+  if (answer) return answer;
+  const finish = choice?.finish_reason ? ` (finish_reason: ${choice.finish_reason})` : '';
+  throw new Error(`OpenRouter devolvió una respuesta vacía${finish}.`);
 }
 
 export async function askOpenRouter(
@@ -79,8 +89,9 @@ export async function askOpenRouter(
       { role: 'user', content: question },
     ],
     temperature: 0.1,
-    max_tokens: 256,
+    max_completion_tokens: 512,
     stream: false,
+    response_format: { type: 'json_object' },
     provider: { allow_fallbacks: true, sort: 'throughput' },
   });
 
@@ -99,7 +110,11 @@ export async function askOpenRouter(
         if (attempt<2) { await new Promise(resolve=>setTimeout(resolve,900*(attempt+1))); continue; }
         throw new Error(lastError);
       } catch(error) {
-        if(error instanceof Error && error.message==='OpenRouter devolvió una respuesta vacía.') throw error;
+        if(error instanceof Error && error.message.startsWith('OpenRouter devolvió una respuesta vacía')) {
+          lastError=error.message;
+          if (attempt<2) { await new Promise(resolve=>setTimeout(resolve,900*(attempt+1))); continue; }
+          throw error;
+        }
         throw new Error('OpenRouter devolvió una respuesta JSON inválida.');
       }
     }
