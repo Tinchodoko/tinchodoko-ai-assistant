@@ -8,6 +8,7 @@ import { askGroq, validateGroqApiKey, GROQ_TEXT_MODELS, DEFAULT_GROQ_MODEL } fro
 import { askGemini, validateGeminiApiKey, GEMINI_MODEL } from './src/gemini';
 import { askNvidia, validateNvidiaApiKey, NVIDIA_TEXT_MODELS, DEFAULT_NVIDIA_MODEL } from './src/nvidia';
 import { askCloudflare, validateCloudflareCredentials, CLOUDFLARE_TEXT_MODELS, DEFAULT_CLOUDFLARE_MODEL } from './src/cloudflare';
+import { askOpenRouter, validateOpenRouterApiKey, OPENROUTER_TEXT_MODELS, DEFAULT_OPENROUTER_MODEL } from './src/openrouter';
 import MarketDataScreen from './src/MarketDataScreen';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as IntentLauncher from 'expo-intent-launcher';
@@ -163,6 +164,14 @@ export default function App() {
   const [cloudflareAnswer,setCloudflareAnswer]=useState('');
   const [cloudflareModel,setCloudflareModel]=useState<string>(DEFAULT_CLOUDFLARE_MODEL);
   const [cloudflareModelMenu,setCloudflareModelMenu]=useState(false);
+  const [openrouterApiKey,setOpenrouterApiKey]=useState('');
+  const [openrouterApiVisible,setOpenrouterApiVisible]=useState(false);
+  const [openrouterStatus,setOpenrouterStatus]=useState<'offline'|'online'|'connecting'>('offline');
+  const [openrouterBusy,setOpenrouterBusy]=useState(false);
+  const [openrouterQuestion,setOpenrouterQuestion]=useState('');
+  const [openrouterAnswer,setOpenrouterAnswer]=useState('');
+  const [openrouterModel,setOpenrouterModel]=useState<string>(DEFAULT_OPENROUTER_MODEL);
+  const [openrouterModelMenu,setOpenrouterModelMenu]=useState(false);
   const [,setStreamStatus]=useState<'off'|'connecting'|'connected'|'disconnected'|'error'>('off');
   const [autoRefresh,setAutoRefresh]=useState(false);
   const autoRefreshRef=useRef(false);
@@ -264,6 +273,8 @@ export default function App() {
     SecureStore.getItemAsync('tinchodoko.cloudflare.apiToken').then(raw=>{if(raw){setCloudflareApiToken(raw);setCloudflareStatus('online');}}).catch(()=>{});
     SecureStore.getItemAsync('tinchodoko.cloudflare.accountId').then(raw=>{if(raw)setCloudflareAccountId(raw);}).catch(()=>{});
     SecureStore.getItemAsync('tinchodoko.cloudflare.model').then(raw=>{if(raw && CLOUDFLARE_TEXT_MODELS.some(model=>model.id===raw)) setCloudflareModel(raw);}).catch(()=>{});
+    SecureStore.getItemAsync('tinchodoko.openrouter.apiKey').then(raw=>{if(raw){setOpenrouterApiKey(raw);setOpenrouterStatus('online');}}).catch(()=>{});
+    SecureStore.getItemAsync('tinchodoko.openrouter.model').then(raw=>{if(raw && OPENROUTER_TEXT_MODELS.some(model=>model.id===raw)) setOpenrouterModel(raw);}).catch(()=>{});
     SecureStore.getItemAsync('tinchodoko.profile.refreshInterval').then(raw=>{
       if (!raw) return;
       try {
@@ -520,6 +531,42 @@ export default function App() {
     } catch(e) {
       setCloudflareStatus('offline'); setCloudflareAnswer(e instanceof Error?e.message:String(e));
     } finally { setCloudflareBusy(false); }
+  }
+
+  async function connectOpenRouter() {
+    const key=openrouterApiKey.trim();
+    if (!key) { Alert.alert('OPENROUTER','Ingresá una API KEY de OpenRouter.'); return; }
+    setOpenrouterBusy(true); setOpenrouterStatus('connecting');
+    try {
+      await validateOpenRouterApiKey(key);
+      await SecureStore.setItemAsync('tinchodoko.openrouter.apiKey',key);
+      await SecureStore.setItemAsync('tinchodoko.openrouter.model',openrouterModel);
+      setOpenrouterStatus('online'); setOpenrouterAnswer(''); setOpenrouterQuestion('');
+      Alert.alert('OpenRouter','API KEY verificada correctamente. Seleccioná un modelo y ejecutá TEST para comprobar su disponibilidad.');
+    } catch(e) {
+      setOpenrouterStatus('offline');
+      Alert.alert('Conexión OpenRouter fallida',e instanceof Error?e.message:String(e));
+    } finally { setOpenrouterBusy(false); }
+  }
+
+  function generateOpenRouterMathQuestion(): string {
+    const a=Math.floor(Math.random()*91)+10;
+    const b=Math.floor(Math.random()*91)+10;
+    return `¿Cuánto es ${a} + ${b}?`;
+  }
+
+  async function testOpenRouter() {
+    const key=openrouterApiKey.trim();
+    if (!key) { Alert.alert('OPENROUTER','Primero ingresá y conectá una API KEY.'); return; }
+    setOpenrouterBusy(true);
+    try {
+      const question=generateOpenRouterMathQuestion();
+      setOpenrouterQuestion(question); setOpenrouterAnswer('');
+      const answer=await askOpenRouter(key,question,openrouterModel);
+      setOpenrouterAnswer(answer); setOpenrouterStatus('online');
+    } catch(e) {
+      setOpenrouterStatus('offline'); setOpenrouterAnswer(e instanceof Error?e.message:String(e));
+    } finally { setOpenrouterBusy(false); }
   }
 
   async function connect() {
@@ -1282,6 +1329,37 @@ export default function App() {
           <Text style={s.aiResultText}>{cloudflareQuestion||'—'}</Text>
           <Text style={s.aiResultLabel}>RESPUESTA</Text>
           <Text style={s.aiResultText}>{cloudflareAnswer ? ('CLOUDFLARE - (' + (CLOUDFLARE_TEXT_MODELS.find(model=>model.id===cloudflareModel)?.name ?? cloudflareModel) + ')\n' + cloudflareAnswer) : '—'}</Text>
+        </View>
+      </View>
+      <View style={s.aiCard}>
+        <Text style={s.aiProvider}>OPENROUTER</Text>
+        <Text style={s.aiLabel}>API KEY</Text>
+        <View style={s.row}>
+          <TextInput style={s.input} value={openrouterApiKey} onChangeText={value=>{setOpenrouterApiKey(value);if(openrouterStatus==='online')setOpenrouterStatus('offline');}} autoCapitalize="none" autoCorrect={false} secureTextEntry={!openrouterApiVisible} placeholder="Ingresá tu API KEY de OpenRouter" placeholderTextColor="#6f7785"/>
+          <Pressable style={s.eye} onPress={()=>setOpenrouterApiVisible(v=>!v)}><Text>{openrouterApiVisible?'🙈':'👁️'}</Text></Pressable>
+        </View>
+        <Pressable disabled={openrouterBusy} onPress={()=>void connectOpenRouter()} style={[s.button,openrouterBusy&&s.disabled]}>
+          {openrouterBusy&&openrouterStatus==='connecting'?<ActivityIndicator/>:<Text style={s.buttonText}>CONECTAR</Text>}
+        </Pressable>
+        <Text style={s.aiLabel}>MODELO</Text>
+        <Pressable disabled={openrouterBusy} onPress={()=>setOpenrouterModelMenu(v=>!v)} style={s.select}>
+          <Text style={s.selectText}>{OPENROUTER_TEXT_MODELS.find(model=>model.id===openrouterModel)?.name ?? openrouterModel}</Text>
+          <Text style={s.selectArrow}>{openrouterModelMenu?'▲':'▼'}</Text>
+        </Pressable>
+        {openrouterModelMenu&&<View style={s.menu}>
+          {OPENROUTER_TEXT_MODELS.map(model=><Pressable key={model.id} onPress={()=>{setOpenrouterModel(model.id);setOpenrouterModelMenu(false);SecureStore.setItemAsync('tinchodoko.openrouter.model',model.id).catch(()=>{});if(openrouterStatus==='online')setOpenrouterStatus('online');}} style={s.menuItem}>
+            <Text style={[s.menuText,model.id===openrouterModel&&{fontWeight:'900'}]}>{model.name}</Text>
+          </Pressable>)}
+        </View>}
+        <Text style={openrouterStatus==='online'?s.onlineText:s.offlineText}>Estado OpenRouter: {openrouterStatus}</Text>
+        <Pressable disabled={openrouterBusy||openrouterStatus!=='online'} onPress={()=>void testOpenRouter()} style={[s.aiTestButton,(openrouterBusy||openrouterStatus!=='online')&&s.disabled]}>
+          {openrouterBusy?<ActivityIndicator color="#fff"/>:<Text style={s.aiTestButtonText}>TEST</Text>}
+        </Pressable>
+        <View style={s.aiResult}>
+          <Text style={s.aiResultLabel}>PREGUNTA</Text>
+          <Text style={s.aiResultText}>{openrouterQuestion||'—'}</Text>
+          <Text style={s.aiResultLabel}>RESPUESTA</Text>
+          <Text style={s.aiResultText}>{openrouterAnswer ? ('OPENROUTER - (' + (OPENROUTER_TEXT_MODELS.find(model=>model.id===openrouterModel)?.name ?? openrouterModel) + ')\n' + openrouterAnswer) : '—'}</Text>
         </View>
       </View>
     </ScrollView>  : screen==='profile' ? <ScrollView contentContainerStyle={s.content} onTouchStart={e=>{handleSwipeStart(e);setIntervalMenu(false);}} onTouchEnd={handleSwipeEnd}>
