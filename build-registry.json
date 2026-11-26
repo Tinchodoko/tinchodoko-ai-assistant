@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-26T01:23:34Z",
+  "generated_at": "2026-11-26T01:40:22Z",
   "workflow": "Android Release APK",
   "repository": "Tinchodoko/tinchodoko-ai-assistant",
   "builds": [
@@ -3617,6 +3617,28 @@
       "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45734648852",
       "failed_step": null,
       "failed_steps": []
+    },
+    {
+      "run_number": 206,
+      "run_id": 45737086480,
+      "status": "completed",
+      "conclusion": "failure",
+      "display_title": "feat(market): add candle crosshair and indicator value axes",
+      "event": "push",
+      "branch": "main",
+      "sha": "8232be4ce24ceb2d2041663d38f5001268acb834",
+      "created_at": "2026-11-26T01:38:13Z",
+      "updated_at": "2026-11-26T01:38:53Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45737086480",
+      "failed_step": "TypeScript check",
+      "failed_steps": [
+        {
+          "job": "build",
+          "step": "TypeScript check",
+          "started_at": "2026-11-26T01:38:49Z",
+          "completed_at": "2026-11-26T01:38:50Z"
+        }
+      ]
     }
   ]
 }
