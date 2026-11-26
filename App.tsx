@@ -53,7 +53,7 @@ const LATEST_RELEASE_API = 'https://api.github.com/repos/Tinchodoko/tinchodoko-a
 const UPDATE_MANIFEST_URL = 'https://raw.githubusercontent.com/Tinchodoko/tinchodoko-ai-assistant/main/update.json';
 type Screen = 'connection' | 'profile' | 'positions' | 'market' | 'history' | 'app';
 type AiProvider = 'groq' | 'gemini' | 'nvidia' | 'cloudflare' | 'openrouter';
-type ExtraProviderCard = { id:string; provider:AiProvider; model:string; question:string; answer:string; busy:boolean };
+type ExtraProviderCard = { id:string; provider:AiProvider; model:string; apiKey:string; accountId:string; apiKeyVisible:boolean; question:string; answer:string; busy:boolean };
 type TradeAction = {
   kind: 'edit' | 'close';
   target: 'position' | 'order';
@@ -281,7 +281,7 @@ export default function App() {
     SecureStore.getItemAsync('tinchodoko.cloudflare.model').then(raw=>{if(raw && CLOUDFLARE_TEXT_MODELS.some(model=>model.id===raw)) setCloudflareModel(raw);}).catch(()=>{});
     SecureStore.getItemAsync('tinchodoko.openrouter.apiKey').then(raw=>{if(raw){setOpenrouterApiKey(raw);setOpenrouterStatus('online');}}).catch(()=>{});
     SecureStore.getItemAsync('tinchodoko.openrouter.model').then(raw=>{if(raw && OPENROUTER_TEXT_MODELS.some(model=>model.id===raw)) setOpenrouterModel(raw);}).catch(()=>{});
-    SecureStore.getItemAsync('tinchodoko.ai.extraProviders').then(raw=>{try{const saved=JSON.parse(raw??'[]');if(Array.isArray(saved))setExtraProviderCards(saved.filter((item:any)=>item&&typeof item.id==='string'&&['groq','gemini','nvidia','cloudflare','openrouter'].includes(item.provider)&&typeof item.model==='string').map((item:any)=>({id:item.id,provider:item.provider,model:item.model,question:'',answer:'',busy:false})));}catch{}finally{setExtraProvidersLoaded(true);}}).catch(()=>setExtraProvidersLoaded(true));
+    SecureStore.getItemAsync('tinchodoko.ai.extraProviders').then(raw=>{try{const saved=JSON.parse(raw??'[]');if(Array.isArray(saved))setExtraProviderCards(saved.filter((item:any)=>item&&typeof item.id==='string'&&['groq','gemini','nvidia','cloudflare','openrouter'].includes(item.provider)&&typeof item.model==='string').map((item:any)=>({id:item.id,provider:item.provider,model:item.model,apiKey:typeof item.apiKey==='string'?item.apiKey:'',accountId:typeof item.accountId==='string'?item.accountId:'',apiKeyVisible:false,question:'',answer:'',busy:false})));}catch{}finally{setExtraProvidersLoaded(true);}}).catch(()=>setExtraProvidersLoaded(true));
     SecureStore.getItemAsync('tinchodoko.profile.refreshInterval').then(raw=>{
       if (!raw) return;
       try {
@@ -322,7 +322,7 @@ export default function App() {
     void cleanupInstalledUpdateApks();
   },[]);
 
-  useEffect(()=>{if(!extraProvidersLoaded)return;void SecureStore.setItemAsync('tinchodoko.ai.extraProviders',JSON.stringify(extraProviderCards.map(({id,provider,model})=>({id,provider,model})))).catch(()=>{});},[extraProviderCards,extraProvidersLoaded]);
+  useEffect(()=>{if(!extraProvidersLoaded)return;void SecureStore.setItemAsync('tinchodoko.ai.extraProviders',JSON.stringify(extraProviderCards.map(({id,provider,model,apiKey,accountId})=>({id,provider,model,apiKey,accountId})))).catch(()=>{});},[extraProviderCards,extraProvidersLoaded]);
 
   // Mantiene un único flujo firmado por cuenta y se resincroniza al reconectar.
   useEffect(()=>{
@@ -417,7 +417,8 @@ export default function App() {
     const available=models.find(model=>!used.includes(modelIdentity(provider,model.id)));
     if(!available){Alert.alert('Sin modelos disponibles',`Todos los modelos de ${providerLabel(provider)} ya están seleccionados en otros recuadros.`);return;}
     const id='provider-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,7);
-    setExtraProviderCards(current=>[...current,{id,provider,model:available.id,question:'',answer:'',busy:false}]);
+    const initialCredentials=provider==='groq'?{apiKey:groqApiKey,accountId:''}:provider==='gemini'?{apiKey:geminiApiKey,accountId:''}:provider==='nvidia'?{apiKey:nvidiaApiKey,accountId:''}:provider==='cloudflare'?{apiKey:cloudflareApiToken,accountId:cloudflareAccountId}:{apiKey:openrouterApiKey,accountId:''};
+    setExtraProviderCards(current=>[...current,{id,provider,model:available.id,...initialCredentials,apiKeyVisible:false,question:'',answer:'',busy:false}]);
     setProviderPickerOpen(false);
   }
   function changeExtraProviderModel(cardId:string,modelId:string) {
@@ -431,20 +432,44 @@ export default function App() {
     }));
   }
   function removeExtraProvider(cardId:string) {setExtraProviderCards(current=>current.filter(card=>card.id!==cardId));}
+  function addAllExtraProviderModels(provider:AiProvider) {
+    const used=selectedModelIdentities();
+    const missing=getProviderModels(provider).filter(model=>!used.includes(modelIdentity(provider,model.id)));
+    if(!missing.length){Alert.alert('Sin modelos disponibles',`Todos los modelos de ${providerLabel(provider)} ya están seleccionados.`);return;}
+    const initialCredentials=provider==='groq'?{apiKey:groqApiKey,accountId:''}:provider==='gemini'?{apiKey:geminiApiKey,accountId:''}:provider==='nvidia'?{apiKey:nvidiaApiKey,accountId:''}:provider==='cloudflare'?{apiKey:cloudflareApiToken,accountId:cloudflareAccountId}:{apiKey:openrouterApiKey,accountId:''};
+    const now=Date.now();
+    setExtraProviderCards(current=>[...current,...missing.map((model,index)=>({id:`provider-${now.toString(36)}-${index.toString(36)}`,provider,model:model.id,...initialCredentials,apiKeyVisible:false,question:'',answer:'',busy:false}))]);
+    setProviderPickerOpen(false);
+  }
+  function clearExtraProviders() {setExtraProviderCards([]);setExtraProviderMenuId(null);setProviderPickerOpen(false);Alert.alert('Proveedores eliminados','Se eliminaron todos los proveedores agregados. Los proveedores predeterminados no fueron modificados.');}
+  function confirmDeleteApiKey(provider:AiProvider,cardId?:string) {
+    Alert.alert('Eliminar clave de API',`¿Desea eliminar la clave de API de ${providerLabel(provider)}?\n\nRecuerde que esta no se puede recuperar una vez eliminada.`,[
+      {text:'CANCELAR',style:'cancel'},
+      {text:'ELIMINAR',style:'destructive',onPress:()=>{
+        if(cardId)setExtraProviderCards(current=>current.map(card=>card.id===cardId?{...card,apiKey:'',accountId:'',answer:'',question:''}:card));
+        else if(provider==='groq'){setGroqApiKey('');setGroqStatus('offline');void SecureStore.deleteItemAsync('tinchodoko.groq.apiKey').catch(()=>{});}
+        else if(provider==='gemini'){setGeminiApiKey('');setGeminiStatus('offline');void SecureStore.deleteItemAsync('tinchodoko.gemini.apiKey').catch(()=>{});}
+        else if(provider==='nvidia'){setNvidiaApiKey('');setNvidiaStatus('offline');void SecureStore.deleteItemAsync('tinchodoko.nvidia.apiKey').catch(()=>{});}
+        else if(provider==='cloudflare'){setCloudflareApiToken('');setCloudflareAccountId('');setCloudflareStatus('offline');void SecureStore.deleteItemAsync('tinchodoko.cloudflare.apiToken').catch(()=>{});void SecureStore.deleteItemAsync('tinchodoko.cloudflare.accountId').catch(()=>{});}
+        else {setOpenrouterApiKey('');setOpenrouterStatus('offline');void SecureStore.deleteItemAsync('tinchodoko.openrouter.apiKey').catch(()=>{});}
+      }}]);
+  }
+  function updateExtraCredential(cardId:string,field:'apiKey'|'accountId',value:string) {setExtraProviderCards(current=>current.map(card=>card.id===cardId?{...card,[field]:value,answer:'',question:''}:card));}
   async function testExtraProvider(cardId:string) {
     const card=extraProviderCards.find(item=>item.id===cardId);
     if(!card)return;
-    if(!providerReady(card.provider)){Alert.alert('Proveedor no conectado',`Primero conectá ${providerLabel(card.provider)} en su recuadro principal. La tarjeta adicional reutiliza esas mismas credenciales.`);return;}
+    const credentialReady=!!card.apiKey.trim()&&(card.provider!=='cloudflare'||!!card.accountId.trim());
+    if(!credentialReady){Alert.alert('Proveedor no conectado',`Ingresá las credenciales de ${providerLabel(card.provider)} en este recuadro.`);return;}
     const a=Math.floor(Math.random()*91)+10,b=Math.floor(Math.random()*91)+10;
     const question=`¿Cuánto es ${a} + ${b}?`;
     setExtraProviderCards(current=>current.map(item=>item.id===cardId?{...item,busy:true,question,answer:''}:item));
     try{
       let answer='';
-      if(card.provider==='groq')answer=await askGroq(groqApiKey,question,card.model);
-      else if(card.provider==='gemini')answer=await askGemini(geminiApiKey,question);
-      else if(card.provider==='nvidia')answer=await askNvidia(nvidiaApiKey,question,card.model);
-      else if(card.provider==='cloudflare')answer=await askCloudflare(cloudflareApiToken,cloudflareAccountId,question,card.model);
-      else answer=await askOpenRouter(openrouterApiKey,question,card.model);
+      if(card.provider==='groq')answer=await askGroq(card.apiKey,question,card.model);
+      else if(card.provider==='gemini')answer=await askGemini(card.apiKey,question);
+      else if(card.provider==='nvidia')answer=await askNvidia(card.apiKey,question,card.model);
+      else if(card.provider==='cloudflare')answer=await askCloudflare(card.apiKey,card.accountId,question,card.model);
+      else answer=await askOpenRouter(card.apiKey,question,card.model);
       setExtraProviderCards(current=>current.map(item=>item.id===cardId?{...item,answer,busy:false}:item));
     }catch(error){setExtraProviderCards(current=>current.map(item=>item.id===cardId?{...item,answer:error instanceof Error?error.message:String(error),busy:false}:item));}
   }
@@ -1257,7 +1282,7 @@ export default function App() {
         <View style={s.modalButtons}><Pressable onPress={()=>setTradeAction(null)} style={s.modalCancel}><Text style={s.modalCancelText}>CANCELAR</Text></Pressable><Pressable onPress={confirmEditInput} style={s.modalConfirm}><Text style={s.modalConfirmText}>CONFIRMAR</Text></Pressable></View>
       </View>
     </View>}
-    {providerPickerOpen && <View style={s.modalBackdrop}><View style={s.modalCard}><Text style={s.modalTitle}>AGREGAR PROVEEDOR</Text><Text style={s.modalSub}>Seleccioná el proveedor para crear un nuevo recuadro. Se reutilizarán sus credenciales guardadas.</Text>{(['groq','gemini','nvidia','cloudflare','openrouter'] as AiProvider[]).map(provider=><Pressable key={provider} onPress={()=>addExtraProvider(provider)} style={s.providerChoice}><Text style={s.menuText}>{providerLabel(provider)}</Text><Text style={s.selectArrow}>＋</Text></Pressable>)}<Pressable onPress={()=>setProviderPickerOpen(false)} style={s.modalCancel}><Text style={s.modalCancelText}>CANCELAR</Text></Pressable></View></View>}
+    {providerPickerOpen && <View style={s.modalBackdrop}><View style={s.modalCard}><Text style={s.modalTitle}>AGREGAR PROVEEDOR</Text><Text style={s.modalSub}>Elegí un proveedor o agregá todos sus modelos disponibles.</Text>{(['groq','gemini','nvidia','cloudflare','openrouter'] as AiProvider[]).map(provider=><View key={provider} style={{gap:6}}><Pressable onPress={()=>addExtraProvider(provider)} style={s.providerChoice}><Text style={s.menuText}>{providerLabel(provider)}</Text><Text style={s.selectArrow}>＋</Text></Pressable><Pressable onPress={()=>addAllExtraProviderModels(provider)} style={s.providerChoice}><Text style={s.menuText}>Agregar todos los modelos</Text><Text style={s.selectArrow}>＋</Text></Pressable></View>)}<Pressable onPress={clearExtraProviders} style={s.providerChoice}><Text style={[s.menuText,{color:'#e05252',fontWeight:'900'}]}>Eliminar proveedores agregados</Text><Text style={s.selectArrow}>×</Text></Pressable><Pressable onPress={()=>setProviderPickerOpen(false)} style={s.modalCancel}><Text style={s.modalCancelText}>CANCELAR</Text></Pressable></View></View>}
     {tradeConfirm && <View style={s.modalBackdrop}>
       <View style={s.modalCard}>
         {tradeConfirm.kind==='edit' ? <>
@@ -1298,7 +1323,7 @@ export default function App() {
         <Text style={s.aiLabel}>API KEY</Text>
         <View style={s.row}>
           <TextInput style={s.input} value={groqApiKey} onChangeText={value=>{setGroqApiKey(value);if(groqStatus==='online')setGroqStatus('offline');}} autoCapitalize="none" autoCorrect={false} secureTextEntry={!groqApiVisible} placeholder="Ingresá tu API KEY de Groq" placeholderTextColor="#6f7785"/>
-          <Pressable style={s.eye} onPress={()=>setGroqApiVisible(v=>!v)}><Text>{groqApiVisible?'🙈':'👁️'}</Text></Pressable>
+          <Pressable style={s.eye} onPress={()=>setGroqApiVisible(v=>!v)}><Text>{groqApiVisible?'🙈':'👁️'}</Text></Pressable><Pressable style={s.clearKeyButton} onPress={()=>confirmDeleteApiKey('groq')}><Text style={s.clearKeyText}>⌫</Text></Pressable>
         </View>
         <Pressable disabled={groqBusy} onPress={()=>void connectGroq()} style={[s.button,groqBusy&&s.disabled]}>
           {groqBusy&&groqStatus==='connecting'?<ActivityIndicator/>:<Text style={s.buttonText}>CONECTAR</Text>}
@@ -1330,7 +1355,7 @@ export default function App() {
         <Text style={s.aiLabel}>API KEY</Text>
         <View style={s.row}>
           <TextInput style={s.input} value={geminiApiKey} onChangeText={value=>{setGeminiApiKey(value);if(geminiStatus==='online')setGeminiStatus('offline');}} autoCapitalize="none" autoCorrect={false} secureTextEntry={!geminiApiVisible} placeholder="Ingresá tu API KEY de Gemini" placeholderTextColor="#6f7785"/>
-          <Pressable style={s.eye} onPress={()=>setGeminiApiVisible(v=>!v)}><Text>{geminiApiVisible?'🙈':'👁️'}</Text></Pressable>
+          <Pressable style={s.eye} onPress={()=>setGeminiApiVisible(v=>!v)}><Text>{geminiApiVisible?'🙈':'👁️'}</Text></Pressable><Pressable style={s.clearKeyButton} onPress={()=>confirmDeleteApiKey('gemini')}><Text style={s.clearKeyText}>⌫</Text></Pressable>
         </View>
         <Pressable disabled={geminiBusy} onPress={()=>void connectGemini()} style={[s.button,geminiBusy&&s.disabled]}>
           {geminiBusy&&geminiStatus==='connecting'?<ActivityIndicator/>:<Text style={s.buttonText}>CONECTAR</Text>}
@@ -1353,7 +1378,7 @@ export default function App() {
         <Text style={s.aiLabel}>API KEY</Text>
         <View style={s.row}>
           <TextInput style={s.input} value={nvidiaApiKey} onChangeText={value=>{setNvidiaApiKey(value);if(nvidiaStatus==='online')setNvidiaStatus('offline');}} autoCapitalize="none" autoCorrect={false} secureTextEntry={!nvidiaApiVisible} placeholder="Ingresá tu API KEY de NVIDIA" placeholderTextColor="#6f7785"/>
-          <Pressable style={s.eye} onPress={()=>setNvidiaApiVisible(v=>!v)}><Text>{nvidiaApiVisible?'🙈':'👁️'}</Text></Pressable>
+          <Pressable style={s.eye} onPress={()=>setNvidiaApiVisible(v=>!v)}><Text>{nvidiaApiVisible?'🙈':'👁️'}</Text></Pressable><Pressable style={s.clearKeyButton} onPress={()=>confirmDeleteApiKey('nvidia')}><Text style={s.clearKeyText}>⌫</Text></Pressable>
         </View>
         <Pressable disabled={nvidiaBusy} onPress={()=>void connectNvidia()} style={[s.button,nvidiaBusy&&s.disabled]}>
           {nvidiaBusy&&nvidiaStatus==='connecting'?<ActivityIndicator/>:<Text style={s.buttonText}>CONECTAR</Text>}
@@ -1384,7 +1409,7 @@ export default function App() {
         <Text style={s.aiLabel}>API TOKEN</Text>
         <View style={s.row}>
           <TextInput style={s.input} value={cloudflareApiToken} onChangeText={value=>{setCloudflareApiToken(value);if(cloudflareStatus==='online')setCloudflareStatus('offline');}} autoCapitalize="none" autoCorrect={false} secureTextEntry={!cloudflareApiVisible} placeholder="Ingresá tu API TOKEN de Cloudflare" placeholderTextColor="#6f7785"/>
-          <Pressable style={s.eye} onPress={()=>setCloudflareApiVisible(v=>!v)}><Text>{cloudflareApiVisible?'🙈':'👁️'}</Text></Pressable>
+          <Pressable style={s.eye} onPress={()=>setCloudflareApiVisible(v=>!v)}><Text>{cloudflareApiVisible?'🙈':'👁️'}</Text></Pressable><Pressable style={s.clearKeyButton} onPress={()=>confirmDeleteApiKey('cloudflare')}><Text style={s.clearKeyText}>⌫</Text></Pressable>
         </View>
         <Text style={s.aiLabel}>ACCOUNT ID</Text>
         <TextInput style={s.orderInput} value={cloudflareAccountId} onChangeText={value=>{setCloudflareAccountId(value.trim());if(cloudflareStatus==='online')setCloudflareStatus('offline');}} autoCapitalize="none" autoCorrect={false} placeholder="Ingresá tu ACCOUNT ID" placeholderTextColor="#6f7785"/>
@@ -1418,7 +1443,7 @@ export default function App() {
         <Text style={s.aiLabel}>API KEY</Text>
         <View style={s.row}>
           <TextInput style={s.input} value={openrouterApiKey} onChangeText={value=>{setOpenrouterApiKey(value);if(openrouterStatus==='online')setOpenrouterStatus('offline');}} autoCapitalize="none" autoCorrect={false} secureTextEntry={!openrouterApiVisible} placeholder="Ingresá tu API KEY de OpenRouter" placeholderTextColor="#6f7785"/>
-          <Pressable style={s.eye} onPress={()=>setOpenrouterApiVisible(v=>!v)}><Text>{openrouterApiVisible?'🙈':'👁️'}</Text></Pressable>
+          <Pressable style={s.eye} onPress={()=>setOpenrouterApiVisible(v=>!v)}><Text>{openrouterApiVisible?'🙈':'👁️'}</Text></Pressable><Pressable style={s.clearKeyButton} onPress={()=>confirmDeleteApiKey('openrouter')}><Text style={s.clearKeyText}>⌫</Text></Pressable>
         </View>
         <Pressable disabled={openrouterBusy} onPress={()=>void connectOpenRouter()} style={[s.button,openrouterBusy&&s.disabled]}>
           {openrouterBusy&&openrouterStatus==='connecting'?<ActivityIndicator/>:<Text style={s.buttonText}>CONECTAR</Text>}
@@ -1453,6 +1478,13 @@ export default function App() {
             <Text style={s.aiProvider}>{providerLabel(card.provider)} · PROVEEDOR ADICIONAL</Text>
             <Pressable onPress={()=>removeExtraProvider(card.id)} style={s.extraProviderRemove}><Text style={s.extraProviderRemoveText}>×</Text></Pressable>
           </View>
+          <Text style={s.aiLabel}>API KEY</Text>
+          <View style={s.row}>
+            <TextInput style={s.input} value={card.apiKey} onChangeText={value=>updateExtraCredential(card.id,'apiKey',value)} autoCapitalize="none" autoCorrect={false} secureTextEntry={!card.apiKeyVisible} placeholder={`Ingresá tu API KEY de ${providerLabel(card.provider)}`} placeholderTextColor="#6f7785"/>
+            <Pressable style={s.eye} onPress={()=>setExtraProviderCards(current=>current.map(item=>item.id===card.id?{...item,apiKeyVisible:!item.apiKeyVisible}:item))}><Text>{card.apiKeyVisible?'🙈':'👁️'}</Text></Pressable>
+            <Pressable style={s.clearKeyButton} onPress={()=>confirmDeleteApiKey(card.provider,card.id)}><Text style={s.clearKeyText}>⌫</Text></Pressable>
+          </View>
+          {card.provider==='cloudflare'&&<><Text style={s.aiLabel}>ACCOUNT ID</Text><TextInput style={s.orderInput} value={card.accountId} onChangeText={value=>updateExtraCredential(card.id,'accountId',value.trim())} autoCapitalize="none" autoCorrect={false} placeholder="Ingresá tu ACCOUNT ID" placeholderTextColor="#6f7785"/></>}
           <Text style={s.aiLabel}>MODELO</Text>
           <Pressable onPress={()=>setExtraProviderMenuId(current=>current===card.id?null:card.id)} style={s.select}>
             <Text style={s.selectText}>{selected?.name??card.model}</Text><Text style={s.selectArrow}>{extraProviderMenuId===card.id?'▲':'▼'}</Text>
@@ -1701,7 +1733,7 @@ const s=StyleSheet.create({
  card:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:14,padding:17,gap:17},info:{gap:5},infoLabel:{color:'#8f98a8',fontSize:11,fontWeight:'900'},infoValue:{color:'#fff',fontSize:15,fontWeight:'600'},pnlPositive:{color:'#28d17c',fontWeight:'900'},pnlNegative:{color:'#e05252',fontWeight:'900'},pnlZero:{color:'#f0a52b',fontWeight:'900'},
  refresh:{minHeight:48,borderRadius:10,borderWidth:1,borderColor:'#3b4350',alignItems:'center',justifyContent:'center'},refreshText:{color:'#fff',fontWeight:'900'},
  meta:{color:'#8f98a8',fontSize:11,fontWeight:'900'},time:{color:'#fff',fontWeight:'600',marginTop:-9},ap:{color:'#707988',fontSize:11},
-  aiCard:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:14,padding:17,gap:12},extraProviderHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:8},extraProviderRemove:{width:30,height:30,borderRadius:8,borderWidth:1,borderColor:'#5a3038',alignItems:'center',justifyContent:'center'},extraProviderRemoveText:{color:'#e05252',fontSize:24,fontWeight:'700',lineHeight:25},addProviderButton:{minHeight:58,borderRadius:12,borderWidth:1,borderColor:'#596273',borderStyle:'dashed',backgroundColor:'#151a22',flexDirection:'row',alignItems:'center',justifyContent:'center',gap:12},addProviderText:{color:'#fff',fontWeight:'900',fontSize:13},addProviderPlus:{color:'#28d17c',fontSize:27,fontWeight:'900'},providerChoice:{minHeight:48,borderRadius:9,borderWidth:1,borderColor:'#303744',backgroundColor:'#0f131a',paddingHorizontal:13,flexDirection:'row',alignItems:'center',justifyContent:'space-between'},aiTitle:{color:'#fff',fontSize:14,fontWeight:'900'},aiProvider:{color:'#f0b429',fontSize:12,fontWeight:'900'},aiLabel:{color:'#8f98a8',fontSize:11,fontWeight:'900'},aiTestButton:{minHeight:48,borderRadius:10,backgroundColor:'#222a38',borderWidth:1,borderColor:'#3b4350',alignItems:'center',justifyContent:'center'},aiTestButtonText:{color:'#fff',fontWeight:'900'},aiResult:{backgroundColor:'#0f131a',borderWidth:1,borderColor:'#303744',borderRadius:10,padding:13,gap:7},aiResultLabel:{color:'#8f98a8',fontSize:10,fontWeight:'900'},aiResultText:{color:'#fff',fontSize:14,lineHeight:20,fontWeight:'600'},
+  aiCard:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:14,padding:17,gap:12},extraProviderHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:8},extraProviderRemove:{width:30,height:30,borderRadius:8,borderWidth:1,borderColor:'#5a3038',alignItems:'center',justifyContent:'center'},extraProviderRemoveText:{color:'#e05252',fontSize:24,fontWeight:'700',lineHeight:25},clearKeyButton:{width:32,height:42,alignItems:'center',justifyContent:'center'},clearKeyText:{color:'#e05252',fontSize:21,fontWeight:'900'},addProviderButton:{minHeight:58,borderRadius:12,borderWidth:1,borderColor:'#596273',borderStyle:'dashed',backgroundColor:'#151a22',flexDirection:'row',alignItems:'center',justifyContent:'center',gap:12},addProviderText:{color:'#fff',fontWeight:'900',fontSize:13},addProviderPlus:{color:'#28d17c',fontSize:27,fontWeight:'900'},providerChoice:{minHeight:48,borderRadius:9,borderWidth:1,borderColor:'#303744',backgroundColor:'#0f131a',paddingHorizontal:13,flexDirection:'row',alignItems:'center',justifyContent:'space-between'},aiTitle:{color:'#fff',fontSize:14,fontWeight:'900'},aiProvider:{color:'#f0b429',fontSize:12,fontWeight:'900'},aiLabel:{color:'#8f98a8',fontSize:11,fontWeight:'900'},aiTestButton:{minHeight:48,borderRadius:10,backgroundColor:'#222a38',borderWidth:1,borderColor:'#3b4350',alignItems:'center',justifyContent:'center'},aiTestButtonText:{color:'#fff',fontWeight:'900'},aiResult:{backgroundColor:'#0f131a',borderWidth:1,borderColor:'#303744',borderRadius:10,padding:13,gap:7},aiResultLabel:{color:'#8f98a8',fontSize:10,fontWeight:'900'},aiResultText:{color:'#fff',fontSize:14,lineHeight:20,fontWeight:'600'},
  githubButton:{minHeight:54,borderRadius:12,borderWidth:1,borderColor:'#3b4350',paddingHorizontal:16,flexDirection:'row',alignItems:'center',gap:12},githubLogo:{width:24,height:24},githubText:{color:'#fff',fontWeight:'900',flex:1},githubVersion:{color:'#9da6b5',fontWeight:'800'},change:{color:'#dce1e9',fontSize:13,lineHeight:20},buildFilterRow:{flexDirection:'row',gap:8,marginTop:-7},buildFilterButton:{width:44,height:36,borderRadius:9,borderWidth:1,borderColor:'#3b4350',backgroundColor:'#151a22',alignItems:'center',justifyContent:'center',opacity:0.45},buildFilterCancelledOn:{borderColor:'#9da6b5',backgroundColor:'#303744',opacity:1},buildFilterFailedOn:{borderColor:'#e05252',backgroundColor:'#351a1e',opacity:1},buildFilterSuccessOn:{borderColor:'#28d17c',backgroundColor:'#10251b',opacity:1},buildFilterIcon:{fontSize:20,fontWeight:'900',lineHeight:22},buildFilterCancelledText:{color:'#9da6b5'},buildFilterFailedText:{color:'#e05252'},buildFilterSuccessText:{color:'#28d17c'},buildHistory:{width:'100%',gap:9},buildCard:{width:'100%',minWidth:0,flexDirection:'row',alignItems:'flex-start',gap:10,backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:12,padding:13},buildDescription:{flex:1,minWidth:0,flexShrink:1,color:'#dce1e9',fontSize:13,lineHeight:19},buildSuccess:{color:'#28d17c',fontSize:13,fontWeight:'900',minWidth:58},buildFailure:{color:'#e05252',fontSize:13,fontWeight:'900',minWidth:58},buildPending:{color:'#9da6b5',fontSize:13,fontWeight:'900',minWidth:58},
  saveIntervalButton:{minHeight:46,borderRadius:10,borderWidth:1,borderColor:'#3b4350',alignItems:'center',justifyContent:'center',backgroundColor:'#151a22'},saveIntervalText:{color:'#fff',fontWeight:'900',fontSize:12},
  intervalCard:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:14,padding:17,gap:12},intervalHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},clockButton:{width:40,height:40,borderRadius:20,alignItems:'center',justifyContent:'center'},clockOn:{color:'#28d17c',fontSize:25,fontWeight:'900'},clockOff:{color:'#e05252',fontSize:22,fontWeight:'900'},intervalTitle:{color:'#fff',fontSize:14,fontWeight:'800'},select:{minHeight:44,borderWidth:1,borderColor:'#3b4350',borderRadius:9,paddingHorizontal:12,flexDirection:'row',alignItems:'center',justifyContent:'space-between',backgroundColor:'#0f131a'},selectText:{color:'#fff',fontWeight:'700'},selectArrow:{color:'#9da6b5',fontSize:12},menu:{borderWidth:1,borderColor:'#3b4350',borderRadius:9,backgroundColor:'#0f131a',overflow:'hidden'},menuItem:{paddingHorizontal:13,paddingVertical:12},menuText:{color:'#fff',fontWeight:'700'},sliderRow:{flexDirection:'row',alignItems:'center',gap:8},sliderMin:{color:'#9da6b5',fontSize:11,fontWeight:'800'},sliderMax:{color:'#9da6b5',fontSize:11,fontWeight:'800'},sliderTrack:{flex:1,height:32,borderRadius:16,backgroundColor:'transparent',position:'relative',justifyContent:'center'},sliderEnabled:{opacity:1},sliderDisabled:{opacity:0.4},sliderRail:{position:'absolute',left:9,right:9,top:13,height:6,borderRadius:3,backgroundColor:'#303744'},sliderFill:{position:'absolute',left:9,top:13,height:6,borderRadius:3,backgroundColor:'#fff'},sliderThumb:{position:'absolute',top:7,width:18,height:18,borderRadius:9,backgroundColor:'#fff',marginLeft:-9},intervalValue:{color:'#9da6b5',fontSize:11,fontWeight:'700'},
