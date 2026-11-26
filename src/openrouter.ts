@@ -10,8 +10,11 @@ export const DEFAULT_OPENROUTER_MODEL = OPENROUTER_TEXT_MODELS[0].id;
 
 function parseOpenRouterError(status: number, body: string): string {
   try {
-    const data = JSON.parse(body) as { error?: { message?: string; code?: number } };
-    if (data.error?.message) return data.error.message;
+    const data = JSON.parse(body) as { error?: { message?: string; code?: number; metadata?: { raw?: string; provider_name?: string } } };
+    const message=data.error?.message;
+    const provider=data.error?.metadata?.provider_name;
+    const raw=data.error?.metadata?.raw;
+    if (message) return [message,provider?(`Proveedor: ${provider}`):'',raw?(`Detalle: ${raw}`):''].filter(Boolean).join(' · ');
   } catch {}
   return body || `HTTP ${status}`;
 }
@@ -48,6 +51,16 @@ export async function validateOpenRouterApiKey(apiKey: string): Promise<void> {
   }
 }
 
+function extractOpenRouterAnswer(body: string): string {
+  const data = JSON.parse(body) as {
+    choices?: Array<{ message?: { content?: string | Array<{ type?: string; text?: string }> | null } }>;
+  };
+  const raw = data.choices?.[0]?.message?.content;
+  return typeof raw === 'string'
+    ? raw.trim()
+    : Array.isArray(raw) ? raw.map(part => part.text ?? '').join('').trim() : '';
+}
+
 export async function askOpenRouter(
   apiKey: string,
   question: string,
@@ -59,37 +72,38 @@ export async function askOpenRouter(
     throw new Error('El modelo seleccionado no está habilitado en esta integración.');
   }
 
-  const response = await openRouterFetch(`${OPENROUTER_API_URL}/chat/completions`, key, {
-    method: 'POST',
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: 'Respondé de forma breve y directa. Para operaciones matemáticas simples, devolvé el resultado y nada más.' },
-        { role: 'user', content: question },
-      ],
-      temperature: 0.1,
-      max_tokens: 96,
-      stream: false,
-    }),
+  const requestBody = JSON.stringify({
+    model,
+    messages: [
+      { role: 'system', content: 'Respondé de forma breve y directa. Para operaciones matemáticas simples, devolvé el resultado y nada más.' },
+      { role: 'user', content: question },
+    ],
+    temperature: 0.1,
+    max_tokens: 256,
+    stream: false,
+    provider: { allow_fallbacks: true, sort: 'throughput' },
   });
 
-  const body = await response.text();
-  if (!response.ok) {
-    throw new Error(`OpenRouter rechazó la consulta: ${parseOpenRouterError(response.status, body)}`);
+  let lastError = '';
+  for (let attempt=0; attempt<3; attempt++) {
+    const response = await openRouterFetch(`${OPENROUTER_API_URL}/chat/completions`, key, {
+      method: 'POST',
+      body: requestBody,
+    });
+    const body = await response.text();
+    if (response.ok) {
+      try {
+        const answer=extractOpenRouterAnswer(body);
+        if (answer) return answer;
+        throw new Error('OpenRouter devolvió una respuesta vacía.');
+      } catch(error) {
+        if(error instanceof Error && error.message==='OpenRouter devolvió una respuesta vacía.') throw error;
+        throw new Error('OpenRouter devolvió una respuesta JSON inválida.');
+      }
+    }
+    lastError=`OpenRouter rechazó la consulta (${response.status}): ${parseOpenRouterError(response.status,body)}`;
+    if (![429,500,502,503,504].includes(response.status) || attempt===2) break;
+    await new Promise(resolve=>setTimeout(resolve,900*(attempt+1)));
   }
-
-  try {
-    const data = JSON.parse(body) as {
-      choices?: Array<{ message?: { content?: string | Array<{ type?: string; text?: string }> | null } }>;
-    };
-    const raw = data.choices?.[0]?.message?.content;
-    const answer = typeof raw === 'string'
-      ? raw.trim()
-      : Array.isArray(raw) ? raw.map(part => part.text ?? '').join('').trim() : '';
-    if (!answer) throw new Error('OpenRouter respondió sin contenido.');
-    return answer;
-  } catch (error) {
-    if (error instanceof Error && error.message === 'OpenRouter respondió sin contenido.') throw error;
-    throw new Error('Respuesta inválida de OpenRouter.');
-  }
+  throw new Error(lastError);
 }
