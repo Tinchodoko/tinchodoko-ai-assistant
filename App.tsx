@@ -135,7 +135,7 @@ export default function App() {
   const [groqBusy,setGroqBusy]=useState(false);
   const [groqQuestion,setGroqQuestion]=useState('');
   const [groqAnswer,setGroqAnswer]=useState('');
-  const [groqModel,setGroqModel]=useState(DEFAULT_GROQ_MODEL);
+  const [groqModel,setGroqModel]=useState<string>(DEFAULT_GROQ_MODEL);
   const [groqModelMenu,setGroqModelMenu]=useState(false);
   const [,setStreamStatus]=useState<'off'|'connecting'|'connected'|'disconnected'|'error'>('off');
   const [autoRefresh,setAutoRefresh]=useState(false);
