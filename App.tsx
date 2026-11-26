@@ -1281,7 +1281,7 @@ export default function App() {
           <Text style={s.aiResultLabel}>PREGUNTA</Text>
           <Text style={s.aiResultText}>{cloudflareQuestion||'—'}</Text>
           <Text style={s.aiResultLabel}>RESPUESTA</Text>
-          <Text style={s.aiResultText}>{cloudflareAnswer ? ('CLOUDFLARE - (' + (CLOUDFLARE_TEXT_MODELS.find(model=>model.id===cloudflareModel)?.name ?? cloudflareModel) + ')\\n' + cloudflareAnswer) : '—'}</Text>
+          <Text style={s.aiResultText}>{cloudflareAnswer ? ('CLOUDFLARE - (' + (CLOUDFLARE_TEXT_MODELS.find(model=>model.id===cloudflareModel)?.name ?? cloudflareModel) + ')\n' + cloudflareAnswer) : '—'}</Text>
         </View>
       </View>
     </ScrollView>  : screen==='profile' ? <ScrollView contentContainerStyle={s.content} onTouchStart={e=>{handleSwipeStart(e);setIntervalMenu(false);}} onTouchEnd={handleSwipeEnd}>
