@@ -92,7 +92,7 @@ export default function NeuralScreen({providers,runner,accountId}:{providers:Neu
    const compactRows=indicatorRows.map((r:any)=>({
      time:r.time??r.timestamp??r.date,
      open:r.open,high:r.high,low:r.low,close:r.close,volume:r.volume,
-     ema20:r.ema20,ema50:r.ema50,rsi:r.rsi,adx:r.adx,macd:r.macd,bollinger:r.bollinger,zScore:r.zScore
+     ema20:r.ema20,ema50:r.ema50,rsi14:r.rsi14,adx14:r.adx14,macd:r.macd,macdSignal:r.macdSignal,macdHistogram:r.macdHistogram,bollingerUpper:r.bollingerUpper,bollingerMiddle:r.bollingerMiddle,bollingerLower:r.bollingerLower,bollingerWidth:r.bollingerWidth,zScore:r.zScore,atr14:r.atr14
    }));
    return `\\n\\nSELECTED MARKET DATA (${chosen.symbol} ${chosen.timeframe}):\\n${JSON.stringify({
      symbol:chosen.symbol,timeframe:chosen.timeframe,candles:chosen.received,
