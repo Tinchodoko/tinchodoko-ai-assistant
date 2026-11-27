@@ -225,7 +225,7 @@ export default function NeuralScreen({providers,runner,accountId,credentials,acc
    </ScrollView>
   </View>
  </Modal>
- <Modal visible={instructionsEditorOpen} animationType="slide" presentationStyle="fullScreen" onRequestClose={()=>setInstructionsEditorOpen(false)}>
+ <Modal visible={instructionsEditorOpen} animationType="slide" presentationStyle="fullScreen" onRequestClose={()=>Alert.alert('CANCELAR EDICIÓN','¿Realmente desea cancelar? Cualquier cambio realizado se perderá.',[{text:'NO',style:'cancel'},{text:'SÍ, CANCELAR',style:'destructive',onPress:()=>setInstructionsEditorOpen(false)}])}>
   <View style={n.editorScreen}>
    <View style={n.editorHeader}><Pressable onPress={()=>setInstructionsEditorOpen(false)} style={n.editorClose}><Text style={n.editorCloseText}>✕</Text></Pressable><Text style={n.editorTitle}>EDICIÓN DE INSTRUCCIONES PARA LOS AGENTES</Text></View>
    <ScrollView contentContainerStyle={n.editorContent}>
