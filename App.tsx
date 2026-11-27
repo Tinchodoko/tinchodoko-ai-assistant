@@ -723,7 +723,6 @@ export default function App() {
       setAutoRefresh(false);
       historyAutoRefreshRef.current=false;
       setHistoryAutoRefresh(false);
-      setScreen('connection');
     } catch(e) {
       setStatus('offline');
       if (!silent) Alert.alert('Conexión fallida',e instanceof Error?e.message:String(e));
@@ -1681,7 +1680,7 @@ export default function App() {
         <Text style={s.sellText}>STOP LOSS</Text><TextInput value={limitStopLoss} onChangeText={setLimitStopLoss} keyboardType="decimal-pad" placeholder="Precio SL (opcional)" placeholderTextColor="#707988" style={s.orderInput}/>
         <Pressable disabled={positionSubmitting} onPress={()=>void submitLimitOrder()} style={[s.limitButton,positionSubmitting&&s.disabled]}>{positionSubmitting?<ActivityIndicator color="#0b0e13"/>:<Text style={s.limitButtonText}>ABRIR LIMIT ORDER</Text>}</Pressable>
       </View>
-}    </ScrollView> : screen==='market' ? <MarketDataScreen credentials={c} accessPoint={accessPoint} instruments={instrumentList} selectedInstrument={selectedInstrument} onSelectInstrument={setSelectedInstrument}/> : screen==='neural' ? <NeuralScreen key={neuralScreenKey} providers={neuralProviders} runner={runNeuralProvider} accountId={c.accountId}/> : screen==='history' ? <ScrollView contentContainerStyle={s.content} onTouchStart={handleSwipeStart} onTouchEnd={handleSwipeEnd}>
+}    </ScrollView> : screen==='market' ? <MarketDataScreen credentials={c} accessPoint={accessPoint} instruments={instrumentList} selectedInstrument={selectedInstrument} onSelectInstrument={setSelectedInstrument}/> : screen==='neural' ? <NeuralScreen key={neuralScreenKey} providers={neuralProviders} runner={runNeuralProvider} accountId={c.accountId} credentials={c} accessPoint={accessPoint}/> : screen==='history' ? <ScrollView contentContainerStyle={s.content} onTouchStart={handleSwipeStart} onTouchEnd={handleSwipeEnd}>
       <Text style={s.h1}>HISTORIAL</Text><Text style={s.sub}>Consultá las posiciones activas, órdenes pendientes y operaciones pasadas de tu cuenta.</Text>
       <Text style={s.label}>SELECCIONE SU PAR</Text>
       <Pressable disabled={!historyData||historyLoading} onPress={()=>setHistoryMenuOpen(!historyMenuOpen)} style={[s.select,(!historyData||historyLoading)&&s.disabled]}><Text style={s.selectText}>{historyPair==='*'?'MOSTRAR TODO':historyPair||'MOSTRAR TODO'}</Text><Text style={s.selectArrow}>{historyMenuOpen?'▲':'▼'}</Text></Pressable>
