@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as FileSystem from 'expo-file-system/legacy';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -136,7 +136,7 @@ export default function NeuralScreen({providers,runner,accountId}:{providers:Neu
    const consensus=buildConsensus(results,q);setMessages(current=>[...current,...results,consensus]);setBusy(false);
  }
 
- return <ScrollView contentContainerStyle={n.content} onScrollBeginDrag={()=>{if(importPickerOpen)setImportPickerOpen(false);}}>
+ return <><ScrollView contentContainerStyle={n.content} onScrollBeginDrag={()=>{if(importPickerOpen)setImportPickerOpen(false);}}>
    <View style={n.neuralHeader}>
     <View style={n.titleRow}><Image source={require('../assets/neurona.png')} style={n.neuronLogo} resizeMode="contain"/><Text style={n.title}>ANÁLISIS DE ASISTENTES</Text></View>
     <View style={n.headerActions}><Pressable onPress={()=>setSettingsOpen(v=>!v)} style={n.gear}><Text style={n.gearText}>⚙</Text></Pressable></View>
@@ -162,7 +162,7 @@ export default function NeuralScreen({providers,runner,accountId}:{providers:Neu
 
    <View style={n.questionBox}>
     <Text style={n.panelTitle}>ANALIZAR DATOS</Text>
-    <Pressable onPress={()=>setImportPickerOpen(v=>!v)} style={n.importSelector}><Text style={n.importSelected}>{analysisImport?analysisImport.symbol+' · '+analysisImport.timeframe:'Seleccionar par y timeframe importado'}</Text><Text style={n.importArrow}>{importPickerOpen?'▲':'▼'}</Text></Pressable>
+    <Pressable onPress={()=>setImportPickerOpen(v=>!v)} style={n.importSelector}><Text style={n.importSelected}>{analysisImport?.symbol&&analysisImport?.timeframe?analysisImport.symbol+' · '+analysisImport.timeframe:'Seleccionar par y timeframe importado'}</Text><Text style={n.importArrow}>{importPickerOpen?'▲':'▼'}</Text></Pressable>
     {importPickerOpen&&<View style={n.importOptions}>{imports.map(item=><Pressable key={item.id} onPress={()=>{setAnalysisImport(item);setImportPickerOpen(false);}} style={[n.importOption,analysisImport?.id===item.id&&n.importOptionSelected]}><Text style={n.importPair}>{item.symbol}</Text><Text style={n.importTf}>{item.timeframe}</Text><Text style={n.importMeta}>{item.received} velas</Text></Pressable>)}</View>}
     <View style={n.questionActions}><TextInput value={question} onChangeText={setQuestion} multiline placeholder="Ej.: What trend is currently visible according to the imported data?" placeholderTextColor="#6f7785" style={n.questionInput}/><Pressable onPress={()=>setSuggestionsOpen(v=>!v)} style={n.ideaButton}><Text style={n.ideaIcon}>💡</Text></Pressable><Pressable disabled={busy||!analysisImport} onPress={()=>void ask()} style={[n.askButton,(busy||!analysisImport)&&{opacity:.5}]}>{busy?<ActivityIndicator color="#0b0e13"/>:<Text style={n.askText}>CONSULTAR</Text>}</Pressable></View>
     {suggestionsOpen&&<View style={n.suggestionsCard}>{QUICK_QUESTIONS.map((item,index)=><Pressable key={item} onPress={()=>{setQuestion(item);setSuggestionsOpen(false);}} style={n.suggestionRow}><Text style={n.suggestionNumber}>{index+1}</Text><Text style={n.suggestionText}>{item}</Text></Pressable>)}</View>}
@@ -176,7 +176,7 @@ export default function NeuralScreen({providers,runner,accountId}:{providers:Neu
  </ScrollView>;
  <Modal visible={historyFullscreen} animationType="slide" presentationStyle="fullScreen" onRequestClose={()=>setHistoryFullscreen(false)}>
   <View style={n.fullscreen}>
-   <View style={n.fullscreenHeader}><Text style={n.fullscreenTitle}>HISTORIAL DE CONVERSACIÓN</Text><View style={n.historyActions}><Pressable onPress={()=>void clearChat()} style={n.historyIconButton}><Text style={n.historyIcon}>⌫</Text></Pressable><Pressable onPress={()=>void saveChat()} style={n.historyIconButton}><Text style={n.historyIcon}>⇩</Text></Pressable><Pressable onPress={()=>setHistoryFullscreen(false)} style={n.fullscreenClose}><Text style={n.fullscreenCloseText}>✕</Text></Pressable></View></View>
+   <View style={n.fullscreenHeader}><Pressable onPress={()=>setHistoryFullscreen(false)} style={n.fullscreenClose}><Text style={n.fullscreenCloseText}>✕</Text></Pressable><Text style={n.fullscreenTitle}>HISTORIAL DE CONVERSACIÓN</Text><View style={n.historyActions}><Pressable onPress={()=>void clearChat()} style={n.historyIconButton}><Text style={n.historyIcon}>⌫</Text></Pressable><Pressable onPress={()=>void saveChat()} style={n.historyIconButton}><Text style={n.historyIcon}>⇩</Text></Pressable></View></View>
    <ScrollView style={n.fullscreenScroll} contentContainerStyle={n.fullscreenContent}>
     {messages.length===0?<Text style={n.empty}>Todavía no hay consultas.</Text>:messages.map(m=><View key={m.id} style={[n.message,m.error&&n.messageError]}>
      <View style={n.messageHead}><Text style={n.providerName}>{m.provider}</Text><Text style={n.latency}>{m.ms} ms · {(m.ms/1000).toFixed(2)} s</Text></View>
@@ -195,6 +195,7 @@ export default function NeuralScreen({providers,runner,accountId}:{providers:Neu
    </ScrollView>
   </View>
  </Modal>
+ </>;
 }
 
 const n=StyleSheet.create({
