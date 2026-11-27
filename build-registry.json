@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-27T02:39:45Z",
+  "generated_at": "2026-11-27T03:13:18Z",
   "workflow": "Android Release APK",
   "repository": "Tinchodoko/tinchodoko-ai-assistant",
   "builds": [
@@ -4554,6 +4554,51 @@
       "created_at": "2026-11-27T02:29:45Z",
       "updated_at": "2026-11-27T02:37:49Z",
       "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45928652150",
+      "failed_step": null,
+      "failed_steps": []
+    },
+    {
+      "run_number": 263,
+      "run_id": 45932646999,
+      "status": "in_progress",
+      "conclusion": null,
+      "display_title": "Add neural quick questions and TypeScript consensus",
+      "event": "push",
+      "branch": "main",
+      "sha": "eb3e7d86c3b5671a66723cbb151ab97933ba2740",
+      "created_at": "2026-11-27T03:10:54Z",
+      "updated_at": "2026-11-27T03:10:56Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45932646999",
+      "failed_step": null,
+      "failed_steps": []
+    },
+    {
+      "run_number": 264,
+      "run_id": 45932654756,
+      "status": "completed",
+      "conclusion": "cancelled",
+      "display_title": "Persist market panel expansion state",
+      "event": "push",
+      "branch": "main",
+      "sha": "98ca21513b71f3a458416b1e19eb358aea5251e4",
+      "created_at": "2026-11-27T03:10:59Z",
+      "updated_at": "2026-11-27T03:11:07Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45932654756",
+      "failed_step": null,
+      "failed_steps": []
+    },
+    {
+      "run_number": 265,
+      "run_id": 45932666358,
+      "status": "pending",
+      "conclusion": null,
+      "display_title": "Fix persisted market UI state loading",
+      "event": "push",
+      "branch": "main",
+      "sha": "96a8393c32ff39126ea176a1de37270cf69a92a5",
+      "created_at": "2026-11-27T03:11:06Z",
+      "updated_at": "2026-11-27T03:11:07Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45932666358",
       "failed_step": null,
       "failed_steps": []
     }
