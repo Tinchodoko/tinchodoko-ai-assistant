@@ -134,7 +134,7 @@ export default function NeuralScreen({providers,runner,accountId}:{providers:Neu
 
    {settingsOpen&&<View style={n.settingsCard}><Text style={n.settingsTitle}>PROVEEDORES</Text><Text style={n.settingsSub}>Activá o desactivá los proveedores que participarán del análisis.</Text><View style={n.providerGrid}>
     {effectiveProviders.map((p,index)=><Pressable key={p.id} onPress={()=>toggleProvider(p.id)} style={[n.providerSquare,{borderColor:statusColor(p.status,activeIds.includes(p.id)),backgroundColor:p.status==='online'&&activeIds.includes(p.id)?'rgba(40,209,124,0.16)':'#0f131a'}]}>
-      <Text style={n.providerNumber}>{index+1}</Text><Text style={[n.providerMark,{color:statusColor(p.status,activeIds.includes(p.id))}]}>{providerMark(p.provider)}</Text><Text style={[n.providerInitial,{color:statusColor(p.status,activeIds.includes(p.id))}]}>{initials(p.provider)}</Text>
+      <Text style={n.providerNumber}>{index+1}</Text><Image source={providerAsset(p.provider)} style={n.providerLogo} resizeMode="contain"/><Text style={[n.providerInitial,{color:statusColor(p.status,activeIds.includes(p.id))}]}>{initials(p.provider)}</Text>
     </Pressable>)}
    </View></View>}
 
