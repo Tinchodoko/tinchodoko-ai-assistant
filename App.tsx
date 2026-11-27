@@ -270,7 +270,11 @@ export default function App() {
     if (Platform.OS==='android' && Platform.Version>=33) {
       PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS).catch(()=>{});
     }
-    loadCredentials().then(x=>x&&setC(x));
+    loadCredentials().then(saved=>{
+      if (!saved || !saved.apiKey.trim() || !saved.secret.trim() || !/^\\d+$/.test(saved.accountId.trim()) || !saved.gatewayUrl.trim()) return;
+      setC(saved);
+      void connect(saved, true);
+    }).catch(()=>{});
     SecureStore.getItemAsync('tinchodoko.groq.apiKey').then(raw=>{if(raw){setGroqApiKey(raw);setGroqStatus('online');}}).catch(()=>{});
     SecureStore.getItemAsync('tinchodoko.groq.model').then(raw=>{
       if (raw && GROQ_TEXT_MODELS.some(model=>model.id===raw)) setGroqModel(raw);
@@ -703,13 +707,14 @@ export default function App() {
     } finally { setOpenrouterBusy(false); }
   }
 
-  async function connect() {
+  async function connect(credentials: Credentials = c, silent = false) {
     setBusy(true); setStatus('connecting');
     try {
-      await saveCredentials(c);
+      await saveCredentials(credentials);
       // CONNECT validates the signed Exness request and discovers the
       // account Access Point. Balance is not requested during connection.
-      const r=await connectToExness(c);
+      const r=await connectToExness(credentials);
+      setC(credentials);
       setBalance('—'); setEquity('—'); setUsedMargin('—'); setAccessPoint(r.accessPoint); setStatus('online');
       setHistoryPair('*'); setHistoryData(null); setHistoryLastSync(null); setHistoryStatus('offline');
       setLast(null);
@@ -719,7 +724,8 @@ export default function App() {
       setHistoryAutoRefresh(false);
       setScreen('connection');
     } catch(e) {
-      setStatus('offline'); Alert.alert('Conexión fallida',e instanceof Error?e.message:String(e));
+      setStatus('offline');
+      if (!silent) Alert.alert('Conexión fallida',e instanceof Error?e.message:String(e));
     } finally { setBusy(false); }
   }
 
