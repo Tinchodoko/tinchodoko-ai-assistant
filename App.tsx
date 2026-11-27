@@ -710,10 +710,11 @@ export default function App() {
   async function connect(credentials: Credentials = c, silent = false) {
     setBusy(true); setStatus('connecting');
     try {
-      await saveCredentials(credentials);
-      // CONNECT validates the signed Exness request and discovers the
-      // account Access Point. Balance is not requested during connection.
+      // Validate the credentials first. Never overwrite the persisted
+      // credentials with empty/invalid values when startup or a connection
+      // attempt fails.
       const r=await connectToExness(credentials);
+      await saveCredentials(credentials);
       setC(credentials);
       setBalance('—'); setEquity('—'); setUsedMargin('—'); setAccessPoint(r.accessPoint); setStatus('online');
       setHistoryPair('*'); setHistoryData(null); setHistoryLastSync(null); setHistoryStatus('offline');
