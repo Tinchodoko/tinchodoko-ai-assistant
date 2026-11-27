@@ -75,7 +75,7 @@ export default function NeuralScreen({providers,runner,accountId}:{providers:Neu
  useEffect(()=>{AsyncStorage.setItem('tinchodoko.ai.neural.activeProviders',JSON.stringify(activeIds)).catch(()=>{});},[activeIds]);
  useEffect(()=>{AsyncStorage.setItem(HISTORY_KEY,JSON.stringify(messages.slice(-200))).catch(()=>{});},[messages]);
 
- const effectiveProviders=useMemo(()=>providers.filter(p=>!(p.provider==='cloudflare'&&p.model==='@cf/zai-org/glm-5.3')).map(p=>({...p,status:runtimeStatus[p.id]??p.status})),[providers,runtimeStatus]);
+ const effectiveProviders=useMemo(()=>providers.map(p=>({...p,status:runtimeStatus[p.id]??p.status})),[providers,runtimeStatus]);
  const activeProviders=effectiveProviders.filter(p=>activeIds.includes(p.id));
  function toggleProvider(id:string){setActiveIds(current=>current.includes(id)?current.filter(x=>x!==id):[...current,id]);}
 
