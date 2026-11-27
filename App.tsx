@@ -271,7 +271,7 @@ export default function App() {
       PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS).catch(()=>{});
     }
     loadCredentials().then(saved=>{
-      if (!saved || !saved.apiKey.trim() || !saved.secret.trim() || !/^\\d+$/.test(saved.accountId.trim()) || !saved.gatewayUrl.trim()) return;
+      if (!saved || !saved.apiKey.trim() || !saved.secret.trim() || !/^\d+$/.test(saved.accountId.trim()) || !saved.gatewayUrl.trim()) return;
       setC(saved);
       void connect(saved, true);
     }).catch(()=>{});
@@ -1295,6 +1295,26 @@ export default function App() {
     }
   }
 
+  async function saveExnessCredentials() {
+    const credentials: Credentials = {
+      gatewayUrl: c.gatewayUrl.trim() || 'https://api.exness.com',
+      apiKey: c.apiKey.trim(),
+      secret: c.secret.trim(),
+      accountId: c.accountId.trim(),
+    };
+    if (!credentials.apiKey || !credentials.secret || !credentials.accountId || !/^\d+$/.test(credentials.accountId)) {
+      Alert.alert('Credenciales incompletas', 'Complete API KEY, SECRET y ACCOUNT antes de guardar.');
+      return;
+    }
+    try {
+      await saveCredentials(credentials);
+      setC(credentials);
+      Alert.alert('Credenciales guardadas', 'Las credenciales de Exness quedaron guardadas de forma segura y persistirán al cerrar, reiniciar o actualizar la aplicación.');
+    } catch (e) {
+      Alert.alert('No se pudieron guardar las credenciales', e instanceof Error ? e.message : String(e));
+    }
+  }
+
   const set=(key:keyof Credentials)=>(value:string)=>setC(x=>({...x,[key]:value}));
   const field=(label:string,key:keyof Credentials,secure=false,visible=false,toggle?:()=>void)=>(
     <View style={s.field} key={key}>
@@ -1360,7 +1380,13 @@ export default function App() {
     </View>
 
     {screen==='connection' ? <ScrollView contentContainerStyle={s.content} onTouchStart={handleSwipeStart} onTouchEnd={handleSwipeEnd}>
-      <Text style={s.h1}>Conexión</Text><Text style={s.sub}>Credenciales para conexión con Exness.</Text>
+      <View style={s.connectionTitleRow}>
+        <Text style={s.h1}>Conexión</Text>
+        <Pressable onPress={()=>void saveExnessCredentials()} style={s.saveCredentialsButton} accessibilityLabel="Guardar credenciales de Exness">
+          <Text style={s.saveCredentialsIcon}>▣</Text>
+        </Pressable>
+      </View>
+      <Text style={s.sub}>Credenciales para conexión con Exness.</Text>
       {field('GATEWAY URL','gatewayUrl')}
       {field('API KEY','apiKey',true,apiVisible,()=>setApiVisible(!apiVisible))}
       {field('SECRET','secret',true,secretVisible,()=>setSecretVisible(!secretVisible))}
@@ -1776,7 +1802,7 @@ const s=StyleSheet.create({
  safe:{flex:1,backgroundColor:'#0b0e13'},header:{height:68,paddingHorizontal:20,flexDirection:'row',alignItems:'center',justifyContent:'space-between',borderBottomWidth:1,borderBottomColor:'#252b35'},
  title:{color:'#fff',fontSize:18,fontWeight:'800'},dot:{width:12,height:12,borderRadius:6},green:{backgroundColor:'#28d17c'},yellow:{backgroundColor:'#f0b429'},red:{backgroundColor:'#e05252'},
  tabs:{flexDirection:'row',borderBottomWidth:1,borderBottomColor:'#252b35'},tab:{flex:1,paddingHorizontal:1,paddingVertical:10,alignItems:'center',justifyContent:'center',minWidth:0},active:{borderBottomWidth:2,borderBottomColor:'#fff'},marketTabIcon:{height:22,width:30,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:4},marketCandleGreenWick:{position:'absolute',left:7,width:2,height:20,backgroundColor:'#28d17c'},marketCandleGreen:{width:7,height:11,backgroundColor:'#28d17c',borderRadius:1,marginTop:2},marketCandleRedWick:{position:'absolute',right:7,width:2,height:20,backgroundColor:'#e05252'},marketCandleRed:{width:7,height:14,backgroundColor:'#e05252',borderRadius:1,marginTop:-2},neuronTabIcon:{height:22,width:30,position:'relative'},neuronDot1:{position:'absolute',left:3,top:8,width:6,height:6,borderRadius:3,backgroundColor:'#28d17c'},neuronDot2:{position:'absolute',right:4,top:3,width:6,height:6,borderRadius:3,backgroundColor:'#7ea7ff'},neuronDot3:{position:'absolute',right:7,bottom:2,width:6,height:6,borderRadius:3,backgroundColor:'#e05252'},neuronLine1:{position:'absolute',left:7,top:7,width:15,height:1,backgroundColor:'#697386',transform:[{rotate:'-18deg'}]},neuronLine2:{position:'absolute',left:8,top:13,width:13,height:1,backgroundColor:'#697386',transform:[{rotate:'25deg'}]},tabText:{color:'#dce1e9',fontWeight:'800',fontSize:10,letterSpacing:-0.25,includeFontPadding:false,textAlign:'center'},tabIcon:{width:24,height:24,maxWidth:'100%'},
- content:{padding:22,gap:15},h1:{color:'#fff',fontSize:26,fontWeight:'900'},sub:{color:'#9da6b5',lineHeight:21},field:{gap:7},label:{color:'#c8ced8',fontSize:12,fontWeight:'800'},
+ content:{padding:22,gap:15},connectionTitleRow:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},h1:{color:'#fff',fontSize:26,fontWeight:'900'},saveCredentialsButton:{width:52,height:44,borderRadius:9,borderWidth:1,borderColor:'#3b4350',backgroundColor:'#151a22',alignItems:'center',justifyContent:'center',marginLeft:16},saveCredentialsIcon:{color:'#fff',fontSize:24,fontWeight:'900',lineHeight:26},sub:{color:'#9da6b5',lineHeight:21},field:{gap:7},label:{color:'#c8ced8',fontSize:12,fontWeight:'800'},
  row:{flexDirection:'row',backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:10},input:{flex:1,color:'#fff',padding:13,minHeight:48},eye:{width:48,alignItems:'center',justifyContent:'center'},
  button:{minHeight:50,borderRadius:10,backgroundColor:'#fff',alignItems:'center',justifyContent:'center'},buttonText:{color:'#0b0e13',fontWeight:'900'},disabled:{opacity:.5},
  onlineText:{color:'#28d17c',textAlign:'center',fontWeight:'800'},offlineText:{color:'#e05252',textAlign:'center',fontWeight:'800'},
