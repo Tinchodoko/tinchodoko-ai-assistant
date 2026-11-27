@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Clipboard from 'expo-clipboard';
@@ -20,6 +20,8 @@ const LOG_KEY='tinchodoko.market.import.log.v1';
 const INDICATOR_CONFIG_KEY='tinchodoko.market.indicator.config.v1';
 const CHART_CONFIG_KEY='tinchodoko.market.chart.config.v1';
 const UI_STATE_KEY='tinchodoko.market.ui.v1';
+const AUTO_UPDATE_KEY='tinchodoko.market.autoUpdate.v1';
+const AUTO_UPDATE_MS:Record<MarketTimeframe,number>={M1:60000,M5:300000,M15:900000,M30:1800000,H1:3600000,H4:14400000};
 const CHART_PALETTE=['#28d17c','#e05252','#7ea7ff','#f0b429','#c084fc','#22d3ee','#fb7185','#dce1e9'];
 type ChartIndicatorKey='ema20'|'ema50'|'bollinger'|'rsi'|'adx'|'macd'|'zScore';
 type ChartIndicatorConfig=Record<ChartIndicatorKey,{enabled:boolean;color:string}>;
@@ -113,7 +115,15 @@ export default function MarketDataScreen({credentials,accessPoint,instruments,se
  const [chartOptionsOpen,setChartOptionsOpen]=useState(false);
  const [chartZoom,setChartZoom]=useState(1);
  const [uiLoaded,setUiLoaded]=useState(false);
- useEffect(()=>{let cancelled=false;Promise.all([AsyncStorage.getItem(CONFIG_KEY),AsyncStorage.getItem(LOG_KEY),AsyncStorage.getItem(INDICATOR_CONFIG_KEY),AsyncStorage.getItem(CHART_CONFIG_KEY),AsyncStorage.getItem(UI_STATE_KEY)]).then(([rawConfig,rawLog,rawIndicatorConfig,rawChartConfig,rawUi])=>{if(cancelled)return;if(rawConfig){try{const saved=JSON.parse(rawConfig) as Partial<Config>;const next={...DEFAULTS};for(const item of TFS){const n=Number(saved[item]);if(Number.isInteger(n)&&n>=MIN&&n<=MAX[item])next[item]=n;}setConfig(next);}catch{}}if(rawLog){try{const saved=JSON.parse(rawLog);if(Array.isArray(saved))setLog(saved.filter(x=>x&&typeof x.id==='string').slice(0,200));}catch{}}if(rawIndicatorConfig){try{setIndicatorConfig(normalizeIndicatorConfig(JSON.parse(rawIndicatorConfig)));}catch{}}if(rawChartConfig){try{setChartConfig(normalizeChartConfig(JSON.parse(rawChartConfig)));}catch{}}if(rawUi){try{const ui=JSON.parse(rawUi);if(ui&&typeof ui.expandedPanels==='object')setExpandedPanels({...{indicator:true,calculate:true,config:true,chart:true,table:true,json:true},...ui.expandedPanels});if(ui&&typeof ui.expandedImports==='object')setExpandedImports(ui.expandedImports);}catch{}}setLoaded(true);setUiLoaded(true);}).catch(()=>{setLoaded(true);setUiLoaded(true);});return()=>{cancelled=true;};},[]);
+ const [autoUpdateEnabled,setAutoUpdateEnabled]=useState(false);
+ const [autoUpdateTfs,setAutoUpdateTfs]=useState<MarketTimeframe[]>([]);
+ const [autoUpdating,setAutoUpdating]=useState(false);
+ const logRef=useRef<LogItem[]>([]);
+ const indicatorConfigRef=useRef<IndicatorConfig>(indicatorConfig);
+ useEffect(()=>{let cancelled=false;Promise.all([AsyncStorage.getItem(CONFIG_KEY),AsyncStorage.getItem(LOG_KEY),AsyncStorage.getItem(INDICATOR_CONFIG_KEY),AsyncStorage.getItem(CHART_CONFIG_KEY),AsyncStorage.getItem(UI_STATE_KEY),AsyncStorage.getItem(AUTO_UPDATE_KEY)]).then(([rawConfig,rawLog,rawIndicatorConfig,rawChartConfig,rawUi,rawAuto])=>{if(cancelled)return;if(rawConfig){try{const saved=JSON.parse(rawConfig) as Partial<Config>;const next={...DEFAULTS};for(const item of TFS){const n=Number(saved[item]);if(Number.isInteger(n)&&n>=MIN&&n<=MAX[item])next[item]=n;}setConfig(next);}catch{}}if(rawLog){try{const saved=JSON.parse(rawLog);if(Array.isArray(saved))setLog(saved.filter(x=>x&&typeof x.id==='string').slice(0,200));}catch{}}if(rawIndicatorConfig){try{setIndicatorConfig(normalizeIndicatorConfig(JSON.parse(rawIndicatorConfig)));}catch{}}if(rawChartConfig){try{setChartConfig(normalizeChartConfig(JSON.parse(rawChartConfig)));}catch{}}if(rawUi){try{const ui=JSON.parse(rawUi);if(ui&&typeof ui.expandedPanels==='object')setExpandedPanels({...{indicator:true,calculate:true,config:true,chart:true,table:true,json:true},...ui.expandedPanels});if(ui&&typeof ui.expandedImports==='object')setExpandedImports(ui.expandedImports);}catch{}}if(rawAuto){try{const a=JSON.parse(rawAuto);if(Array.isArray(a.timeframes))setAutoUpdateTfs(TFS.filter(x=>a.timeframes.includes(x)));if(a.enabled===true)setAutoUpdateEnabled(true);}catch{}}setLoaded(true);setUiLoaded(true);}).catch(()=>{setLoaded(true);setUiLoaded(true);});return()=>{cancelled=true;};},[]);
+ useEffect(()=>{logRef.current=log;},[log]);
+ useEffect(()=>{indicatorConfigRef.current=indicatorConfig;},[indicatorConfig]);
+ useEffect(()=>{if(uiLoaded)AsyncStorage.setItem(AUTO_UPDATE_KEY,JSON.stringify({enabled:autoUpdateEnabled,timeframes:autoUpdateTfs})).catch(()=>{});},[autoUpdateEnabled,autoUpdateTfs,uiLoaded]);
  const value=tf?config[tf]:0;
  const max=tf?MAX[tf]:MIN;
  const fill=tf?Math.max(0,Math.min(1,(value-MIN)/(max-MIN))):0;
@@ -253,6 +263,47 @@ async function editCandleQuantity(){const n=Number(candleDraft);if(!Number.isInt
    Alert.alert('EXPORTACIÓN COMPLETADA','JSON guardado como '+filename+'. Las IA no dependen de este archivo: el análisis usa los datos almacenados dentro de la aplicación.');
   }catch(e){Alert.alert('ERROR AL EXPORTAR',e instanceof Error?e.message:String(e));}
  }
+ async function updateImportedTimeframe(timeframe:MarketTimeframe){
+  if(!accessPoint||!credentials.apiKey||!credentials.secret||!credentials.accountId)return;
+  const targets=logRef.current.filter(item=>item.timeframe===timeframe&&item.status!=='FALLO');
+  for(const item of targets){
+   try{
+    const candles=await getMarketCandles(credentials,accessPoint,item.symbol,timeframe,item.requested);
+    const now=Date.now();
+    const diagnostics=buildImportDiagnostics(candles,item.requested,timeframe);
+    const updated:LogItem={...item,received:candles.length,at:now,status:candles.length===item.requested?'OK':'PARCIAL',message:candles.length===item.requested?undefined:'Exness devolvió '+candles.length+' de '+item.requested+' velas.',...diagnostics};
+    await AsyncStorage.setItem(datasetKey(credentials.accountId,item.symbol,timeframe,item.id),JSON.stringify({id:item.id,symbol:item.symbol,timeframe,requested:item.requested,received:candles.length,importedAt:now,candles}));
+    const cfg=indicatorConfigRef.current;
+    const rows=calculateIndicatorSeries(candles,cfg);
+    const snapshot=calculateIndicators(candles,cfg);
+    await AsyncStorage.setItem(indicatorDatasetKey(credentials.accountId,item.symbol,timeframe,item.id),JSON.stringify({version:2,symbol:item.symbol,timeframe,sourceCandleCount:candles.length,generatedAt:now,configuration:cfg,rows}));
+    const next=logRef.current.map(x=>x.id===item.id?updated:x);
+    logRef.current=next;setLog(next);
+    if(indicatorSource?.id===item.id){setIndicator(snapshot);setIndicatorRows(rows);setIndicatorSource(updated);setIndicatorTf(timeframe);}
+   }catch(e){
+    const message=e instanceof Error?e.message:String(e);
+    const next=logRef.current.map(x=>x.id===item.id?{...x,at:Date.now(),status:'FALLO' as const,message}:x);
+    logRef.current=next;setLog(next);
+   }
+  }
+ }
+ function toggleAutoUpdateTimeframe(timeframe:MarketTimeframe){setAutoUpdateTfs(current=>current.includes(timeframe)?current.filter(x=>x!==timeframe):[...current,timeframe]);}
+ function toggleAutoUpdate(){
+  if(autoUpdateEnabled){setAutoUpdateEnabled(false);return;}
+  if(!autoUpdateTfs.length){Alert.alert('ACTUALIZACIÓN AUTOMÁTICA','Seleccioná al menos un timeframe.');return;}
+  if(!accessPoint||!credentials.apiKey||!credentials.secret||!credentials.accountId){Alert.alert('CUENTA NO CONECTADA','Primero conectá tu cuenta demo de Exness.');return;}
+  setAutoUpdateEnabled(true);
+ }
+ useEffect(()=>{
+  if(!autoUpdateEnabled||!autoUpdateTfs.length||!accessPoint||!credentials.apiKey||!credentials.secret||!credentials.accountId)return;
+  let cancelled=false;
+  const timers=autoUpdateTfs.map(timeframe=>{
+   const run=()=>{if(!cancelled){setAutoUpdating(true);void updateImportedTimeframe(timeframe).finally(()=>{if(!cancelled)setAutoUpdating(false);});}};
+   run();
+   return setInterval(run,AUTO_UPDATE_MS[timeframe]);
+  });
+  return()=>{cancelled=true;timers.forEach(clearInterval);};
+ },[autoUpdateEnabled,autoUpdateTfs,accessPoint,credentials.apiKey,credentials.secret,credentials.accountId]);
  async function importData(){
   if(busy)return;
   if(!accessPoint||!credentials.apiKey||!credentials.secret||!credentials.accountId){Alert.alert('CUENTA NO CONECTADA','Primero conectá tu cuenta demo de Exness.');return;}
@@ -294,6 +345,11 @@ async function editCandleQuantity(){const n=Number(candleDraft);if(!Number.isInt
    <View style={s.actions}><Pressable disabled={saving} onPress={saveConfig} style={s.secondary}><Text style={s.secondaryText}>{saving?'GUARDANDO...':'GUARDAR CONFIGURACIÓN'}</Text></Pressable><Pressable onPress={resetConfig} style={s.secondary}><Text style={s.secondaryText}>RESTABLECER</Text></Pressable></View>
    <Pressable disabled={busy||!tf||!selectedInstrument||!accessPoint} onPress={importData} style={[s.importButton,(busy||!tf||!selectedInstrument||!accessPoint)&&s.disabled]}>{busy?<ActivityIndicator color="#0b0e13"/>:<Text style={s.importText}>IMPORTAR DATOS</Text>}</Pressable>
    {loaded&&<Text style={s.hint}>Configuración e historial guardados en el dispositivo.</Text>}
+  </View>
+  <View style={s.autoCard}>
+   <View style={s.autoHeader}><View style={{flex:1,gap:4}}><Text style={s.section}>ACTUALIZACIÓN DE DATOS AUTOMÁTICA</Text><Text style={s.hint}>Cada timeframe seleccionado se actualiza con su propio intervalo: M1 1 min · M5 5 min · M15 15 min · M30 30 min · H1 1 h · H4 4 h.</Text></View><Pressable onPress={toggleAutoUpdate} style={[s.autoToggle,autoUpdateEnabled?s.autoToggleOn:s.autoToggleOff]}><Text style={s.autoToggleText}>{autoUpdateEnabled?'DESACTIVAR':'ACTIVAR'}</Text></Pressable></View>
+   <View style={s.timeframes}>{TFS.map(item=><Pressable key={item} onPress={()=>toggleAutoUpdateTimeframe(item)} style={[s.timeframe,s.autoTimeframe,autoUpdateTfs.includes(item)&&s.autoTimeframeSelected]}><Text style={[s.tfText,autoUpdateTfs.includes(item)&&s.tfTextSelected]}>{item}</Text></Pressable>)}</View>
+   <Text style={s.hint}>{autoUpdateTfs.length?('Seleccionados: '+autoUpdateTfs.join(' · ')+(autoUpdating?' · ACTUALIZANDO...':'')):'Seleccioná uno o varios timeframes.'}</Text>
   </View>
   <View style={s.logHeader}><Text style={s.section}>HISTORIAL DE IMPORTACIONES</Text><Text style={s.muted}>{log.length}</Text></View>
   {log.length===0?<View style={s.card}><Text style={s.muted}>Todavía no hay importaciones registradas.</Text></View>:log.map(item=>{const expanded=!!expandedImports[item.id];return <View key={item.id} style={s.logCard}><View style={s.logTop}><Pressable onPress={()=>setExpandedImports(old=>({...old,[item.id]:!expanded}))} style={s.logHeaderToggle}><Text style={s.logArrow}>{expanded?'▲':'▼'}</Text><View style={{flex:1,gap:4}}><Text style={s.logSymbol}>{item.symbol}</Text><Text style={s.logLine}>{item.timeframe} · {item.received.toLocaleString('es-AR')}/{item.requested.toLocaleString('es-AR')} velas · {formatDate(item.at)}</Text></View></Pressable><Text style={[s.status,item.status==='OK'?s.ok:item.status==='PARCIAL'?s.partial:s.fail]}>{item.status}</Text></View>{item.message&&<Text style={s.error} numberOfLines={expanded?undefined:3}>{item.message}</Text>}<View style={s.logUtilityRow}><Pressable onPress={async()=>{try{await Clipboard.setStringAsync(importLogText(item));Alert.alert('COPIADO','La información de esta importación fue copiada al portapapeles.');}catch(e){Alert.alert('ERROR AL COPIAR',e instanceof Error?e.message:String(e));}}} style={s.copyButton}><Text style={s.copyButtonText}>📎 COPIAR</Text></Pressable><Pressable onPress={()=>exportImportJson(item)} style={s.exportLogButton}><Text style={s.exportLogButtonText}>⬇ JSON</Text></Pressable></View>{expanded&&<View style={s.detailsBox}><Text style={s.detailLine}>SOLICITADAS: {item.requested.toLocaleString('es-AR')}</Text><Text style={s.detailLine}>RECIBIDAS: {item.received.toLocaleString('es-AR')}</Text><Text style={s.detailLine}>FALTANTES: {(item.missingCandles??Math.max(0,item.requested-item.received)).toLocaleString('es-AR')}</Text><Text style={s.detailLine}>PRIMERA VELA: {formatDiagnosticDate(item.firstCandle)}</Text><Text style={s.detailLine}>ÚLTIMA VELA: {formatDiagnosticDate(item.lastCandle)}</Text><Text style={s.detailLine}>PERÍODO OBSERVADO: {formatDuration(item.observedSpanMs)}</Text><Text style={s.detailLine}>PERÍODO ESPERADO: {formatDuration(item.expectedSpanMs)}</Text><Text style={s.detailLine}>HUECOS DETECTADOS: {item.gapCount??'—'}</Text><Text style={s.detailLine}>HUECOS COMPATIBLES CON FIN DE SEMANA: {item.weekendGapCount??'—'}</Text>{(item.weekendGapHours??0)>0&&<Text style={s.weekendHint}>TIEMPO ESTIMADO SIN VELAS EN ESOS HUECOS: {(item.weekendGapHours??0).toFixed(1)} h</Text>}<Text style={s.detailExplanation}>{item.status==='PARCIAL'?'Una importación parcial no significa que Exness haya borrado velas. El histórico puede contener períodos sin cotización (por ejemplo, el cierre semanal de Forex) y también puede estar limitado por la ventana histórica disponible para la solicitud. Los huecos se calculan comparando los timestamps recibidos.':'La cantidad solicitada fue recibida correctamente.'}</Text></View>}<View style={s.logActions}><Pressable onPress={()=>loadIndicators(item)} style={s.indicatorButton}><Text style={s.indicatorButtonText}>CALCULAR INDICADORES</Text></Pressable><Pressable onPress={()=>deleteImport(item)} style={s.deleteButton}><Text style={s.clearX}>✕</Text></Pressable></View></View>})}
@@ -428,7 +484,7 @@ function InfoRow({label,value}:{label:string;value:string|number|null}){
 }
 const s=StyleSheet.create({
  content:{padding:18,gap:14},title:{color:'#fff',fontSize:21,fontWeight:'900'},subtitle:{color:'#9da6b5',fontSize:13,lineHeight:20},
- card:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:14,padding:15,gap:13},label:{color:'#8f98a8',fontSize:11,fontWeight:'900'},
+ autoCard:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:14,padding:15,gap:12},autoHeader:{flexDirection:'row',alignItems:'center',gap:10},autoToggle:{minWidth:108,height:42,borderRadius:9,alignItems:'center',justifyContent:'center',paddingHorizontal:12},autoToggleOn:{backgroundColor:'#28d17c',borderWidth:1,borderColor:'#28d17c'},autoToggleOff:{backgroundColor:'#e05252',borderWidth:1,borderColor:'#e05252'},autoToggleText:{color:'#fff',fontSize:10,fontWeight:'900'},autoTimeframe:{flexGrow:0,minWidth:47},autoTimeframeSelected:{backgroundColor:'#fff',borderColor:'#fff'},card:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:14,padding:15,gap:13},label:{color:'#8f98a8',fontSize:11,fontWeight:'900'},
  select:{minHeight:46,borderWidth:1,borderColor:'#3b4350',borderRadius:9,paddingHorizontal:12,backgroundColor:'#0f131a',flexDirection:'row',alignItems:'center',justifyContent:'space-between'},
  selectText:{color:'#fff',fontWeight:'800'},symbolList:{maxHeight:190,borderWidth:1,borderColor:'#303744',borderRadius:9,backgroundColor:'#0f131a'},symbolOption:{padding:11,borderBottomWidth:1,borderBottomColor:'#252b35'},
  timeframes:{flexDirection:'row',flexWrap:'wrap',gap:7},timeframe:{minWidth:47,flexGrow:1,paddingVertical:12,alignItems:'center',borderWidth:1,borderColor:'#3b4350',borderRadius:9,backgroundColor:'#0f131a'},timeframeSelected:{backgroundColor:'#fff',borderColor:'#fff'},tfText:{color:'#dce1e9',fontWeight:'900',fontSize:12},tfTextSelected:{color:'#0b0e13'},
