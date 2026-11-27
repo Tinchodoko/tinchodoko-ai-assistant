@@ -89,7 +89,7 @@ export async function askOpenRouter(
       { role: 'user', content: question },
     ],
     temperature: 0.1,
-    max_completion_tokens: 512,
+    max_completion_tokens: 768,
     stream: false,
     response_format: { type: 'json_object' },
     provider: { allow_fallbacks: true, sort: 'throughput' },
