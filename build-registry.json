@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-27T05:29:50Z",
+  "generated_at": "2026-11-27T05:36:18Z",
   "workflow": "Android Release APK",
   "repository": "Tinchodoko/tinchodoko-ai-assistant",
   "builds": [
@@ -4909,6 +4909,28 @@
           "step": "TypeScript check",
           "started_at": "2026-11-27T05:27:27Z",
           "completed_at": "2026-11-27T05:27:28Z"
+        }
+      ]
+    },
+    {
+      "run_number": 282,
+      "run_id": 45946542537,
+      "status": "completed",
+      "conclusion": "failure",
+      "display_title": "Close market scroll view after dynamic indicator history",
+      "event": "push",
+      "branch": "main",
+      "sha": "f8827cb8275d8b450455e146687c3966d11db742",
+      "created_at": "2026-11-27T05:33:48Z",
+      "updated_at": "2026-11-27T05:34:31Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45946542537",
+      "failed_step": "TypeScript check",
+      "failed_steps": [
+        {
+          "job": "build",
+          "step": "TypeScript check",
+          "started_at": "2026-11-27T05:34:25Z",
+          "completed_at": "2026-11-27T05:34:26Z"
         }
       ]
     }
