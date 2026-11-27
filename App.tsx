@@ -283,7 +283,7 @@ export default function App() {
     SecureStore.getItemAsync('tinchodoko.cloudflare.model').then(raw=>{if(raw && CLOUDFLARE_TEXT_MODELS.some(model=>model.id===raw)) setCloudflareModel(raw);}).catch(()=>{});
     SecureStore.getItemAsync('tinchodoko.openrouter.apiKey').then(raw=>{if(raw){setOpenrouterApiKey(raw);setOpenrouterStatus('online');}}).catch(()=>{});
     SecureStore.getItemAsync('tinchodoko.openrouter.model').then(raw=>{if(raw && OPENROUTER_TEXT_MODELS.some(model=>model.id===raw)) setOpenrouterModel(raw);}).catch(()=>{});
-    SecureStore.getItemAsync('tinchodoko.ai.extraProviders').then(raw=>{try{const saved=JSON.parse(raw??'[]');if(Array.isArray(saved))setExtraProviderCards(saved.filter((item:any)=>item&&typeof item.id==='string'&&['groq','gemini','nvidia','cloudflare','openrouter'].includes(item.provider)&&typeof item.model==='string').map((item:any)=>({id:item.id,provider:item.provider,model:item.model,apiKey:typeof item.apiKey==='string'?item.apiKey:'',accountId:typeof item.accountId==='string'?item.accountId:'',apiKeyVisible:false,question:'',answer:'',busy:false})));}catch{}finally{setExtraProvidersLoaded(true);}}).catch(()=>setExtraProvidersLoaded(true));
+    SecureStore.getItemAsync('tinchodoko.ai.extraProviders').then(raw=>{try{const saved=JSON.parse(raw??'[]');if(Array.isArray(saved))setExtraProviderCards(saved.filter((item:any)=>item&&typeof item.id==='string'&&['groq','gemini','nvidia','cloudflare','openrouter'].includes(item.provider)&&typeof item.model==='string'&&!(item.provider==='cloudflare'&&item.model==='@cf/zai-org/glm-5.3')).map((item:any)=>({id:item.id,provider:item.provider,model:item.model,apiKey:typeof item.apiKey==='string'?item.apiKey:'',accountId:typeof item.accountId==='string'?item.accountId:'',apiKeyVisible:false,question:'',answer:'',busy:false})));}catch{}finally{setExtraProvidersLoaded(true);}}).catch(()=>setExtraProvidersLoaded(true));
     SecureStore.getItemAsync('tinchodoko.profile.refreshInterval').then(raw=>{
       if (!raw) return;
       try {
@@ -635,7 +635,7 @@ export default function App() {
       await SecureStore.setItemAsync('tinchodoko.cloudflare.accountId',accountId);
       await SecureStore.setItemAsync('tinchodoko.cloudflare.model',cloudflareModel);
       setCloudflareStatus('online'); setCloudflareAnswer(''); setCloudflareQuestion('');
-      Alert.alert('Cloudflare','Credenciales verificadas correctamente. La ejecución de GLM-5.3 requiere facturación habilitada; Gemma 4 es la opción para probar primero el acceso gratuito.');
+      Alert.alert('Cloudflare','Credenciales verificadas correctamente. Gemma 4 quedó configurado como modelo disponible.');
     } catch(e) {
       setCloudflareStatus('offline');
       Alert.alert('Conexión Cloudflare fallida',e instanceof Error?e.message:String(e));
@@ -652,13 +652,6 @@ export default function App() {
     const token=cloudflareApiToken.trim();
     const accountId=cloudflareAccountId.trim();
     if (!token || !accountId) { Alert.alert('CLOUDFLARE','Primero ingresá y conectá el API TOKEN y el ACCOUNT ID.'); return; }
-    if (cloudflareModel==='@cf/zai-org/glm-5.3') {
-      Alert.alert('GLM-5.3 · Acceso pago','Cloudflare indica que GLM-5.3 requiere Workers Paid o créditos prepagos de AI Gateway. La prueba puede generar cargos. ¿Deseás continuar?',[
-        {text:'CANCELAR',style:'cancel'},
-        {text:'CONTINUAR',onPress:()=>void runCloudflareTest(token,accountId)},
-      ]);
-      return;
-    }
     await runCloudflareTest(token,accountId);
   }
 
@@ -1354,8 +1347,8 @@ export default function App() {
       <Pressable onPress={()=>{setHistoryMenuOpen(false);setHistoryIntervalMenu(false);setScreen('profile');}} style={[s.tab,screen==='profile'&&s.active]}><Text style={s.tabText}>BALANCE</Text></Pressable>
       <Pressable onPress={()=>{setIntervalMenu(false);openHistory();}} style={[s.tab,screen==='history'&&s.active]}><Text style={s.tabText}>HISTORIAL</Text></Pressable>
       <Pressable onPress={()=>{setInstrumentMenuOpen(false);setInstrumentCategoryMenu(false);setScreen('positions');}} style={[s.tab,screen==='positions'&&s.active]}><Text style={s.tabText}>POSICIONES</Text></Pressable>
-      <Pressable onPress={()=>{setInstrumentMenuOpen(false);setInstrumentCategoryMenu(false);setScreen('market');}} style={[s.tab,screen==='market'&&s.active]}><View style={s.marketTabIcon}><View style={s.marketCandleGreenWick}/><View style={s.marketCandleGreen}/><View style={s.marketCandleRedWick}/><View style={s.marketCandleRed}/></View></Pressable>
-      <Pressable onPress={()=>{setIntervalMenu(false);setHistoryMenuOpen(false);setHistoryIntervalMenu(false);setScreen('neural');}} style={[s.tab,screen==='neural'&&s.active]}><View style={s.neuronTabIcon}><View style={s.neuronDot1}/><View style={s.neuronDot2}/><View style={s.neuronDot3}/><View style={s.neuronLine1}/><View style={s.neuronLine2}/></View></Pressable>
+      <Pressable onPress={()=>{setInstrumentMenuOpen(false);setInstrumentCategoryMenu(false);setScreen('market');}} style={[s.tab,screen==='market'&&s.active]}><Image source={require('./assets/velas.png')} style={s.tabIcon} resizeMode="contain"/></Pressable>
+      <Pressable onPress={()=>{setIntervalMenu(false);setHistoryMenuOpen(false);setHistoryIntervalMenu(false);setScreen('neural');}} style={[s.tab,screen==='neural'&&s.active]}><Image source={require('./assets/neurona.png')} style={s.tabIcon} resizeMode="contain"/></Pressable>
       <Pressable onPress={()=>{setIntervalMenu(false);setHistoryMenuOpen(false);setHistoryIntervalMenu(false);setScreen('app');}} style={[s.tab,screen==='app'&&s.active]}><Text style={s.tabText}>APP</Text></Pressable>
     </View>
 
@@ -1776,7 +1769,7 @@ function Info({label,value,valueStyle}:{label:string,value:string,valueStyle?:Te
 const s=StyleSheet.create({
  safe:{flex:1,backgroundColor:'#0b0e13'},header:{height:68,paddingHorizontal:20,flexDirection:'row',alignItems:'center',justifyContent:'space-between',borderBottomWidth:1,borderBottomColor:'#252b35'},
  title:{color:'#fff',fontSize:18,fontWeight:'800'},dot:{width:12,height:12,borderRadius:6},green:{backgroundColor:'#28d17c'},yellow:{backgroundColor:'#f0b429'},red:{backgroundColor:'#e05252'},
- tabs:{flexDirection:'row',borderBottomWidth:1,borderBottomColor:'#252b35'},tab:{flex:1,paddingHorizontal:3,paddingVertical:12,alignItems:'center',justifyContent:'center',minWidth:0},active:{borderBottomWidth:2,borderBottomColor:'#fff'},marketTabIcon:{height:22,width:30,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:4},marketCandleGreenWick:{position:'absolute',left:7,width:2,height:20,backgroundColor:'#28d17c'},marketCandleGreen:{width:7,height:11,backgroundColor:'#28d17c',borderRadius:1,marginTop:2},marketCandleRedWick:{position:'absolute',right:7,width:2,height:20,backgroundColor:'#e05252'},marketCandleRed:{width:7,height:14,backgroundColor:'#e05252',borderRadius:1,marginTop:-2},neuronTabIcon:{height:22,width:30,position:'relative'},neuronDot1:{position:'absolute',left:3,top:8,width:6,height:6,borderRadius:3,backgroundColor:'#28d17c'},neuronDot2:{position:'absolute',right:4,top:3,width:6,height:6,borderRadius:3,backgroundColor:'#7ea7ff'},neuronDot3:{position:'absolute',right:7,bottom:2,width:6,height:6,borderRadius:3,backgroundColor:'#e05252'},neuronLine1:{position:'absolute',left:7,top:7,width:15,height:1,backgroundColor:'#697386',transform:[{rotate:'-18deg'}]},neuronLine2:{position:'absolute',left:8,top:13,width:13,height:1,backgroundColor:'#697386',transform:[{rotate:'25deg'}]},tabText:{color:'#dce1e9',fontWeight:'800',fontSize:11,letterSpacing:-0.2,includeFontPadding:false,textAlign:'center'},
+ tabs:{flexDirection:'row',borderBottomWidth:1,borderBottomColor:'#252b35'},tab:{flex:1,paddingHorizontal:1,paddingVertical:10,alignItems:'center',justifyContent:'center',minWidth:0},active:{borderBottomWidth:2,borderBottomColor:'#fff'},marketTabIcon:{height:22,width:30,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:4},marketCandleGreenWick:{position:'absolute',left:7,width:2,height:20,backgroundColor:'#28d17c'},marketCandleGreen:{width:7,height:11,backgroundColor:'#28d17c',borderRadius:1,marginTop:2},marketCandleRedWick:{position:'absolute',right:7,width:2,height:20,backgroundColor:'#e05252'},marketCandleRed:{width:7,height:14,backgroundColor:'#e05252',borderRadius:1,marginTop:-2},neuronTabIcon:{height:22,width:30,position:'relative'},neuronDot1:{position:'absolute',left:3,top:8,width:6,height:6,borderRadius:3,backgroundColor:'#28d17c'},neuronDot2:{position:'absolute',right:4,top:3,width:6,height:6,borderRadius:3,backgroundColor:'#7ea7ff'},neuronDot3:{position:'absolute',right:7,bottom:2,width:6,height:6,borderRadius:3,backgroundColor:'#e05252'},neuronLine1:{position:'absolute',left:7,top:7,width:15,height:1,backgroundColor:'#697386',transform:[{rotate:'-18deg'}]},neuronLine2:{position:'absolute',left:8,top:13,width:13,height:1,backgroundColor:'#697386',transform:[{rotate:'25deg'}]},tabText:{color:'#dce1e9',fontWeight:'800',fontSize:10,letterSpacing:-0.25,includeFontPadding:false,textAlign:'center'},tabIcon:{width:24,height:24,maxWidth:'100%'},
  content:{padding:22,gap:15},h1:{color:'#fff',fontSize:26,fontWeight:'900'},sub:{color:'#9da6b5',lineHeight:21},field:{gap:7},label:{color:'#c8ced8',fontSize:12,fontWeight:'800'},
  row:{flexDirection:'row',backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:10},input:{flex:1,color:'#fff',padding:13,minHeight:48},eye:{width:48,alignItems:'center',justifyContent:'center'},
  button:{minHeight:50,borderRadius:10,backgroundColor:'#fff',alignItems:'center',justifyContent:'center'},buttonText:{color:'#0b0e13',fontWeight:'900'},disabled:{opacity:.5},
