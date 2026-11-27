@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-27T05:36:18Z",
+  "generated_at": "2026-11-27T05:47:20Z",
   "workflow": "Android Release APK",
   "repository": "Tinchodoko/tinchodoko-ai-assistant",
   "builds": [
@@ -4933,6 +4933,21 @@
           "completed_at": "2026-11-27T05:34:26Z"
         }
       ]
+    },
+    {
+      "run_number": 283,
+      "run_id": 45947061865,
+      "status": "completed",
+      "conclusion": "success",
+      "display_title": "Close market history scroll before indicator modals",
+      "event": "push",
+      "branch": "main",
+      "sha": "c71ddfad0962fbd5785c234ca3211b64113b96f6",
+      "created_at": "2026-11-27T05:39:01Z",
+      "updated_at": "2026-11-27T05:45:19Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45947061865",
+      "failed_step": null,
+      "failed_steps": []
     }
   ]
 }
