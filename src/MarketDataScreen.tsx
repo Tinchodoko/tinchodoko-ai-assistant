@@ -19,6 +19,7 @@ const CONFIG_KEY='tinchodoko.market.import.config.v1';
 const LOG_KEY='tinchodoko.market.import.log.v1';
 const INDICATOR_CONFIG_KEY='tinchodoko.market.indicator.config.v1';
 const CHART_CONFIG_KEY='tinchodoko.market.chart.config.v1';
+const UI_STATE_KEY='tinchodoko.market.ui.v1';
 const CHART_PALETTE=['#28d17c','#e05252','#7ea7ff','#f0b429','#c084fc','#22d3ee','#fb7185','#dce1e9'];
 type ChartIndicatorKey='ema20'|'ema50'|'bollinger'|'rsi'|'adx'|'macd'|'zScore';
 type ChartIndicatorConfig=Record<ChartIndicatorKey,{enabled:boolean;color:string}>;
@@ -111,7 +112,8 @@ export default function MarketDataScreen({credentials,accessPoint,instruments,se
  const [chartConfig,setChartConfig]=useState<ChartIndicatorConfig>(DEFAULT_CHART_CONFIG);
  const [chartOptionsOpen,setChartOptionsOpen]=useState(false);
  const [chartZoom,setChartZoom]=useState(1);
- useEffect(()=>{let cancelled=false;Promise.all([AsyncStorage.getItem(CONFIG_KEY),AsyncStorage.getItem(LOG_KEY),AsyncStorage.getItem(INDICATOR_CONFIG_KEY),AsyncStorage.getItem(CHART_CONFIG_KEY)]).then(([rawConfig,rawLog,rawIndicatorConfig,rawChartConfig])=>{if(cancelled)return;if(rawConfig){try{const saved=JSON.parse(rawConfig) as Partial<Config>;const next={...DEFAULTS};for(const item of TFS){const n=Number(saved[item]);if(Number.isInteger(n)&&n>=MIN&&n<=MAX[item])next[item]=n;}setConfig(next);}catch{}}if(rawLog){try{const saved=JSON.parse(rawLog);if(Array.isArray(saved))setLog(saved.filter(x=>x&&typeof x.id==='string').slice(0,200));}catch{}}if(rawIndicatorConfig){try{setIndicatorConfig(normalizeIndicatorConfig(JSON.parse(rawIndicatorConfig)));}catch{}}if(rawChartConfig){try{setChartConfig(normalizeChartConfig(JSON.parse(rawChartConfig)));}catch{}}setLoaded(true);}).catch(()=>setLoaded(true));return()=>{cancelled=true;};},[]);
+ const [uiLoaded,setUiLoaded]=useState(false);
+ useEffect(()=>{let cancelled=false;Promise.all([AsyncStorage.getItem(CONFIG_KEY),AsyncStorage.getItem(LOG_KEY),AsyncStorage.getItem(INDICATOR_CONFIG_KEY),AsyncStorage.getItem(CHART_CONFIG_KEY),AsyncStorage.getItem(UI_STATE_KEY)]).then(([rawConfig,rawLog,rawIndicatorConfig,rawChartConfig,rawUi])=>{if(cancelled)return;if(rawConfig){try{const saved=JSON.parse(rawConfig) as Partial<Config>;const next={...DEFAULTS};for(const item of TFS){const n=Number(saved[item]);if(Number.isInteger(n)&&n>=MIN&&n<=MAX[item])next[item]=n;}setConfig(next);}catch{}}if(rawLog){try{const saved=JSON.parse(rawLog);if(Array.isArray(saved))setLog(saved.filter(x=>x&&typeof x.id==='string').slice(0,200));}catch{}}if(rawIndicatorConfig){try{setIndicatorConfig(normalizeIndicatorConfig(JSON.parse(rawIndicatorConfig)));}catch{}}if(rawChartConfig){try{setChartConfig(normalizeChartConfig(JSON.parse(rawChartConfig)));}catch{}}if(rawUi){try{const ui=JSON.parse(rawUi);if(ui&&typeof ui.expandedPanels==='object')setExpandedPanels({...{indicator:true,calculate:true,config:true,chart:true,table:true,json:true},...ui.expandedPanels};if(ui&&typeof ui.expandedImports==='object')setExpandedImports(ui.expandedImports);}catch{}}setLoaded(true);setUiLoaded(true);}).catch(()=>setLoaded(true));return()=>{cancelled=true;};},[]);
  const value=tf?config[tf]:0;
  const max=tf?MAX[tf]:MIN;
  const fill=tf?Math.max(0,Math.min(1,(value-MIN)/(max-MIN))):0;
@@ -120,6 +122,7 @@ export default function MarketDataScreen({credentials,accessPoint,instruments,se
  const alphabet='ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
  function choose(next:MarketTimeframe){if(tf===next){setTf(null);return;}setTf(next);}
  function slide(x:number){if(!tf)return;const ratio=Math.max(0,Math.min(1,x/Math.max(1,width)));const next=Math.max(MIN,Math.min(MAX[tf],Math.round((MIN+ratio*(MAX[tf]-MIN))/10)*10));setConfig(old=>({...old,[tf]:next}));}
+ useEffect(()=>{if(uiLoaded)AsyncStorage.setItem(UI_STATE_KEY,JSON.stringify({expandedPanels,expandedImports})).catch(()=>{});},[expandedPanels,expandedImports,uiLoaded]);
  async function saveConfig(){setSaving(true);try{await AsyncStorage.setItem(CONFIG_KEY,JSON.stringify(config));Alert.alert('CONFIGURACIÓN GUARDADA','Las cantidades quedaron guardadas localmente.');}catch(e){Alert.alert('ERROR AL GUARDAR',e instanceof Error?e.message:String(e));}finally{setSaving(false);}}
  async function resetConfig(){setConfig(DEFAULTS);setTf('M1');try{await AsyncStorage.setItem(CONFIG_KEY,JSON.stringify(DEFAULTS));Alert.alert('CONFIGURACIÓN RESTABLECIDA','Se restauraron todos los valores predeterminados.');}catch(e){Alert.alert('ERROR AL RESTABLECER',e instanceof Error?e.message:String(e));}}
 async function saveChartConfig(next:ChartIndicatorConfig){setChartConfig(next);await AsyncStorage.setItem(CHART_CONFIG_KEY,JSON.stringify(next));}
