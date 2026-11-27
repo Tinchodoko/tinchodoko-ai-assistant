@@ -59,7 +59,7 @@ export async function askGemini(
       systemInstruction: {
         parts: [
           {
-            text: 'Respondé de forma breve y directa. Para operaciones matemáticas simples, devolvé el resultado y nada más.',
+            text: 'Respondé de forma breve y directa. Para análisis estructurados, devolvé únicamente el JSON solicitado, completo y sin explicaciones adicionales. Para operaciones matemáticas simples, devolvé el resultado y nada más.',
           },
         ],
       },
@@ -70,7 +70,7 @@ export async function askGemini(
       ],
       generationConfig: {
         temperature: 0.1,
-        maxOutputTokens: 64,
+        maxOutputTokens: 256,
       },
     }),
   });
