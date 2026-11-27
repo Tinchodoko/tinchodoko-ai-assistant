@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-27T05:04:08Z",
+  "generated_at": "2026-11-27T05:29:50Z",
   "workflow": "Android Release APK",
   "repository": "Tinchodoko/tinchodoko-ai-assistant",
   "builds": [
@@ -4823,6 +4823,94 @@
       "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45942835949",
       "failed_step": null,
       "failed_steps": []
+    },
+    {
+      "run_number": 278,
+      "run_id": 45945456190,
+      "status": "completed",
+      "conclusion": "failure",
+      "display_title": "Add files via upload",
+      "event": "push",
+      "branch": "main",
+      "sha": "5bd78bc7b2b2f1dbd57dbd662085188faa6d6ccc",
+      "created_at": "2026-11-27T05:22:52Z",
+      "updated_at": "2026-11-27T05:24:03Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45945456190",
+      "failed_step": "Build signed release APK",
+      "failed_steps": [
+        {
+          "job": "build",
+          "step": "Build signed release APK",
+          "started_at": "2026-11-27T05:23:26Z",
+          "completed_at": "2026-11-27T05:24:00Z"
+        }
+      ]
+    },
+    {
+      "run_number": 279,
+      "run_id": 45945717212,
+      "status": "completed",
+      "conclusion": "failure",
+      "display_title": "Make market indicators independent per import",
+      "event": "push",
+      "branch": "main",
+      "sha": "fd53556ef61fcd7c95e9580fae5b26ca53131a62",
+      "created_at": "2026-11-27T05:25:27Z",
+      "updated_at": "2026-11-27T05:26:12Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45945717212",
+      "failed_step": "TypeScript check",
+      "failed_steps": [
+        {
+          "job": "build",
+          "step": "TypeScript check",
+          "started_at": "2026-11-27T05:26:05Z",
+          "completed_at": "2026-11-27T05:26:06Z"
+        }
+      ]
+    },
+    {
+      "run_number": 280,
+      "run_id": 45945720474,
+      "status": "completed",
+      "conclusion": "failure",
+      "display_title": "Use borrador icon for Neural tab",
+      "event": "push",
+      "branch": "main",
+      "sha": "cf06a22a338d44421719d970a9bd5c9ef4210af3",
+      "created_at": "2026-11-27T05:25:29Z",
+      "updated_at": "2026-11-27T05:26:51Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45945720474",
+      "failed_step": "TypeScript check",
+      "failed_steps": [
+        {
+          "job": "build",
+          "step": "TypeScript check",
+          "started_at": "2026-11-27T05:26:46Z",
+          "completed_at": "2026-11-27T05:26:48Z"
+        }
+      ]
+    },
+    {
+      "run_number": 281,
+      "run_id": 45945841471,
+      "status": "completed",
+      "conclusion": "failure",
+      "display_title": "Fix indicator modal JSX syntax",
+      "event": "push",
+      "branch": "main",
+      "sha": "c93759a9b20325385da47a3d26cea1767a72ca2b",
+      "created_at": "2026-11-27T05:26:41Z",
+      "updated_at": "2026-11-27T05:27:34Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45945841471",
+      "failed_step": "TypeScript check",
+      "failed_steps": [
+        {
+          "job": "build",
+          "step": "TypeScript check",
+          "started_at": "2026-11-27T05:27:27Z",
+          "completed_at": "2026-11-27T05:27:28Z"
+        }
+      ]
     }
   ]
 }
