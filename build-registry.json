@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-27T04:11:15Z",
+  "generated_at": "2026-11-27T04:27:36Z",
   "workflow": "Android Release APK",
   "repository": "Tinchodoko/tinchodoko-ai-assistant",
   "builds": [
@@ -4711,6 +4711,66 @@
           "completed_at": "2026-11-27T04:08:15Z"
         }
       ]
+    },
+    {
+      "run_number": 271,
+      "run_id": 45939670559,
+      "status": "in_progress",
+      "conclusion": null,
+      "display_title": "Fix CONNECT button TypeScript handler",
+      "event": "push",
+      "branch": "main",
+      "sha": "44ca5e6a901e9a36f57fa10edc34aa6056503bb2",
+      "created_at": "2026-11-27T04:23:37Z",
+      "updated_at": "2026-11-27T04:23:41Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45939670559",
+      "failed_step": null,
+      "failed_steps": []
+    },
+    {
+      "run_number": 272,
+      "run_id": 45939692737,
+      "status": "completed",
+      "conclusion": "cancelled",
+      "display_title": "Add intelligent automatic market data updates",
+      "event": "push",
+      "branch": "main",
+      "sha": "7cc59d721433c981a7a8017055a9232e7b6acc62",
+      "created_at": "2026-11-27T04:23:50Z",
+      "updated_at": "2026-11-27T04:24:06Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45939692737",
+      "failed_step": null,
+      "failed_steps": []
+    },
+    {
+      "run_number": 273,
+      "run_id": 45939716534,
+      "status": "completed",
+      "conclusion": "cancelled",
+      "display_title": "Add full-screen conversation history controls",
+      "event": "push",
+      "branch": "main",
+      "sha": "272472d12e5dd512fd4cea3091f7bcee1a44830c",
+      "created_at": "2026-11-27T04:24:05Z",
+      "updated_at": "2026-11-27T04:24:36Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45939716534",
+      "failed_step": null,
+      "failed_steps": []
+    },
+    {
+      "run_number": 274,
+      "run_id": 45939764143,
+      "status": "pending",
+      "conclusion": null,
+      "display_title": "Keep automatic indicator view synchronized",
+      "event": "push",
+      "branch": "main",
+      "sha": "bc1cbd2cc9413666e0a323525b708239a1e3e1a9",
+      "created_at": "2026-11-27T04:24:35Z",
+      "updated_at": "2026-11-27T04:24:36Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45939764143",
+      "failed_step": null,
+      "failed_steps": []
     }
   ]
 }
