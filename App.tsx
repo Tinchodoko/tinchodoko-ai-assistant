@@ -1343,13 +1343,13 @@ export default function App() {
   return <SafeAreaView style={s.safe}>
     <View style={s.header}><Text style={s.title}>Tinchodoko AI Assistant</Text><View style={[s.dot,status==='online'?s.green:status==='connecting'?s.yellow:s.red]}/></View>
     <View style={s.tabs}>
-      <Pressable onPress={()=>{setIntervalMenu(false);setHistoryMenuOpen(false);setHistoryIntervalMenu(false);setScreen('connection');}} style={[s.tab,screen==='connection'&&s.active]}><Text style={s.tabText}>CONEXIÓN</Text></Pressable>
-      <Pressable onPress={()=>{setHistoryMenuOpen(false);setHistoryIntervalMenu(false);setScreen('profile');}} style={[s.tab,screen==='profile'&&s.active]}><Text style={s.tabText}>BALANCE</Text></Pressable>
-      <Pressable onPress={()=>{setIntervalMenu(false);openHistory();}} style={[s.tab,screen==='history'&&s.active]}><Text style={s.tabText}>HISTORIAL</Text></Pressable>
-      <Pressable onPress={()=>{setInstrumentMenuOpen(false);setInstrumentCategoryMenu(false);setScreen('positions');}} style={[s.tab,screen==='positions'&&s.active]}><Text style={s.tabText}>POSICIONES</Text></Pressable>
+      <Pressable onPress={()=>{setIntervalMenu(false);setHistoryMenuOpen(false);setHistoryIntervalMenu(false);setScreen('connection');}} style={[s.tab,screen==='connection'&&s.active]}><Text style={s.tabText} adjustsFontSizeToFit minimumFontScale={0.65} numberOfLines={1}>CONEXIÓN</Text></Pressable>
+      <Pressable onPress={()=>{setHistoryMenuOpen(false);setHistoryIntervalMenu(false);setScreen('profile');}} style={[s.tab,screen==='profile'&&s.active]}><Text style={s.tabText} adjustsFontSizeToFit minimumFontScale={0.65} numberOfLines={1}>BALANCE</Text></Pressable>
+      <Pressable onPress={()=>{setIntervalMenu(false);openHistory();}} style={[s.tab,screen==='history'&&s.active]}><Text style={s.tabText} adjustsFontSizeToFit minimumFontScale={0.65} numberOfLines={1}>HISTORIAL</Text></Pressable>
+      <Pressable onPress={()=>{setInstrumentMenuOpen(false);setInstrumentCategoryMenu(false);setScreen('positions');}} style={[s.tab,screen==='positions'&&s.active]}><Text style={s.tabText} adjustsFontSizeToFit minimumFontScale={0.65} numberOfLines={1}>POSICIONES</Text></Pressable>
       <Pressable onPress={()=>{setInstrumentMenuOpen(false);setInstrumentCategoryMenu(false);setScreen('market');}} style={[s.tab,screen==='market'&&s.active]}><Image source={require('./assets/velas.png')} style={s.tabIcon} resizeMode="contain"/></Pressable>
       <Pressable onPress={()=>{setIntervalMenu(false);setHistoryMenuOpen(false);setHistoryIntervalMenu(false);setScreen('neural');}} style={[s.tab,screen==='neural'&&s.active]}><Image source={require('./assets/neurona.png')} style={s.tabIcon} resizeMode="contain"/></Pressable>
-      <Pressable onPress={()=>{setIntervalMenu(false);setHistoryMenuOpen(false);setHistoryIntervalMenu(false);setScreen('app');}} style={[s.tab,screen==='app'&&s.active]}><Text style={s.tabText}>APP</Text></Pressable>
+      <Pressable onPress={()=>{setIntervalMenu(false);setHistoryMenuOpen(false);setHistoryIntervalMenu(false);setScreen('app');}} style={[s.tab,screen==='app'&&s.active]}><Text style={s.tabText} adjustsFontSizeToFit minimumFontScale={0.65} numberOfLines={1}>APP</Text></Pressable>
     </View>
 
     {screen==='connection' ? <ScrollView contentContainerStyle={s.content} onTouchStart={handleSwipeStart} onTouchEnd={handleSwipeEnd}>
