@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-27T03:56:55Z",
+  "generated_at": "2026-11-27T04:09:24Z",
   "workflow": "Android Release APK",
   "repository": "Tinchodoko/tinchodoko-ai-assistant",
   "builds": [
@@ -4628,6 +4628,80 @@
       "created_at": "2026-11-27T03:47:38Z",
       "updated_at": "2026-11-27T03:55:02Z",
       "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45936216765",
+      "failed_step": null,
+      "failed_steps": []
+    },
+    {
+      "run_number": 267,
+      "run_id": 45937867310,
+      "status": "completed",
+      "conclusion": "failure",
+      "display_title": "Add silent automatic Exness reconnect on startup",
+      "event": "push",
+      "branch": "main",
+      "sha": "5964691a31b109423339c1878605210e7035b9ba",
+      "created_at": "2026-11-27T04:05:21Z",
+      "updated_at": "2026-11-27T04:06:03Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45937867310",
+      "failed_step": "TypeScript check",
+      "failed_steps": [
+        {
+          "job": "build",
+          "step": "TypeScript check",
+          "started_at": "2026-11-27T04:05:55Z",
+          "completed_at": "2026-11-27T04:05:59Z"
+        }
+      ]
+    },
+    {
+      "run_number": 268,
+      "run_id": 45937874804,
+      "status": "completed",
+      "conclusion": "failure",
+      "display_title": "Resize Neural consult button text",
+      "event": "push",
+      "branch": "main",
+      "sha": "1e011e1f6f5a9dd7193807ac6cede9afffa8a18f",
+      "created_at": "2026-11-27T04:05:25Z",
+      "updated_at": "2026-11-27T04:06:47Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45937874804",
+      "failed_step": "TypeScript check",
+      "failed_steps": [
+        {
+          "job": "build",
+          "step": "TypeScript check",
+          "started_at": "2026-11-27T04:06:40Z",
+          "completed_at": "2026-11-27T04:06:44Z"
+        }
+      ]
+    },
+    {
+      "run_number": 269,
+      "run_id": 45938034675,
+      "status": "completed",
+      "conclusion": "cancelled",
+      "display_title": "Increase Gemini structured output limit",
+      "event": "push",
+      "branch": "main",
+      "sha": "8fc61b22a7c5ed038e260f30155c9e2345cd7a6e",
+      "created_at": "2026-11-27T04:07:02Z",
+      "updated_at": "2026-11-27T04:07:39Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45938034675",
+      "failed_step": null,
+      "failed_steps": []
+    },
+    {
+      "run_number": 270,
+      "run_id": 45938039187,
+      "status": "in_progress",
+      "conclusion": null,
+      "display_title": "Increase OpenRouter structured output limit",
+      "event": "push",
+      "branch": "main",
+      "sha": "1b62e013198fd2367f4cf3d69fd7995cbefa1352",
+      "created_at": "2026-11-27T04:07:05Z",
+      "updated_at": "2026-11-27T04:07:42Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/45938039187",
       "failed_step": null,
       "failed_steps": []
     }
