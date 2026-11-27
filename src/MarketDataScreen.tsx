@@ -120,9 +120,11 @@ export default function MarketDataScreen({credentials,accessPoint,instruments,se
  const [autoUpdating,setAutoUpdating]=useState(false);
  const logRef=useRef<LogItem[]>([]);
  const indicatorConfigRef=useRef<IndicatorConfig>(indicatorConfig);
+ const indicatorSourceRef=useRef<LogItem|null>(null);
  useEffect(()=>{let cancelled=false;Promise.all([AsyncStorage.getItem(CONFIG_KEY),AsyncStorage.getItem(LOG_KEY),AsyncStorage.getItem(INDICATOR_CONFIG_KEY),AsyncStorage.getItem(CHART_CONFIG_KEY),AsyncStorage.getItem(UI_STATE_KEY),AsyncStorage.getItem(AUTO_UPDATE_KEY)]).then(([rawConfig,rawLog,rawIndicatorConfig,rawChartConfig,rawUi,rawAuto])=>{if(cancelled)return;if(rawConfig){try{const saved=JSON.parse(rawConfig) as Partial<Config>;const next={...DEFAULTS};for(const item of TFS){const n=Number(saved[item]);if(Number.isInteger(n)&&n>=MIN&&n<=MAX[item])next[item]=n;}setConfig(next);}catch{}}if(rawLog){try{const saved=JSON.parse(rawLog);if(Array.isArray(saved))setLog(saved.filter(x=>x&&typeof x.id==='string').slice(0,200));}catch{}}if(rawIndicatorConfig){try{setIndicatorConfig(normalizeIndicatorConfig(JSON.parse(rawIndicatorConfig)));}catch{}}if(rawChartConfig){try{setChartConfig(normalizeChartConfig(JSON.parse(rawChartConfig)));}catch{}}if(rawUi){try{const ui=JSON.parse(rawUi);if(ui&&typeof ui.expandedPanels==='object')setExpandedPanels({...{indicator:true,calculate:true,config:true,chart:true,table:true,json:true},...ui.expandedPanels});if(ui&&typeof ui.expandedImports==='object')setExpandedImports(ui.expandedImports);}catch{}}if(rawAuto){try{const a=JSON.parse(rawAuto);if(Array.isArray(a.timeframes))setAutoUpdateTfs(TFS.filter(x=>a.timeframes.includes(x)));if(a.enabled===true)setAutoUpdateEnabled(true);}catch{}}setLoaded(true);setUiLoaded(true);}).catch(()=>{setLoaded(true);setUiLoaded(true);});return()=>{cancelled=true;};},[]);
  useEffect(()=>{logRef.current=log;},[log]);
  useEffect(()=>{indicatorConfigRef.current=indicatorConfig;},[indicatorConfig]);
+ useEffect(()=>{indicatorSourceRef.current=indicatorSource;},[indicatorSource]);
  useEffect(()=>{if(uiLoaded)AsyncStorage.setItem(AUTO_UPDATE_KEY,JSON.stringify({enabled:autoUpdateEnabled,timeframes:autoUpdateTfs})).catch(()=>{});},[autoUpdateEnabled,autoUpdateTfs,uiLoaded]);
  const value=tf?config[tf]:0;
  const max=tf?MAX[tf]:MIN;
@@ -279,7 +281,7 @@ async function editCandleQuantity(){const n=Number(candleDraft);if(!Number.isInt
     await AsyncStorage.setItem(indicatorDatasetKey(credentials.accountId,item.symbol,timeframe,item.id),JSON.stringify({version:2,symbol:item.symbol,timeframe,sourceCandleCount:candles.length,generatedAt:now,configuration:cfg,rows}));
     const next=logRef.current.map(x=>x.id===item.id?updated:x);
     logRef.current=next;setLog(next);
-    if(indicatorSource?.id===item.id){setIndicator(snapshot);setIndicatorRows(rows);setIndicatorSource(updated);setIndicatorTf(timeframe);}
+    if(indicatorSourceRef.current?.id===item.id){setIndicator(snapshot);setIndicatorRows(rows);setIndicatorSource(updated);setIndicatorTf(timeframe);indicatorSourceRef.current=updated;}
    }catch(e){
     const message=e instanceof Error?e.message:String(e);
     const next=logRef.current.map(x=>x.id===item.id?{...x,at:Date.now(),status:'FALLO' as const,message}:x);
