@@ -75,7 +75,7 @@ export default function NeuralScreen({providers,runner,accountId}:{providers:Neu
  useEffect(()=>{AsyncStorage.setItem('tinchodoko.ai.neural.activeProviders',JSON.stringify(activeIds)).catch(()=>{});},[activeIds]);
  useEffect(()=>{AsyncStorage.setItem(HISTORY_KEY,JSON.stringify(messages.slice(-200))).catch(()=>{});},[messages]);
 
- const effectiveProviders=useMemo(()=>providers.map(p=>({...p,status:runtimeStatus[p.id]??p.status})),[providers,runtimeStatus]);
+ const effectiveProviders=useMemo(()=>providers.filter(p=>!(p.provider==='cloudflare'&&p.model==='@cf/zai-org/glm-5.3')).map(p=>({...p,status:runtimeStatus[p.id]??p.status})),[providers,runtimeStatus]);
  const activeProviders=effectiveProviders.filter(p=>activeIds.includes(p.id));
  function toggleProvider(id:string){setActiveIds(current=>current.includes(id)?current.filter(x=>x!==id):[...current,id]);}
 
@@ -128,7 +128,7 @@ export default function NeuralScreen({providers,runner,accountId}:{providers:Neu
 
  return <ScrollView contentContainerStyle={n.content} onScrollBeginDrag={()=>{if(importPickerOpen)setImportPickerOpen(false);}}>
    <View style={n.neuralHeader}>
-    <View style={n.titleRow}><View style={n.neuronIcon}><View style={n.nodeA}/><View style={n.nodeB}/><View style={n.nodeC}/><View style={n.linkA}/><View style={n.linkB}/></View><Text style={n.title}>NEURONA</Text></View>
+    <View style={n.titleRow}><Image source={require('../assets/neurona.png')} style={n.neuronLogo} resizeMode="contain"/><Text style={n.title}>ANÁLISIS DE ASISTENTES</Text></View>
     <View style={n.headerActions}><Pressable onPress={()=>void clearChat()} style={n.headerButton}><Text style={n.headerIcon}>⌫</Text></Pressable><Pressable onPress={()=>void saveChat()} style={n.headerButton}><Text style={n.headerIcon}>⇩</Text></Pressable><Pressable onPress={()=>setSettingsOpen(v=>!v)} style={n.gear}><Text style={n.gearText}>⚙</Text></Pressable></View>
    </View>
 
@@ -168,7 +168,7 @@ export default function NeuralScreen({providers,runner,accountId}:{providers:Neu
 
 const n=StyleSheet.create({
  content:{padding:16,gap:14,paddingBottom:32},neuralHeader:{minHeight:48,flexDirection:'row',alignItems:'center',justifyContent:'space-between'},headerActions:{flexDirection:'row',alignItems:'center',gap:2},headerButton:{width:38,height:38,alignItems:'center',justifyContent:'center'},headerIcon:{color:'#fff',fontSize:22,fontWeight:'900'},titleRow:{flexDirection:'row',alignItems:'center',gap:10},title:{color:'#fff',fontSize:22,fontWeight:'900'},gear:{width:40,height:40,alignItems:'center',justifyContent:'center'},gearText:{color:'#fff',fontSize:23},
- neuronIcon:{width:30,height:30,position:'relative'},nodeA:{position:'absolute',left:2,top:13,width:8,height:8,borderRadius:4,backgroundColor:'#28d17c'},nodeB:{position:'absolute',right:2,top:4,width:8,height:8,borderRadius:4,backgroundColor:'#7ea7ff'},nodeC:{position:'absolute',right:5,bottom:2,width:8,height:8,borderRadius:4,backgroundColor:'#e05252'},linkA:{position:'absolute',left:8,top:10,width:15,height:2,backgroundColor:'#697386',transform:[{rotate:'-20deg'}]},linkB:{position:'absolute',left:10,top:18,width:14,height:2,backgroundColor:'#697386',transform:[{rotate:'25deg'}]},
+ neuronLogo:{width:32,height:32},
  settingsCard:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:13,padding:14,gap:10},settingsTitle:{color:'#fff',fontWeight:'900',fontSize:13},settingsSub:{color:'#9da6b5',fontSize:12},providerGrid:{flexDirection:'row',flexWrap:'wrap',gap:10},providerSquare:{width:58,height:58,borderRadius:11,borderWidth:2,alignItems:'center',justifyContent:'center',position:'relative',overflow:'hidden'},providerNumber:{position:'absolute',left:5,top:3,color:'#9da6b5',fontSize:10,fontWeight:'900'},providerLogo:{position:'absolute',width:42,height:42,opacity:.34},providerInitial:{fontSize:24,fontWeight:'900',zIndex:2},
  panel:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:13,padding:14,gap:10},panelHeader:{flexDirection:'row',alignItems:'center',gap:8},arrow:{color:'#fff',fontSize:15,width:20},panelTitle:{color:'#fff',fontSize:13,fontWeight:'900',flex:1},historyCount:{color:'#7f8998',fontSize:11,fontWeight:'900'},instructionsInput:{minHeight:260,borderWidth:1,borderColor:'#3b4350',borderRadius:9,backgroundColor:'#0f131a',color:'#fff',padding:12,fontSize:12,lineHeight:18},
  empty:{color:'#8f98a8',fontSize:13,paddingVertical:8},message:{backgroundColor:'#0f131a',borderWidth:1,borderColor:'#303744',borderRadius:10,padding:12,gap:7},messageError:{borderColor:'#e05252'},messageHead:{flexDirection:'row',justifyContent:'space-between',gap:8},chatBubble:{backgroundColor:'#10151d',borderWidth:1,borderColor:'#303744',borderRadius:10,padding:10,gap:7},answerBubble:{borderColor:'#263444'},bubbleHead:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:8},bubbleLabel:{color:'#9da6b5',fontSize:10,fontWeight:'800',flex:1},clip:{color:'#fff',fontSize:18,fontWeight:'900',paddingHorizontal:4},providerName:{color:'#fff',fontSize:12,fontWeight:'900'},latency:{color:'#28d17c',fontSize:11,fontWeight:'900'},question:{color:'#9da6b5',fontSize:12},answer:{color:'#fff',fontSize:13,lineHeight:19},
