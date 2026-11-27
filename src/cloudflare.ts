@@ -1,11 +1,10 @@
 const CLOUDFLARE_API_URL = 'https://api.cloudflare.com/client/v4';
 
 export const CLOUDFLARE_TEXT_MODELS = [
-  { id: '@cf/zai-org/glm-5.3', name: 'GLM-5.3 · requiere pago' },
   { id: '@cf/google/gemma-4-26b-a4b-it', name: 'Gemma 4 26B A4B' },
 ] as const;
 
-export const DEFAULT_CLOUDFLARE_MODEL = CLOUDFLARE_TEXT_MODELS[1].id;
+export const DEFAULT_CLOUDFLARE_MODEL = CLOUDFLARE_TEXT_MODELS[0].id;
 
 function parseCloudflareError(status:number,body:string):string {
   try {
