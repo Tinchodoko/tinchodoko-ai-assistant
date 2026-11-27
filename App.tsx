@@ -1364,7 +1364,7 @@ export default function App() {
       {field('API KEY','apiKey',true,apiVisible,()=>setApiVisible(!apiVisible))}
       {field('SECRET','secret',true,secretVisible,()=>setSecretVisible(!secretVisible))}
       {field('ACCOUNT','accountId')}
-      <Pressable disabled={busy} onPress={connect} style={[s.button,busy&&s.disabled]}>{busy?<ActivityIndicator/>:<Text style={s.buttonText}>CONECTAR</Text>}</Pressable>
+      <Pressable disabled={busy} onPress={()=>void connect()} style={[s.button,busy&&s.disabled]}>{busy?<ActivityIndicator/>:<Text style={s.buttonText}>CONECTAR</Text>}</Pressable>
       <Text style={status==='online'?s.onlineText:s.offlineText}>Estado: {status}</Text>
       {status==='online'&&!!accessPoint&&<Text style={s.ap}>URL DE ACCESS POINT: {accessPoint}</Text>}
 
