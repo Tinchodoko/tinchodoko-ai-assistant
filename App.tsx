@@ -1466,9 +1466,8 @@ export default function App() {
           <Text style={s.selectArrow}>{cloudflareModelMenu?'▲':'▼'}</Text>
         </Pressable>
         {cloudflareModelMenu&&<View style={s.menu}>
-          {CLOUDFLARE_TEXT_MODELS.filter(model=>!modelUsedByOther('cloudflare',model.id,cloudflareModel)).map(model=><Pressable key={model.id} onPress={()=>{setCloudflareModel(model.id);setCloudflareModelMenu(false);SecureStore.setItemAsync('tinchodoko.cloudflare.model',model.id).catch(()=>{});if(model.id==='@cf/zai-org/glm-5.3')Alert.alert('GLM-5.3 · Acceso pago','Este modelo requiere Workers Paid o créditos prepagos de AI Gateway.');}} style={s.menuItem}>
+          {CLOUDFLARE_TEXT_MODELS.filter(model=>!modelUsedByOther('cloudflare',model.id,cloudflareModel)).map(model=><Pressable key={model.id} onPress={()=>{setCloudflareModel(model.id);setCloudflareModelMenu(false);SecureStore.setItemAsync('tinchodoko.cloudflare.model',model.id).catch(()=>{});}} style={s.menuItem}>
             <Text style={[s.menuText,model.id===cloudflareModel&&{fontWeight:'900'}]}>{model.name}</Text>
-            {model.id==='@cf/zai-org/glm-5.3'&&<Text style={s.aiLabel}>REQUIERE FACTURACIÓN</Text>}
           </Pressable>)}
         </View>}
         <Text style={cloudflareStatus==='online'?s.onlineText:s.offlineText}>Estado Cloudflare: {cloudflareStatus}</Text>
