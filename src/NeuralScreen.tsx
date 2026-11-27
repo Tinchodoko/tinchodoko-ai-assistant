@@ -3,11 +3,14 @@ import { ActivityIndicator, Alert, Image, Modal, Pressable, ScrollView, StyleShe
 import * as Clipboard from 'expo-clipboard';
 import * as FileSystem from 'expo-file-system/legacy';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import type { Credentials } from './exness';
+import { getMarketCandles, type MarketTimeframe } from './exness';
+import { calculateIndicatorSeries } from './marketIndicators';
 
 type AiProvider = 'groq'|'gemini'|'nvidia'|'cloudflare'|'openrouter';
 export type NeuralProvider = { id:string; provider:AiProvider; model:string; apiKey:string; accountId:string; default:boolean; status:'offline'|'online'|'connecting'|'error'; };
 export type NeuralRunner = (provider:NeuralProvider, question:string)=>Promise<string>;
-type ImportLog = {id:string;symbol:string;timeframe:string;requested:number;received:number;at:number;status:string;firstCandle?:string;lastCandle?:string;gapCount?:number;weekendGapCount?:number;missingCandles?:number};
+type ImportLog = {id:string;symbol:string;timeframe:string;requested:number;received:number;at:number;status:string;firstCandle?:string;lastCandle?:string;gapCount?:number;weekendGapCount?:number;missingCandles?:number;observedSpanMs?:number;expectedSpanMs?:number;weekendGapHours?:number;message?:string};
 type ChatMessage = {id:string;provider:string;model:string;question:string;answer:string;ms:number;error?:boolean;at:number;kind?:'ai'|'consensus'};
 const UI_STATE_KEY='tinchodoko.ai.neural.ui.v1';
 const QUICK_QUESTIONS=['What trend is currently visible according to the imported data?','Is there enough confirmation for a BUY or SELL entry right now?','What is the current market bias: bullish, bearish, or sideways?','Are EMA20 and EMA50 confirming the same directional trend?','What does RSI indicate about current momentum and market condition?','What does ADX indicate about the current trend strength?','What is MACD indicating about momentum and possible direction?','Is there a breakout or rejection confirmed by the latest candles?','Are the Bollinger Bands indicating expansion, contraction, or consolidation?','What is the safest signal according to the complete imported data and why?'];
@@ -49,9 +52,11 @@ function safeDate(value?:string|number){if(value===undefined||value===null)retur
 function buildImportAnswer(imports:ImportLog[]){if(!imports.length)return 'Lista de importaciones\\nNo hay importaciones guardadas.';return ['Lista de importaciones',...imports.map(x=>`${x.symbol} ${x.timeframe} ${x.status} · ${x.received}/${x.requested} velas`),'Seleccione un par si desea obtener más información.'].join('\\n');}
 function isImportQuestion(text:string){return /historial.*import|importad|importacion|importaciones|qué historiales|que historiales/i.test(text);}
 
-export default function NeuralScreen({providers,runner,accountId}:{providers:NeuralProvider[];runner:NeuralRunner;accountId:string}){
+export default function NeuralScreen({providers,runner,accountId,credentials,accessPoint}:{providers:NeuralProvider[];runner:NeuralRunner;accountId:string;credentials:Credentials;accessPoint:string}){
  const [instructions,setInstructions]=useState(DEFAULT_INSTRUCTIONS);
  const [instructionsExpanded,setInstructionsExpanded]=useState(true);
+ const [instructionsEditorOpen,setInstructionsEditorOpen]=useState(false);
+ const [instructionsDraft,setInstructionsDraft]=useState(DEFAULT_INSTRUCTIONS);
  const [settingsOpen,setSettingsOpen]=useState(false);
  const [activeIds,setActiveIds]=useState<string[]>([]);
  const [messages,setMessages]=useState<ChatMessage[]>([]);
@@ -67,6 +72,7 @@ export default function NeuralScreen({providers,runner,accountId}:{providers:Neu
  const [importsExpanded,setImportsExpanded]=useState(true);
  const [suggestionsOpen,setSuggestionsOpen]=useState(false);
  const [uiLoaded,setUiLoaded]=useState(false);
+ const [refreshingImports,setRefreshingImports]=useState<Record<string,'loading'|'success'|'error'>>({});
 
  useEffect(()=>{Promise.all([AsyncStorage.getItem('tinchodoko.ai.neural.instructions'),AsyncStorage.getItem('tinchodoko.ai.neural.activeProviders'),AsyncStorage.getItem(HISTORY_KEY),AsyncStorage.getItem(LOG_KEY),AsyncStorage.getItem(UI_STATE_KEY)]).then(([i,a,h,l,u])=>{
    if(i)setInstructions(i);
@@ -111,6 +117,30 @@ export default function NeuralScreen({providers,runner,accountId}:{providers:Neu
 
  function parseStructuredAnswer(answer:string){try{const start=answer.indexOf('{');const end=answer.lastIndexOf('}');if(start<0||end<start)return null;const x=JSON.parse(answer.slice(start,end+1));if(!['BUY','SELL','WAIT'].includes(x.signal))return null;return {pair:String(x.pair||analysisImport?.symbol||''),signal:x.signal as 'BUY'|'SELL'|'WAIT',reason:String(x.reason||''),entry:typeof x.entry==='number'?x.entry:null,tp:typeof x.tp==='number'?x.tp:null,sl:typeof x.sl==='number'?x.sl:null};}catch{return null;}}
  function buildConsensus(results:ChatMessage[],q:string){const parsed=results.filter(x=>!x.error).map(x=>parseStructuredAnswer(x.answer)).filter(Boolean) as Array<{pair:string;signal:'BUY'|'SELL'|'WAIT';reason:string;entry:number|null;tp:number|null;sl:number|null}>;if(!parsed.length)return {id:'consensus-'+Date.now(),provider:'TS',model:'TypeScript',question:q,answer:JSON.stringify({pair:analysisImport?.symbol??'UNKNOWN',signal:'WAIT',reason:'No valid structured AI responses were available for consensus.',entry:null,tp:null,sl:null,consensus:'0/0'},null,2),ms:0,at:Date.now(),kind:'consensus' as const};const counts={BUY:0,SELL:0,WAIT:0};parsed.forEach(x=>counts[x.signal]++);const signal=(Object.entries(counts).sort((a,b)=>b[1]-a[1])[0][0]) as 'BUY'|'SELL'|'WAIT';const same=parsed.filter(x=>x.signal===signal);const score=same.length+'/'+parsed.length;const numeric=(field:'entry'|'tp'|'sl')=>{const vals=same.map(x=>x[field]).filter((v):v is number=>typeof v==='number'&&Number.isFinite(v));return vals.length?Number((vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(6)):null;};const reason=(signal==='WAIT'?'Consensus WAIT: ':'Consensus '+signal+': ')+(same[0]?.reason??'No clear confirmation.');const payload={pair:parsed[0].pair||analysisImport?.symbol||'UNKNOWN',signal,reason:reason.slice(0,300),entry:signal==='WAIT'?null:numeric('entry'),tp:signal==='WAIT'?null:numeric('tp'),sl:signal==='WAIT'?null:numeric('sl'),consensus:score};return {id:'consensus-'+Date.now(),provider:'TS',model:'TypeScript',question:q,answer:JSON.stringify(payload,null,2),ms:0,at:Date.now(),kind:'consensus' as const};}
+ function importDiagnostics(candles:any[],requested:number,timeframe:string){
+   const interval=({M1:60000,M5:300000,M15:900000,M30:1800000,H1:3600000,H4:14400000} as Record<string,number>)[timeframe]??60000;
+   const times=candles.map(c=>Date.parse(c.time)).filter(Number.isFinite).sort((a,b)=>a-b);
+   const first=times[0],last=times[times.length-1];let gapCount=0,weekendGapCount=0,weekendGapMs=0;
+   for(let i=1;i<times.length;i++){const gap=times[i]-times[i-1];if(gap>interval*1.5){gapCount++;const before=new Date(times[i-1]).getUTCDay();const after=new Date(times[i]).getUTCDay();if((before===5||before===6)&&(after===0||after===1)){weekendGapCount++;weekendGapMs+=gap-interval;}}}
+   return {firstCandle:first?new Date(first).toISOString():undefined,lastCandle:last?new Date(last).toISOString():undefined,observedSpanMs:first&&last?Math.max(0,last-first):undefined,expectedSpanMs:Math.max(0,requested-1)*interval,gapCount,weekendGapCount,weekendGapHours:weekendGapMs/3600000,missingCandles:Math.max(0,requested-candles.length)};
+ }
+ async function refreshImport(item:ImportLog){
+   if(refreshingImports[item.id]==='loading')return;
+   if(!credentials.apiKey||!credentials.secret||!credentials.accountId||!accessPoint){Alert.alert('ACTUALIZAR IMPORTACIÓN','La cuenta de Exness todavía no está conectada.');return;}
+   setRefreshingImports(s=>({...s,[item.id]:'loading'}));
+   try{
+     const candles=await getMarketCandles(credentials,accessPoint,item.symbol,item.timeframe as MarketTimeframe,item.requested);
+     const now=Date.now();const status=candles.length===item.requested?'OK':'PARCIAL';
+     const diagnostics=importDiagnostics(candles,item.requested,item.timeframe);
+     await AsyncStorage.setItem('tinchodoko.market.candles.'+accountId+'.'+item.symbol+'.'+item.timeframe+'.'+item.id+'.v1',JSON.stringify({id:item.id,symbol:item.symbol,timeframe:item.timeframe,requested:item.requested,received:candles.length,importedAt:now,candles}));
+     const indicatorKey='tinchodoko.market.indicators.'+accountId+'.'+item.symbol+'.'+item.timeframe+'.'+item.id+'.v1';
+     const existing=await AsyncStorage.getItem(indicatorKey);
+     if(existing){try{const saved=JSON.parse(existing);const rows=calculateIndicatorSeries(candles,saved?.configuration);await AsyncStorage.setItem(indicatorKey,JSON.stringify({...saved,sourceCandleCount:candles.length,generatedAt:now,rows}));}catch{}}
+     const updated={...item,received:candles.length,at:now,status,...diagnostics,message:candles.length===item.requested?undefined:'Exness devolvió '+candles.length+' de '+item.requested+' velas.'};
+     const next=imports.map(x=>x.id===item.id?updated:x);setImports(next);await AsyncStorage.setItem(LOG_KEY,JSON.stringify(next));
+     setRefreshingImports(s=>({...s,[item.id]:'success'}));setTimeout(()=>setRefreshingImports(s=>{const n={...s};delete n[item.id];return n;}),2500);
+   }catch(error){setRefreshingImports(s=>({...s,[item.id]:'error'}));Alert.alert('ACTUALIZACIÓN FALLIDA',error instanceof Error?error.message:String(error));setTimeout(()=>setRefreshingImports(s=>{const n={...s};delete n[item.id];return n;}),2500);}
+ }
  async function copyText(text:string){try{await Clipboard.setStringAsync(text);Alert.alert('COPIADO','El mensaje fue copiado al portapapeles.');}catch{Alert.alert('ERROR','No se pudo copiar el mensaje.');}}
  async function clearChat(){if(!messages.length)return;Alert.alert('BORRAR HISTORIAL','¿Desea eliminar todo el historial de conversación?', [{text:'CANCELAR',style:'cancel'},{text:'BORRAR',style:'destructive',onPress:()=>setMessages([])}]);}
  async function saveChat(){if(!messages.length){Alert.alert('HISTORIAL','No hay mensajes para guardar.');return;}try{const payload=JSON.stringify({exportedAt:new Date().toISOString(),messages},null,2);const filename='tinchodoko-neural-chat-'+Date.now()+'.json';let directoryUri=await AsyncStorage.getItem('tinchodoko.ai.neural.export.directory.v1');if(directoryUri){try{const fileUri=await FileSystem.StorageAccessFramework.createFileAsync(directoryUri,filename,'application/json');await FileSystem.writeAsStringAsync(fileUri,payload,{encoding:FileSystem.EncodingType.UTF8});Alert.alert('CHAT GUARDADO','El historial fue guardado en /Download.\\n\\n'+filename);return;}catch{await AsyncStorage.removeItem('tinchodoko.ai.neural.export.directory.v1');directoryUri=null;}}const downloadRoot=FileSystem.StorageAccessFramework.getUriForDirectoryInRoot('Download');const permission=await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync(downloadRoot);if(!permission.granted)return;directoryUri=permission.directoryUri;if(!directoryUri)throw new Error('No se pudo obtener acceso a /Download');if(!directoryUri.includes('Download')){Alert.alert('CARPETA INCORRECTA','Seleccione la carpeta Download para guardar el historial.');return;}await AsyncStorage.setItem('tinchodoko.ai.neural.export.directory.v1',directoryUri);const fileUri=await FileSystem.StorageAccessFramework.createFileAsync(directoryUri,filename,'application/json');await FileSystem.writeAsStringAsync(fileUri,payload,{encoding:FileSystem.EncodingType.UTF8});Alert.alert('CHAT GUARDADO','El historial fue guardado en /Download.\\n\\n'+filename);}catch(error){Alert.alert('ERROR','No se pudo guardar el historial en /Download. '+(error instanceof Error?error.message:'Error de almacenamiento'));}}
@@ -148,7 +178,7 @@ export default function NeuralScreen({providers,runner,accountId}:{providers:Neu
     </Pressable>)}
    </View></View>}
 
-   <View style={n.panel}><Pressable onPress={()=>setInstructionsExpanded(v=>!v)} style={n.panelHeader}><Text style={n.arrow}>{instructionsExpanded?'▲':'▼'}</Text><Text style={n.panelTitle}>INSTRUCCIONES</Text></Pressable>{instructionsExpanded&&<TextInput value={instructions} onChangeText={setInstructions} multiline textAlignVertical="top" style={n.instructionsInput}/>}</View>
+   <View style={n.panel}><View style={n.panelHeader}><Pressable onPress={()=>setInstructionsExpanded(v=>!v)} style={n.panelHeaderToggle}><Text style={n.arrow}>{instructionsExpanded?'▲':'▼'}</Text><Text style={n.panelTitle}>INSTRUCCIONES</Text></Pressable><Pressable onPress={()=>{setInstructionsDraft(instructions);setInstructionsEditorOpen(true);}} style={n.editInstructionsButton}><Text style={n.editInstructionsIcon}>✎</Text></Pressable></View>{instructionsExpanded&&<Text style={n.instructionsReadOnly}>{instructions}</Text>}</View>
 
    <View style={n.panel}>
     <View style={n.panelHeader}><Pressable onPress={()=>setHistoryExpanded(v=>!v)} style={n.panelHeaderToggle}><Text style={n.arrow}>{historyExpanded?'▲':'▼'}</Text><Text style={n.panelTitle}>HISTORIAL DE CONVERSACIÓN</Text><Text style={n.historyCount}>{messages.length}</Text></Pressable><View style={n.historyActions}><Pressable onPress={()=>void clearChat()} style={n.historyIconButton}><Text style={n.historyIcon}>⌫</Text></Pressable><Pressable onPress={()=>void saveChat()} style={n.historyIconButton}><Text style={n.historyIcon}>⇩</Text></Pressable><Pressable onPress={()=>setHistoryFullscreen(true)} style={n.historyIconButton}><Text style={n.historyIcon}>⛶</Text></Pressable></View></View>
@@ -170,7 +200,7 @@ export default function NeuralScreen({providers,runner,accountId}:{providers:Neu
 
    <View style={n.panel}>
     <Pressable onPress={()=>setImportsExpanded(v=>!v)} style={n.panelHeader}><Text style={n.arrow}>{importsExpanded?'▲':'▼'}</Text><Text style={n.panelTitle}>IMPORTACIONES DISPONIBLES</Text><Text style={n.historyCount}>{imports.length}</Text></Pressable>
-    {importsExpanded&&imports.map(item=><Pressable key={item.id} onPress={()=>{setDetailsImport(item);}} style={[n.importRow,detailsImport?.id===item.id&&n.importRowSelected]}><Text style={n.importPair}>{item.symbol}</Text><Text style={n.importTf}>{item.timeframe}</Text><Text style={n.importMeta}>{item.received} velas</Text><Text style={n.importArrow}>›</Text></Pressable>)}
+    {importsExpanded&&imports.map(item=>{const state=refreshingImports[item.id];return <View key={item.id} style={[n.importRow,detailsImport?.id===item.id&&n.importRowSelected]}><Pressable onPress={()=>setDetailsImport(item)} style={n.importRowMain}><Text style={n.importPair}>{item.symbol}</Text><Text style={n.importTf}>{item.timeframe}</Text><Text style={[n.importStatus,item.status==='OK'?n.importStatusOk:n.importStatusPartial]}>{item.status}</Text><Text style={n.importMeta}>{item.received}/{item.requested}</Text></Pressable><Pressable disabled={state==='loading'} onPress={()=>void refreshImport(item)} style={n.refreshImportButton}><Text style={[n.refreshImportIcon,state==='loading'&&n.refreshImportLoading,state==='success'&&n.refreshImportSuccess]}>{state==='loading'?'⟳':state==='success'?'⟳':'⟳'}</Text></Pressable></View>})}
     {importsExpanded&&detailsImport&&<View style={n.detailBox}><View style={n.detailHeader}><Text style={n.panelTitle}>{detailsImport.symbol} · {detailsImport.timeframe}</Text><Pressable onPress={()=>setDetailsImport(null)}><Text style={n.close}>×</Text></Pressable></View><Text style={n.detail}>Cantidad de velas: {detailsImport.received}</Text><Text style={n.detail}>Huecos: {detailsImport.gapCount??0}</Text><Text style={n.detail}>Primer vela: {safeDate(detailsImport.firstCandle)}</Text><Text style={n.detail}>Última vela: {safeDate(detailsImport.lastCandle)}</Text>{detailsImport.missingCandles!==undefined&&<Text style={n.detail}>Velas faltantes: {detailsImport.missingCandles}</Text>}</View>}
    </View>
  </ScrollView>;
@@ -195,6 +225,18 @@ export default function NeuralScreen({providers,runner,accountId}:{providers:Neu
    </ScrollView>
   </View>
  </Modal>
+ <Modal visible={instructionsEditorOpen} animationType="slide" presentationStyle="fullScreen" onRequestClose={()=>setInstructionsEditorOpen(false)}>
+  <View style={n.editorScreen}>
+   <View style={n.editorHeader}><Pressable onPress={()=>setInstructionsEditorOpen(false)} style={n.editorClose}><Text style={n.editorCloseText}>✕</Text></Pressable><Text style={n.editorTitle}>EDICIÓN DE INSTRUCCIONES PARA LOS AGENTES</Text></View>
+   <ScrollView contentContainerStyle={n.editorContent}>
+    <TextInput value={instructionsDraft} onChangeText={setInstructionsDraft} multiline textAlignVertical="top" style={n.editorInput}/>
+    <View style={n.editorButtons}>
+     <Pressable onPress={()=>Alert.alert('CANCELAR EDICIÓN','¿Realmente desea cancelar? Cualquier cambio realizado se perderá.',[{text:'NO',style:'cancel'},{text:'SÍ, CANCELAR',style:'destructive',onPress:()=>setInstructionsEditorOpen(false)}])} style={n.editorCancel}><Text style={n.editorCancelText}>CANCELAR</Text></Pressable>
+     <Pressable onPress={()=>Alert.alert('CONFIRMAR CAMBIOS','¿Realmente desea confirmar? Esta acción es irreversible.',[{text:'NO',style:'cancel'},{text:'SÍ, CONFIRMAR',onPress:()=>{setInstructions(instructionsDraft);setInstructionsEditorOpen(false);}}])} style={n.editorConfirm}><Text style={n.editorConfirmText}>CONFIRMAR</Text></Pressable>
+    </View>
+   </ScrollView>
+  </View>
+ </Modal>
  </>;
 }
 
@@ -206,5 +248,5 @@ const n=StyleSheet.create({
  empty:{color:'#8f98a8',fontSize:13,paddingVertical:8},message:{backgroundColor:'#0f131a',borderWidth:1,borderColor:'#303744',borderRadius:10,padding:12,gap:7},messageError:{borderColor:'#e05252'},messageHead:{flexDirection:'row',justifyContent:'space-between',gap:8},chatBubble:{backgroundColor:'#10151d',borderWidth:1,borderColor:'#303744',borderRadius:10,padding:10,gap:7},answerBubble:{borderColor:'#263444'},bubbleHead:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:8},bubbleLabel:{color:'#9da6b5',fontSize:10,fontWeight:'800',flex:1},clip:{color:'#fff',fontSize:18,fontWeight:'900',paddingHorizontal:4},providerName:{color:'#fff',fontSize:12,fontWeight:'900'},latency:{color:'#28d17c',fontSize:11,fontWeight:'900'},question:{color:'#9da6b5',fontSize:12},answer:{color:'#fff',fontSize:13,lineHeight:19},
  copyAllButton:{minHeight:44,borderWidth:1,borderColor:'#3b4350',borderRadius:9,backgroundColor:'#0f131a',flexDirection:'row',alignItems:'center',justifyContent:'center',gap:8},copyAllIcon:{color:'#fff',fontSize:18,fontWeight:'900'},copyAllText:{color:'#fff',fontSize:11,fontWeight:'900'},
  questionBox:{backgroundColor:'#151a22',borderWidth:1,borderColor:'#2b323e',borderRadius:13,padding:12,gap:10},questionActions:{flexDirection:'row',alignItems:'stretch',gap:7},ideaButton:{width:48,minHeight:70,borderWidth:1,borderColor:'#3b4350',borderRadius:9,backgroundColor:'#0f131a',alignItems:'center',justifyContent:'center'},ideaIcon:{fontSize:22},suggestionsCard:{borderWidth:1,borderColor:'#3b4350',borderRadius:9,backgroundColor:'#0f131a',overflow:'hidden'},suggestionRow:{minHeight:44,borderBottomWidth:1,borderBottomColor:'#252c37',flexDirection:'row',alignItems:'center',paddingHorizontal:10,gap:10},suggestionNumber:{color:'#28d17c',fontSize:11,fontWeight:'900',width:18,textAlign:'center'},suggestionText:{color:'#fff',fontSize:12,flex:1,lineHeight:17},importSelector:{minHeight:48,borderWidth:1,borderColor:'#3b4350',borderRadius:9,backgroundColor:'#0f131a',paddingHorizontal:12,flexDirection:'row',alignItems:'center',justifyContent:'space-between'},importSelected:{color:'#fff',fontSize:12,fontWeight:'800',flex:1},importArrow:{color:'#fff',fontSize:24},importOptions:{gap:6},importOption:{minHeight:44,borderWidth:1,borderColor:'#303744',borderRadius:9,backgroundColor:'#0f131a',paddingHorizontal:12,flexDirection:'row',alignItems:'center',gap:10},importOptionSelected:{borderColor:'#28d17c',backgroundColor:'rgba(40,209,124,0.10)'},questionInput:{minHeight:70,maxHeight:180,flex:1,color:'#fff',backgroundColor:'#0f131a',borderWidth:1,borderColor:'#3b4350',borderRadius:9,padding:12,textAlignVertical:'top'},askButton:{width:92,minHeight:48,borderRadius:9,backgroundColor:'#fff',alignItems:'center',justifyContent:'center',paddingHorizontal:6},askText:{color:'#0b0e13',fontWeight:'900',fontSize:10,letterSpacing:-0.2,textAlign:'center'},
- importRow:{minHeight:48,borderWidth:1,borderColor:'#303744',borderRadius:9,backgroundColor:'#0f131a',paddingHorizontal:12,flexDirection:'row',alignItems:'center',gap:8},importRowSelected:{borderColor:'#f0b429'},importPair:{color:'#fff',fontWeight:'900',flex:1},importTf:{color:'#f0b429',fontWeight:'900'},importMeta:{color:'#9da6b5',fontSize:11},detailBox:{borderWidth:1,borderColor:'#3b4350',borderRadius:9,backgroundColor:'#10151d',padding:12,gap:6},detailHeader:{flexDirection:'row',alignItems:'center'},close:{color:'#e05252',fontSize:25,fontWeight:'900'},detail:{color:'#dce1e9',fontSize:13,lineHeight:19}
+ importRow:{minHeight:48,borderWidth:1,borderColor:'#303744',borderRadius:9,backgroundColor:'#0f131a',paddingLeft:12,flexDirection:'row',alignItems:'center',gap:4},importRowMain:{flex:1,minHeight:48,flexDirection:'row',alignItems:'center',gap:8},importStatus:{fontSize:10,fontWeight:'900',minWidth:48,textAlign:'center'},importStatusOk:{color:'#28d17c'},importStatusPartial:{color:'#f0b429'},refreshImportButton:{width:46,height:46,alignItems:'center',justifyContent:'center'},refreshImportIcon:{color:'#6d7480',fontSize:22,fontWeight:'900'},refreshImportLoading:{color:'#f0a429'},refreshImportSuccess:{color:'#28d17c'},importRowSelected:{borderColor:'#f0b429'},importPair:{color:'#fff',fontWeight:'900',flex:1},importTf:{color:'#f0b429',fontWeight:'900'},importMeta:{color:'#9da6b5',fontSize:11},detailBox:{borderWidth:1,borderColor:'#3b4350',borderRadius:9,backgroundColor:'#10151d',padding:12,gap:6},detailHeader:{flexDirection:'row',alignItems:'center'},close:{color:'#e05252',fontSize:25,fontWeight:'900'},detail:{color:'#dce1e9',fontSize:13,lineHeight:19}
 });
