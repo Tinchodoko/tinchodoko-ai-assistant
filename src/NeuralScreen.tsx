@@ -44,12 +44,28 @@ Return only the structured JSON response. The "reason" field must contain a conc
 If the signal is WAIT, entry, tp and sl MUST be null.
 The examples above describe the format only; replace all example values with the actual analysis results.
 
-ANALYTICAL ATTITUDE:
-Use an INTERMEDIATE-AGGRESSIVE decision posture. Do not choose WAIT merely because the setup is not perfect or because one indicator is neutral.
-Consider BUY or SELL when the imported data provides a coherent directional bias supported by multiple factors such as price structure, trend, momentum, volatility and/or indicator confirmation.
+ANALYSIS PROFILE:
+Current profile: MODERATE.
+This is the PROFILE OF ANALYSIS and defines how decisively the agent evaluates BUY, SELL and WAIT. It does not mean automatic trading, does not change risk limits and does not authorize execution.
+
+Profile definitions:
+- CONSERVATIVE: requires stronger multi-factor confirmation and accepts WAIT more readily when evidence is incomplete or conflicting.
+- MODERATE: balances confirmation and decisiveness. Prefer BUY or SELL when several independent factors align, while using WAIT when the evidence is genuinely insufficient or contradictory.
+- RISKY: accepts weaker but still defensible directional setups and is more willing to issue BUY or SELL when there is a plausible edge, but MUST NOT invent data or confirmations.
+
+Use the CURRENT PROFILE exactly as defined above. Do not silently change profiles.
+
+INDICATORS:
+For every market analysis, use ALL available indicator values from the imported market data together as part of the analysis. The available indicator set is:
+VOL, RSI14, ATR14, EMA20, EMA50, ADX14, MACD, MACDSIG, MACD HIST, BBUP, BBMID, BBLOW, BBWIDTH, Z-SCORE.
+Do not ignore an available indicator simply because other indicators already suggest a direction. Evaluate the indicators together with OHLC price structure, volume and timeframe context.
+Do not invent missing indicator values. If an indicator is unavailable or null, explicitly treat it as unavailable rather than fabricating it.
+
+DECISION CRITERIA:
+Do not choose WAIT merely because the setup is not perfect or because one indicator is neutral.
+Consider BUY or SELL when the imported data provides a coherent directional bias supported by multiple factors such as price structure, trend, momentum, volatility, volume and indicator confirmation.
 Use WAIT when the evidence is genuinely conflicting, insufficient, stale or does not provide a defensible directional edge.
-Do not invent confirmations or market data. Be decisive when the available evidence supports a direction, but remain faithful to the imported data.
-Prefer a clear BUY/SELL decision over excessive conservatism when the evidence is reasonably aligned.`;
+Do not invent confirmations or market data. Be decisive according to the CURRENT PROFILE while remaining faithful to the imported data.`;
 const providerLabel=(p:AiProvider)=>({groq:'GROQ',gemini:'GEMINI',nvidia:'NVIDIA',cloudflare:'CLOUDFLARE',openrouter:'OPENROUTER'}[p]);
 const providerAsset=(p:AiProvider)=>({groq:require('../assets/groq.png'),gemini:require('../assets/gemini.png'),nvidia:require('../assets/nvidia.png'),cloudflare:require('../assets/cloudflare.png'),openrouter:require('../assets/openrouter.png')}[p]);
 const initials=(p:AiProvider)=>providerLabel(p)[0];
@@ -129,6 +145,7 @@ export default function NeuralScreen({providers,runner,accountId,credentials,acc
    const compactRows=indicatorRows.map((r:any)=>({
      time:r.time??r.timestamp??r.date,
      open:r.open,high:r.high,low:r.low,close:r.close,volume:r.volume,
+     vol:r.volume,
      ema20:r.ema20,ema50:r.ema50,rsi14:r.rsi14,adx14:r.adx14,macd:r.macd,macdSignal:r.macdSignal,macdHistogram:r.macdHistogram,bollingerUpper:r.bollingerUpper,bollingerMiddle:r.bollingerMiddle,bollingerLower:r.bollingerLower,bollingerWidth:r.bollingerWidth,zScore:r.zScore,atr14:r.atr14
    }));
    return `\\n\\nSELECTED MARKET DATA (${chosen.symbol} ${chosen.timeframe}):\\n${JSON.stringify({
