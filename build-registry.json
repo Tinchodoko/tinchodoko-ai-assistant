@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-28T03:54:12Z",
+  "generated_at": "2026-11-28T04:00:08Z",
   "workflow": "Android Release APK",
   "repository": "Tinchodoko/tinchodoko-ai-assistant",
   "builds": [
@@ -5132,6 +5132,28 @@
           "step": "TypeScript check",
           "started_at": "2026-11-28T03:51:34Z",
           "completed_at": "2026-11-28T03:51:35Z"
+        }
+      ]
+    },
+    {
+      "run_number": 295,
+      "run_id": 46105273505,
+      "status": "completed",
+      "conclusion": "failure",
+      "display_title": "Neural: perfiles de analisis y uso obligatorio de todos los indicadores",
+      "event": "push",
+      "branch": "main",
+      "sha": "4c48bea4a083db038e36a3b219de847aee2cca5b",
+      "created_at": "2026-11-28T03:57:30Z",
+      "updated_at": "2026-11-28T03:58:09Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/46105273505",
+      "failed_step": "TypeScript check",
+      "failed_steps": [
+        {
+          "job": "build",
+          "step": "TypeScript check",
+          "started_at": "2026-11-28T03:58:04Z",
+          "completed_at": "2026-11-28T03:58:04Z"
         }
       ]
     }
