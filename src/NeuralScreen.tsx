@@ -105,7 +105,12 @@ export default function NeuralScreen({providers,runner,accountId,credentials,acc
  const [conversationProviders,setConversationProviders]=useState<string[]>([]);
 
  useEffect(()=>{Promise.all([AsyncStorage.getItem('tinchodoko.ai.neural.instructions'),AsyncStorage.getItem('tinchodoko.ai.neural.activeProviders'),AsyncStorage.getItem(HISTORY_KEY),AsyncStorage.getItem(LOG_KEY),AsyncStorage.getItem(UI_STATE_KEY)]).then(([i,a,h,l,u])=>{
-   if(i)setInstructions(i);
+   if(i){
+    const currentProfile=DEFAULT_INSTRUCTIONS.slice(DEFAULT_INSTRUCTIONS.indexOf('ANALYSIS PROFILE:'));
+    const hasProfile=i.includes('This is the PROFILE OF ANALYSIS')&&i.includes('Current profile: MODERATE.');
+    const hasIndicators=i.includes('The available indicator set is:')&&i.includes('Z-SCORE');
+    setInstructions(hasProfile&&hasIndicators?i:i+'\n\n'+currentProfile);
+   }
    if(a){try{const ids=JSON.parse(a);if(Array.isArray(ids))setActiveIds(ids);}catch{}}
    else setActiveIds(providers.filter(p=>p.apiKey&&p.status==='online').map(p=>p.id));
    if(h){try{const x=JSON.parse(h);if(Array.isArray(x))setMessages(x.slice(-200));}catch{}}
