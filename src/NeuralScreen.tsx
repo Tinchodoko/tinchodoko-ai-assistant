@@ -255,7 +255,7 @@ export default function NeuralScreen({providers,runner,accountId,credentials,acc
       <Text style={n.filterSection}>PARES</Text>
       <View style={n.filterRow}>{availableImportPairs.map(pair=><Pressable key={pair} onPress={()=>setImportPairFilter(current=>current===pair?null:pair)} style={[n.filterChip,importPairFilter===pair&&n.filterChipActive]}><Text style={[n.filterChipText,importPairFilter===pair&&n.filterChipTextActive]}>{pair}</Text></Pressable>)}</View>
       <Text style={n.filterSection}>TIMEFRAME</Text>
-      <View style={n.filterRow}>{['M1','M5','M15','M30','H1','H4'].map(tf=><Pressable key={tf} onPress={()=>setImportTfFilter(current=>current===tf?null:tf)} style={[n.filterChip,importTfFilter===tf&&n.filterChipActive]}><Text style={[n.filterChipText,importTfFilter===tf&&n.filterChipTextActive]}>{tf}</Text></Pressable>)}</View>
+      <View style={n.filterRow}>{['M1','M5','M15','M30','H1','H4'].map(tf=><Pressable key={tf} onPress={()=>setImportTfFilter(current=>current===tf?null:tf)} style={[n.filterChip,n.filterChipTimeframe,importTfFilter===tf&&n.filterChipActive]}><Text style={[n.filterChipText,n.filterChipTimeframeText,importTfFilter===tf&&n.filterChipTextActive]}>{tf}</Text></Pressable>)}</View>
       <Pressable onPress={clearImportFilters} style={n.clearFilterButton}><Text style={n.clearFilterText}>ELIMINAR TODOS LOS FILTROS</Text></Pressable>
     </View>}
     {importsExpanded&&filteredImports.map(item=>{const state=refreshingImports[item.id];return <View key={item.id} style={[n.importRow,detailsImport?.id===item.id&&n.importRowSelected]}><Pressable onPress={()=>setDetailsImport(item)} style={n.importRowMain}><Text style={n.importPair}>{item.symbol}</Text><Text style={n.importTf}>{item.timeframe}</Text><Text style={[n.importStatus,item.status==='OK'?n.importStatusOk:n.importStatusPartial]}>{item.status}</Text><Text style={n.importMeta}>{item.received}/{item.requested}</Text></Pressable><Pressable disabled={state==='loading'} onPress={()=>void refreshImport(item)} style={n.refreshImportButton}><Text style={[n.refreshImportIcon,state==='loading'&&n.refreshImportLoading,state==='success'&&n.refreshImportSuccess]}>{state==='loading'?'⟳':state==='success'?'⟳':'⟳'}</Text></Pressable></View>})}
@@ -320,6 +320,8 @@ const n=StyleSheet.create({
  filterRow:{flexDirection:'row',flexWrap:'wrap',gap:7},
  filterChip:{minHeight:34,borderWidth:1,borderColor:'#4a5362',borderRadius:8,backgroundColor:'#151a22',paddingHorizontal:11,alignItems:'center',justifyContent:'center',flexDirection:'row',gap:5},
  filterChipSmall:{width:42,paddingHorizontal:0},
+ filterChipTimeframe:{width:47,paddingHorizontal:0},
+ filterChipTimeframeText:{width:47,textAlign:'left',paddingLeft:10},
  filterChipProvider:{minWidth:42},
  filterProviderIcon:{width:18,height:18},
  filterChipActive:{borderColor:'#28d17c',backgroundColor:'rgba(40,209,124,0.14)'},
