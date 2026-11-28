@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-28T04:23:46Z",
+  "generated_at": "2026-11-28T04:30:27Z",
   "workflow": "Android Release APK",
   "repository": "Tinchodoko/tinchodoko-ai-assistant",
   "builds": [
@@ -5175,14 +5175,14 @@
     {
       "run_number": 297,
       "run_id": 46107187055,
-      "status": "in_progress",
-      "conclusion": null,
+      "status": "completed",
+      "conclusion": "cancelled",
       "display_title": "Neural: alinear timeframes del filtro de importaciones",
       "event": "push",
       "branch": "main",
       "sha": "5b8f2f799ef156e58777b1f1130a4a93113a4e18",
       "created_at": "2026-11-28T04:21:53Z",
-      "updated_at": "2026-11-28T04:21:56Z",
+      "updated_at": "2026-11-28T04:26:31Z",
       "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/46107187055",
       "failed_step": null,
       "failed_steps": []
@@ -5205,17 +5205,54 @@
     {
       "run_number": 299,
       "run_id": 46107206252,
-      "status": "pending",
-      "conclusion": null,
+      "status": "completed",
+      "conclusion": "cancelled",
       "display_title": "Neural: migrar instrucciones de perfil moderado e indicadores",
       "event": "push",
       "branch": "main",
       "sha": "81d326fc22a6ea180724a7adfb9395488f584fdc",
       "created_at": "2026-11-28T04:22:08Z",
-      "updated_at": "2026-11-28T04:22:09Z",
+      "updated_at": "2026-11-28T04:25:59Z",
       "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/46107206252",
       "failed_step": null,
       "failed_steps": []
+    },
+    {
+      "run_number": 300,
+      "run_id": 46107507279,
+      "status": "completed",
+      "conclusion": "cancelled",
+      "display_title": "Neural: corregir filtro de señales y selector de pares desplazable",
+      "event": "push",
+      "branch": "main",
+      "sha": "4030f36c5c12542dd1bab9ea0540f59484c7dacc",
+      "created_at": "2026-11-28T04:25:57Z",
+      "updated_at": "2026-11-28T04:26:16Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/46107507279",
+      "failed_step": null,
+      "failed_steps": []
+    },
+    {
+      "run_number": 301,
+      "run_id": 46107669882,
+      "status": "completed",
+      "conclusion": "failure",
+      "display_title": "Android Release APK",
+      "event": "workflow_dispatch",
+      "branch": "main",
+      "sha": "4030f36c5c12542dd1bab9ea0540f59484c7dacc",
+      "created_at": "2026-11-28T04:28:03Z",
+      "updated_at": "2026-11-28T04:28:50Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/46107669882",
+      "failed_step": "TypeScript check",
+      "failed_steps": [
+        {
+          "job": "build",
+          "step": "TypeScript check",
+          "started_at": "2026-11-28T04:28:40Z",
+          "completed_at": "2026-11-28T04:28:44Z"
+        }
+      ]
     }
   ]
 }
