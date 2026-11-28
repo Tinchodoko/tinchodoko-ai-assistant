@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-28T04:11:15Z",
+  "generated_at": "2026-11-28T04:23:46Z",
   "workflow": "Android Release APK",
   "repository": "Tinchodoko/tinchodoko-ai-assistant",
   "builds": [
@@ -5169,6 +5169,51 @@
       "created_at": "2026-11-28T04:02:39Z",
       "updated_at": "2026-11-28T04:09:06Z",
       "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/46105672555",
+      "failed_step": null,
+      "failed_steps": []
+    },
+    {
+      "run_number": 297,
+      "run_id": 46107187055,
+      "status": "in_progress",
+      "conclusion": null,
+      "display_title": "Neural: alinear timeframes del filtro de importaciones",
+      "event": "push",
+      "branch": "main",
+      "sha": "5b8f2f799ef156e58777b1f1130a4a93113a4e18",
+      "created_at": "2026-11-28T04:21:53Z",
+      "updated_at": "2026-11-28T04:21:56Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/46107187055",
+      "failed_step": null,
+      "failed_steps": []
+    },
+    {
+      "run_number": 298,
+      "run_id": 46107190023,
+      "status": "completed",
+      "conclusion": "cancelled",
+      "display_title": "Market: agregar filtro al historial de importaciones",
+      "event": "push",
+      "branch": "main",
+      "sha": "7ae8e92e80f64c5775e80d8e4129c7f36e74aab3",
+      "created_at": "2026-11-28T04:21:56Z",
+      "updated_at": "2026-11-28T04:22:09Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/46107190023",
+      "failed_step": null,
+      "failed_steps": []
+    },
+    {
+      "run_number": 299,
+      "run_id": 46107206252,
+      "status": "pending",
+      "conclusion": null,
+      "display_title": "Neural: migrar instrucciones de perfil moderado e indicadores",
+      "event": "push",
+      "branch": "main",
+      "sha": "81d326fc22a6ea180724a7adfb9395488f584fdc",
+      "created_at": "2026-11-28T04:22:08Z",
+      "updated_at": "2026-11-28T04:22:09Z",
+      "run_url": "https://github.com/Tinchodoko/tinchodoko-ai-assistant/actions/runs/46107206252",
       "failed_step": null,
       "failed_steps": []
     }
